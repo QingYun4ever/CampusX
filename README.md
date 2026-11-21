@@ -74,12 +74,12 @@ npm run invite -- --uses 50 --note "高三(2)班" --days 30
 - 一台 Linux 服务器（1 核 1G 就够用），装好 Docker：`curl -fsSL https://get.docker.com | sh`（国内服务器可以用 `--mirror Aliyun`）
 - 一个域名，A 记录解析到服务器 IP；防火墙 / 安全组放行 80 和 443 端口
 - 在中国大陆的服务器上用域名对外提供服务需要先完成 ICP 备案
-- 私有仓库在 VPS 上需要 GitHub 读取权限，建议为此仓库添加专用的只读部署密钥，不要把自己的 GitHub 私钥拷到服务器
+- 如果使用私有 fork，给 VPS 配专用的只读部署密钥，不要把个人 GitHub 私钥拷到服务器
 
 **1. 拿到代码并配置**
 
 ```bash
-git clone git@github.com:QingYun4ever/CampusX.git xiaoqiang
+git clone https://github.com/QingYun4ever/CampusX.git xiaoqiang
 cd xiaoqiang
 cp .env.example .env
 nano .env            # 可选配置 SMTP 等，不需要设置域名
@@ -248,7 +248,7 @@ gh release create v0.9.1 web/android/app/build/outputs/apk/release/app-release.a
   --target main --title '校墙 v0.9.1' --notes 'Android 签名安装包'
 ```
 
-只有 Git SSH 权限时，可将命名为 `campusx-android-X.Y.Z.apk` 的签名包放到临时分支 `android-apk/vX.Y.Z`，再向 GitHub 推送该分支和注释为 `SHA256: <安装包 SHA-256>` 的版本标签。Actions 核对摘要、现有发布证书、包名、版本和正式版清单后，把 APK 和摘要上传到 Releases，成功后清理临时分支。APK 不进入 `main`，不经过第三方网盘。
+只有 Git SSH 权限时，先推送临时分支 `android-apk/vX.Y.Z`（只含签名包 `campusx-android-X.Y.Z.apk`）及注释为 `SHA256: <安装包 SHA-256>` 的版本标签 `vX.Y.Z`。再推送指向最新 `main` 的触发标签 `android-release/vX.Y.Z`。Actions 从 GitHub 读取 APK，核对摘要、现有发布证书、包名、版本和正式版清单后上传到 Releases，然后清理临时分支和触发标签。APK 不进入 `main`，不经过第三方网盘。
 
 ## 安全说明
 
