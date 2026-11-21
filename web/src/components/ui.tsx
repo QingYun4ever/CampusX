@@ -18,6 +18,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CircleAlert, X } from 'lucide-react';
 import { media } from '../lib/api';
+import { useEscape } from '../lib/escape';
 import { compact } from '../lib/format';
 
 /* ---------- 蓝标认证：由管理员手动指定 ---------- */
@@ -334,6 +335,7 @@ export function Modal({
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const close = useCallback(() => setLeaving(true), []);
+  useEscape(close);
 
   useEffect(() => {
     if (!leaving) return;
@@ -343,15 +345,12 @@ export function Modal({
   }, [leaving]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-    window.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
-  }, [close]);
+  }, []);
 
   return createPortal(
     <ModalCtx.Provider value={close}>
@@ -423,11 +422,7 @@ function Lightbox({ src, from, onDone }: { src: string; from?: HTMLElement | nul
     else onDone();
   }, [onDone]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [close]);
+  useEscape(close);
 
   return (
     <div className="lightbox" onClick={close}>
@@ -508,6 +503,7 @@ export function Emoji({ e, size = 18 }: { e: string; size?: number }) {
 export function usePopover(float = false, width = 0) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<CSSProperties>({});
+  useEscape(() => setOpen(false), open);
   const ref = useRef<HTMLDivElement>(null);
   const place = useCallback(() => {
     if (!ref.current) return false;
@@ -531,11 +527,6 @@ export function usePopover(float = false, width = 0) {
   useEffect(() => {
     if (!open) return;
     const close = (e: Event) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    const esc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopPropagation();
-      setOpen(false);
-    };
     // 页面滚动（包括图片、公式加载后浏览器自动调整的滚动）时跟着按钮移动，而不是直接关掉
     const follow = (e: Event) => {
       if (!float || ref.current?.contains(e.target as Node)) return;
@@ -543,12 +534,10 @@ export function usePopover(float = false, width = 0) {
     };
     const resize = () => float && setOpen(false);
     document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', esc, true);
     window.addEventListener('scroll', follow, true);
     window.addEventListener('resize', resize);
     return () => {
       document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', esc, true);
       window.removeEventListener('scroll', follow, true);
       window.removeEventListener('resize', resize);
     };

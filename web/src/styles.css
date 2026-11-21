@@ -41,10 +41,19 @@
   --ease-io: cubic-bezier(0.4, 0, 0.2, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --blur: blur(14px) saturate(180%);
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --viewport-height: 100vh;
   --tf-bg: var(--bg);
   color-scheme: dark;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --viewport-height: 100dvh;
+  }
 }
 
 :root[data-theme='light'] {
@@ -126,6 +135,9 @@ body {
 }
 body {
   transition: background-color 0.3s;
+}
+#root {
+  padding-inline: var(--safe-left) var(--safe-right);
 }
 ::selection {
   background: color-mix(in srgb, var(--accent) 30%, transparent);
@@ -276,6 +288,7 @@ textarea:focus-visible {
   min-height: 100vh;
   border-left: 1px solid var(--line);
   border-right: 1px solid var(--line);
+  padding-bottom: var(--safe-bottom);
 }
 .side-col {
   width: 350px;
@@ -290,7 +303,7 @@ textarea:focus-visible {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 4px 0 12px;
+  padding: calc(4px + var(--safe-top)) 0 calc(12px + var(--safe-bottom));
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -401,7 +414,7 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 0 0 24px;
+  padding: var(--safe-top) 0 calc(24px + var(--safe-bottom));
   max-height: 100vh;
   overflow-y: auto;
   scrollbar-width: none;
@@ -1043,7 +1056,7 @@ a.card-row:hover {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 5vh 16px 16px;
+  padding: max(5vh, var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
   animation: fade-in 0.2s var(--ease) backwards;
 }
 .overlay.leaving {
@@ -1053,7 +1066,7 @@ a.card-row:hover {
   --tf-bg: var(--bg);
   width: 600px;
   max-width: 100%;
-  max-height: 90vh;
+  max-height: min(90vh, 100%);
   overflow-y: auto;
   overscroll-behavior: contain;
   border-radius: var(--r-lg);
@@ -1213,7 +1226,7 @@ a.card-row:hover {
 /* ---------- 提示 / 图片查看器 ---------- */
 .toasts {
   position: fixed;
-  left: 50%;
+  left: calc((100% + var(--safe-left) - var(--safe-right)) / 2);
   bottom: calc(24px + var(--safe-bottom));
   transform: translateX(-50%);
   z-index: 300;
@@ -1223,7 +1236,7 @@ a.card-row:hover {
   gap: 8px;
   pointer-events: none;
   width: max-content;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw - 32px - var(--safe-left) - var(--safe-right));
 }
 .toast {
   background: var(--accent);
@@ -1259,18 +1272,19 @@ a.card-row:hover {
   z-index: 200;
   display: grid;
   place-items: center;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   cursor: zoom-out;
 }
 .lightbox-bg {
   position: absolute;
-  inset: 0;
+  inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   background: rgba(0, 0, 0, 0.92);
   animation: fade-in 0.3s var(--ease) backwards;
 }
 .lightbox img {
   position: relative;
-  max-width: 94vw;
-  max-height: 90vh;
+  max-width: min(94vw, calc(100vw - var(--safe-left) - var(--safe-right)));
+  max-height: min(90vh, calc(100vh - var(--safe-top) - var(--safe-bottom)));
   object-fit: contain;
   border-radius: 4px;
   will-change: transform;
@@ -1278,7 +1292,7 @@ a.card-row:hover {
 .lightbox-close {
   position: absolute;
   top: calc(12px + var(--safe-top));
-  left: 12px;
+  left: calc(12px + var(--safe-left));
   color: #fff;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
@@ -2144,6 +2158,7 @@ a.card-row:hover {
   z-index: 40;
   height: calc(53px + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
+  padding-inline: var(--safe-left) var(--safe-right);
   display: flex;
   background: var(--glass);
   backdrop-filter: var(--blur);
@@ -2161,7 +2176,7 @@ a.card-row:hover {
 }
 .fab {
   position: fixed;
-  right: 16px;
+  right: calc(16px + var(--safe-right));
   bottom: calc(69px + var(--safe-bottom));
   z-index: 40;
   width: 56px;
@@ -2190,7 +2205,7 @@ a.card-row:hover {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: calc(24px + var(--safe-top)) 16px 16px;
+  padding: calc(24px + var(--safe-top)) 16px calc(16px + var(--safe-bottom));
   background: var(--auth-bg);
 }
 .auth-card {
@@ -3919,6 +3934,7 @@ img.emoji {
    ============================================================ */
 .admin {
   min-height: 100vh;
+  padding-bottom: var(--safe-bottom);
 }
 .admin-top {
   position: sticky;
@@ -3927,7 +3943,7 @@ img.emoji {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 60px;
+  height: calc(60px + var(--safe-top));
   padding: 0 20px;
   padding-top: var(--safe-top);
   background: var(--glass);
@@ -3958,7 +3974,7 @@ img.emoji {
 }
 .admin-nav {
   position: sticky;
-  top: 60px;
+  top: calc(60px + var(--safe-top));
   align-self: flex-start;
   width: 200px;
   flex-shrink: 0;
@@ -4490,7 +4506,7 @@ img.emoji {
     bottom: calc(80px + var(--safe-bottom));
   }
   .overlay {
-    padding: 0;
+    padding: 0 var(--safe-right) 0 var(--safe-left);
     align-items: stretch;
   }
   .modal {
@@ -4498,6 +4514,7 @@ img.emoji {
     height: 100%;
     border-radius: 0;
     padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
     animation: sheet-in 0.42s var(--ease) backwards;
   }
   .overlay.leaving .modal {
@@ -4509,7 +4526,9 @@ img.emoji {
   }
   .modal.account-sheet {
     height: auto;
+    max-height: calc(100% - var(--safe-top));
     padding-top: 22px;
+    padding-bottom: 0;
     border-radius: 20px 20px 0 0;
     position: relative;
   }
@@ -4583,7 +4602,7 @@ img.emoji {
   }
   .admin-nav {
     position: sticky;
-    top: 60px;
+    top: calc(60px + var(--safe-top));
     z-index: 10;
     width: auto;
     flex-direction: row;
@@ -4609,7 +4628,7 @@ img.emoji {
     display: none;
   }
   .admin-top {
-    padding: 0 12px;
+    padding-inline: 12px;
   }
   .admin-main {
     padding-top: 16px;
@@ -4647,30 +4666,39 @@ img.emoji {
 /* ============================================================
    私信（仿 Telegram）：左列表 + 右对话，主栏占掉右侧边栏的位置
    ============================================================ */
+.shell.wide,
+.shell.wide .main-col {
+  min-height: 0;
+}
+.shell.wide .nav,
+.shell.wide .nav-resizer::after {
+  height: var(--dm-viewport-height, var(--viewport-height));
+}
 .shell.wide .side-col {
   display: none;
 }
 .shell.wide .main-col {
   width: 990px;
   flex-shrink: 1;
+  padding-bottom: 0;
 }
 .dm {
   display: grid;
   grid-template-columns: 360px minmax(0, 1fr);
-  height: 100vh;
-  height: 100dvh;
+  height: var(--dm-viewport-height, var(--viewport-height));
 }
 .dm-list {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  padding-bottom: var(--safe-bottom);
   border-right: 1px solid var(--line);
 }
 .dm-list-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px 4px 16px;
+  padding: calc(10px + var(--safe-top)) 12px 4px 16px;
   min-height: 53px;
 }
 .dm-list-head h1 {
@@ -4831,6 +4859,7 @@ img.emoji {
 }
 .dm-chat-head {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
   min-height: 57px;
@@ -5006,6 +5035,7 @@ img.emoji {
 }
 .dm-compose {
   display: flex;
+  flex-shrink: 0;
   align-items: flex-end;
   gap: 8px;
   padding: 10px 14px calc(10px + var(--safe-bottom));
@@ -5017,7 +5047,7 @@ img.emoji {
   flex: 1;
   resize: none;
   min-height: 46px;
-  max-height: 160px;
+  max-height: clamp(46px, calc(var(--dm-viewport-height, var(--viewport-height)) - 96px - var(--safe-top) - var(--safe-bottom)), 160px);
   padding: 12px 18px;
   border-radius: 23px;
   border: 1px solid var(--line);
@@ -5076,16 +5106,13 @@ img.emoji {
 }
 @media (max-width: 700px) {
   .dm {
-    height: calc(100dvh - 53px - var(--safe-bottom));
-  }
-  .shell.wide .main-col {
-    padding-bottom: 0;
+    height: calc(var(--dm-viewport-height, var(--viewport-height)) - 53px - var(--safe-bottom));
   }
   .shell.in-chat .dm {
-    height: 100dvh;
+    height: var(--dm-viewport-height, var(--viewport-height));
   }
-  .dm-list-head {
-    padding-top: calc(10px + var(--safe-top));
+  .dm-list {
+    padding-bottom: 0;
   }
   .dm-item {
     margin: 0;

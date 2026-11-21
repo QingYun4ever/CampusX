@@ -1,9 +1,13 @@
+import { App as AndroidApp } from '@capacitor/app';
+import { useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ComposeProvider } from './components/compose';
 import { Layout } from './components/Layout';
 import { Logo } from './components/Logo';
 import { Empty, Overlays } from './components/ui';
+import { isAndroid } from './lib/android';
 import { useAuth } from './lib/auth';
+import { dismissTopOverlay } from './lib/escape';
 import { Admin } from './pages/Admin';
 import { Login, Register } from './pages/Auth';
 import { BoardPage, Boards } from './pages/Boards';
@@ -17,8 +21,25 @@ import { Changelog } from './pages/Changelog';
 import { Messages } from './pages/Messages';
 import { TagPage } from './pages/Tag';
 
+/** BrowserRouter 在 history.state.idx 里记录应用内历史位置。 */
+function useAndroidBack() {
+  useEffect(() => {
+    if (!isAndroid) return;
+    let active = true;
+    const listener = AndroidApp.addListener('backButton', () => {
+      if (!active || dismissTopOverlay()) return;
+      if (window.history.state?.idx > 0) window.history.back();
+      else void AndroidApp.exitApp();
+    });
+    return () => {
+      active = false;
+      void listener.then((handle) => handle.remove());
+    };
+  }, []);
+}
 
 export function App() {
+  useAndroidBack();
   const { user, loading } = useAuth();
   const loc = useLocation();
 

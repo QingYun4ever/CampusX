@@ -12,6 +12,7 @@
 - **蓝标认证**：管理员在后台手动给同学加蓝标，可以写认证说明
 - **AI 内容审核**：开启后每条新帖先只对作者本人可见，AI 审核文字和图片通过后才公开；没通过的帖子作者自己照常看得到，别人看不到，也不会产生通知。支持 Claude 或任何 OpenAI 兼容接口（通义千问、智谱、DeepSeek 等）
 - **吧**：按班级或兴趣分区，任何人都能建吧，建吧的人是吧主，可以任命最多 10 位吧务；吧公告、最多 3 条置顶；吧内支持「最新回复（顶帖）/ 最新发布」排序，回复带楼层号
+- **私密吧**：吧主可逐个或按班级添加可见成员；吧主、吧务和站点管理员始终可见，私密吧的帖子不能转发。吧主或站点管理员可删除吧，帖子和回复一并删除
 - **个人主页**：头像、背景图、简介、班级、届别、关注 / 粉丝
 - **通知**：点赞、回复、转发、关注、@ 我、表情回应
 - **更新日志**：`/changelog`，入口在左栏底部和设置页底部
@@ -188,19 +189,42 @@ forum.example.com {
 
 ## 打包原生 App
 
-App 里的页面不在你的域名下，所以要告诉它后端地址：
+App 登录页的「服务器地址」设置会保存在本机。可选的 `VITE_API_BASE` 只提供初始地址；正式包只允许 HTTPS，不带路径。后端设置 `CORS_ORIGINS` 时应保留 Android 的 `https://localhost` 和 iOS 的 `capacitor://localhost`。
 
 ```bash
 cd web
-echo "VITE_API_BASE=https://forum.example.com" > .env.app.local
-npm run app:sync      # 用 app 模式构建并同步到 android/ ios/
-npm run app:android   # 用 Android Studio 打开，运行或打包 APK
-npm run app:ios       # 用 Xcode 打开（需要 macOS）
+# 可选：在 .env.app.local 中填写 VITE_API_BASE=https://forum.example.com
+npm run app:sync       # 构建正式网页资源并同步到 Android 和 iOS
+npm run app:android    # Android Studio
+npm run app:ios        # Xcode（需要 macOS）
 ```
 
-- 发布前把 `web/capacitor.config.ts` 里的 `appId`（目前是 `com.tongxuequan.app`）改成你自己的，发布后不能再改
-- 用模拟器连本机后端调试时可以填 `http://10.0.2.2:3000`（Android 模拟器访问宿主机的地址），但正式包必须用 HTTPS
-- App 图标和启动图可以用 `@capacitor/assets` 生成
+### Android 调试包
+
+使用 JDK 21、Android SDK 36。在 `web/` 下运行：
+
+```bash
+npx vite build --mode app-debug
+npx cap sync android
+cd android
+./gradlew :app:assembleDebug
+```
+
+安装 `app/build/outputs/apk/debug/app-debug.apk`，可在登录页填 `http://10.0.2.2:3000`（模拟器访问宿主机）或局域网服务器地址。只有调试包放行明文 HTTP。
+
+### Android 签名发布包
+
+准备一个仓库外的 PKCS#12 签名密钥，以及仅自己可读的 `release-signing.properties`。配置用 `storeFile`、`storePassword`、`keyAlias`、`keyPassword` 四项；相对的 `storeFile` 按配置文件所在目录解析。备份密钥，更新 APK 时要用同一个签名。
+
+```bash
+# 从 web/ 开始；打包前重新同步正式网页资源
+npm run app:sync
+cd android
+export FORUM_ANDROID_SIGNING_PROPERTIES=/绝对路径/release-signing.properties
+./gradlew :app:assembleRelease
+```
+
+APK 输出到 `app/build/outputs/apk/release/app-release.apk`。不要提交密钥、签名配置或本地环境文件。应用 ID（`com.tongxuequan.app`）和签名在发布后不能更换。
 
 ## 安全说明
 

@@ -252,9 +252,18 @@ CREATE TABLE IF NOT EXISTS dm_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_dm_pair ON dm_messages(sender_id, recipient_id, id);
 CREATE INDEX IF NOT EXISTS idx_dm_pair2 ON dm_messages(recipient_id, sender_id, id);
+-- 私密吧：吧主指定的可见成员（吧主、吧务、站点管理员始终可见）
+CREATE TABLE IF NOT EXISTS board_viewers (
+  board_id   INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (board_id, user_id)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_board_viewers_user ON board_viewers(user_id);
 CREATE INDEX IF NOT EXISTS idx_dm_unread ON dm_messages(recipient_id, read_at) WHERE read_at IS NULL;
 `);
 addColumn('posts', 'view_count', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('boards', 'visibility', "TEXT NOT NULL DEFAULT 'public'");
 
 // 表情回应从 GitHub 式的 8 个英文 key 换成 Telegram 式的 emoji，并且每人每帖只保留一个
 {

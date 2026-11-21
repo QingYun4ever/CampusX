@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { all, get, now, run, tx } from '../db.ts';
-import { hydrate, notify, postSelect, unnotify } from '../serialize.ts';
+import { hydrate, notify, postSelect, unnotify, visibleTo } from '../serialize.ts';
 import { cursorNum, escapeLike, HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
 
@@ -76,7 +76,8 @@ export async function userRoutes(app: FastifyInstance) {
       `SELECT
         (SELECT COUNT(*) FROM follows WHERE followee_id = $id) AS followers,
         (SELECT COUNT(*) FROM follows WHERE follower_id = $id) AS following,
-        (SELECT COUNT(*) FROM posts WHERE author_id = $id AND deleted = 0 AND repost_of IS NULL AND (status = 'ok' OR author_id = $me)) AS posts,
+        (SELECT COUNT(*) FROM posts WHERE author_id = $id AND deleted = 0 AND repost_of IS NULL AND (status = 'ok' OR author_id = $me)
+           AND ${visibleTo()}) AS posts,
         EXISTS(SELECT 1 FROM follows WHERE follower_id = $id AND followee_id = $me) AS follows_you,
         EXISTS(SELECT 1 FROM follows WHERE follower_id = $me AND followee_id = $id) AS is_following`,
       { id: u.id, me: user.id },

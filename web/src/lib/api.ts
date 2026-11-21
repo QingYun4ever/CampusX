@@ -1,10 +1,31 @@
-// 后端地址：Web 同域部署留空；原生 App 打包时通过 VITE_API_BASE 指定
-export const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) ?? '').replace(/\/$/, '');
+const mode = import.meta.env.MODE;
+export const IS_APP_BUILD = mode === 'app' || mode === 'app-debug';
+export const ALLOWS_HTTP_SERVER = mode === 'app-debug';
+const SERVER_KEY = 'txq_app_server';
 
-/** 用于生成分享链接：原生 App 里 location 是 capacitor://localhost，要用服务器地址 */
-export const WEB_ORIGIN = API_BASE || window.location.origin;
+function serverOrigin(value?: string | null) {
+  if (!value) return null;
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' && !(ALLOWS_HTTP_SERVER && url.protocol === 'http:')) return null;
+  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) return null;
+  return url.origin;
+}
 
-const TOKEN_KEY = 'txq_token';
+const defaultBase = import.meta.env.VITE_API_BASE;
+export let API_BASE = IS_APP_BUILD
+  ? serverOrigin(safeGet(SERVER_KEY)) ?? serverOrigin(defaultBase) ?? ''
+  : (defaultBase ?? '').replace(/\/$/, '');
+
+/** 分享链接指向站点，而不是 App 内 WebView 的地址。 */
+export let WEB_ORIGIN = API_BASE || window.location.origin;
+
+// 不把一个站点签发的 token 发给另一个站点。
+const TOKEN_KEY = IS_APP_BUILD ? `txq_token:${API_BASE}` : 'txq_token';
 let token: string | null = safeGet(TOKEN_KEY);
 
 function safeGet(k: string) {
@@ -29,6 +50,22 @@ export function setToken(t: string | null) {
   }
 }
 
+export function setAppServerAddress(value: string) {
+  const origin = serverOrigin(value);
+  if (!origin) {
+    throw new Error(ALLOWS_HTTP_SERVER ? '请输入完整的 HTTP 或 HTTPS 地址，不带路径' : '请输入完整的 HTTPS 地址，不带路径');
+  }
+  if (origin === API_BASE) return false;
+  try {
+    localStorage.setItem(SERVER_KEY, origin);
+  } catch {
+    throw new Error('无法保存服务器地址');
+  }
+  setToken(null);
+  API_BASE = WEB_ORIGIN = origin;
+  return true;
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -40,6 +77,7 @@ export class ApiError extends Error {
 type Opts = { method?: string; body?: unknown; form?: FormData };
 
 export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T> {
+  if (IS_APP_BUILD && !API_BASE) throw new ApiError('请先在登录页设置服务器地址', 0);
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   let body: BodyInit | undefined;
@@ -119,6 +157,7 @@ export interface Board extends BoardRef {
   description: string;
   createdBy: number | null;
   ownerId: number | null;
+  visibility: 'public' | 'private';
   memberCount: number;
   postCount: number;
   joined: boolean;
@@ -128,6 +167,9 @@ export interface Board extends BoardRef {
 export interface BoardDetail extends Board {
   owner: User | null;
   mods: User[];
+  viewerCount: number;
+  /** 包括回复和未公开的帖子，仅删除人可见 */
+  deletePostCount: number | null;
   announcement: { text: string; updatedAt: number; by: User | null } | null;
   /** owner 吧主 / mod 吧务 / admin 站点管理员 / null 普通成员 */
   myRole: 'owner' | 'mod' | 'admin' | null;

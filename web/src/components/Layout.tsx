@@ -33,6 +33,7 @@ import {
 import { api, type Board, type SiteStats, type User } from '../lib/api';
 import { CURRENT, hasUnseen } from '../lib/changelog';
 import { useAuth, useMe } from '../lib/auth';
+import { useEscape } from '../lib/escape';
 import { getNavCollapsed, getNavWidth, NAV_W, setNavCollapsed, setNavWidth } from '../lib/theme';
 import { useCompose } from './compose';
 import { FollowButton } from './FollowButton';
@@ -124,6 +125,10 @@ function useAccountMenu() {
   const [pos, setPos] = useState<CSSProperties>({});
   const anchor = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+  useEscape(() => {
+    setOpen(false);
+    anchor.current?.focus();
+  }, open);
   useLayoutEffect(() => {
     if (!open || !anchor.current) return;
     const r = anchor.current.getBoundingClientRect();
@@ -137,18 +142,11 @@ function useAccountMenu() {
     const inside = (t: EventTarget | null) =>
       !!t && (anchor.current?.contains(t as Node) || panel.current?.contains(t as Node));
     const down = (e: Event) => !inside(e.target) && setOpen(false);
-    const esc = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      setOpen(false);
-      anchor.current?.focus();
-    };
     const away = () => setOpen(false);
     document.addEventListener('pointerdown', down);
-    document.addEventListener('keydown', esc);
     window.addEventListener('resize', away);
     return () => {
       document.removeEventListener('pointerdown', down);
-      document.removeEventListener('keydown', esc);
       window.removeEventListener('resize', away);
     };
   }, [open]);

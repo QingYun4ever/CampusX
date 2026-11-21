@@ -5,14 +5,13 @@
  * - $行内公式$、$$块级公式$$
  * - @用户名、#话题 仍然变成站内链接
  */
-import type { MouseEvent } from 'react';
-import { Link } from 'react-router-dom';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import { ContentLink } from './ContentLink';
 
 export const TOKEN = /(@[A-Za-z0-9_]{3,20}|#[^\s#@，。！？、；：,.!?;:()（）「」]{1,30})/g;
 
@@ -42,25 +41,14 @@ function remarkMentions() {
   return (tree: MdNode) => walk(tree);
 }
 
-const stop = (e: MouseEvent) => e.stopPropagation();
-
 const components: Components = {
-  a: ({ href = '', children }) =>
-    href.startsWith('/') ? (
-      <Link to={href} onClick={stop}>
-        {children}
-      </Link>
-    ) : (
-      <a href={href} target="_blank" rel="noopener noreferrer nofollow" onClick={stop}>
-        {children}
-      </a>
-    ),
+  a: ({ href, children }) => <ContentLink href={href}>{children}</ContentLink>,
   // 外链图片不直接加载（避免被追踪、版面被撑乱），显示成链接；帖子图片请用上传
   img: ({ src, alt }) =>
     typeof src === 'string' && src ? (
-      <a href={src} target="_blank" rel="noopener noreferrer nofollow" onClick={stop}>
+      <ContentLink href={src} image>
         [图片{alt ? `：${alt}` : ''}]
-      </a>
+      </ContentLink>
     ) : null,
   table: ({ children }) => (
     <div className="md-table">

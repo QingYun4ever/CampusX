@@ -1,3 +1,6 @@
+import { SystemBars, SystemBarsStyle } from '@capacitor/core';
+import { AndroidShell, isAndroid } from './android';
+
 /**
  * 外观由三部分组成，互相独立：
  *  - 深浅色 mode：浅色 / 深色 / 跟随系统
@@ -120,6 +123,9 @@ export function bgColors(bg: Bg, mode = resolvedMode()) {
 }
 
 /* ---------- 应用 ---------- */
+let nativeMode: 'light' | 'dark' | undefined;
+let nativeBackdrop: string | undefined;
+
 export function applyTheme() {
   const mode = resolvedMode();
   const root = document.documentElement;
@@ -137,7 +143,18 @@ export function applyTheme() {
   const a = accentColor();
   root.style.setProperty('--accent', a);
   root.style.setProperty('--on-accent', onColor(a));
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', cols ? cols[0] : BASE[mode]);
+  const color = cols ? cols[0] : BASE[mode];
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
+  if (isAndroid) {
+    if (nativeMode !== mode) {
+      nativeMode = mode;
+      void SystemBars.setStyle({ style: mode === 'dark' ? SystemBarsStyle.Dark : SystemBarsStyle.Light });
+    }
+    if (nativeBackdrop !== color) {
+      nativeBackdrop = color;
+      void AndroidShell.setBackdrop({ color });
+    }
+  }
 }
 
 type VT = { startViewTransition?: (cb: () => void) => { ready: Promise<void> } };

@@ -8,10 +8,10 @@ import {
   type ReactNode,
 } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronDown, RotateCw } from 'lucide-react';
+import { ChevronDown, RotateCw, Server } from 'lucide-react';
 import { Logo } from '../components/Logo';
-import { Avatar, Field } from '../components/ui';
-import { api, type User } from '../lib/api';
+import { Avatar, Field, Modal } from '../components/ui';
+import { ALLOWS_HTTP_SERVER, API_BASE, api, IS_APP_BUILD, setAppServerAddress, type User } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { getMode, setMode, type Mode } from '../lib/theme';
 
@@ -198,6 +198,43 @@ const nextBtn = (label: string, busy: boolean) => (
 
 /* ---------------- 登录 ---------------- */
 
+function ServerAddressModal({ onClose }: { onClose: () => void }) {
+  const [address, setAddress] = useState(API_BASE);
+  const [error, setError] = useState('');
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    // 弹窗用 portal 渲染，提交事件不能传到外层登录表单。
+    event.stopPropagation();
+    try {
+      if (setAppServerAddress(address)) window.location.reload();
+      else onClose();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  return (
+    <Modal
+      title="服务器地址"
+      onClose={onClose}
+      right={<button className="btn btn-light" type="submit" form="server-address">保存</button>}
+    >
+      <form id="server-address" className="modal-body" onSubmit={save} noValidate>
+        <Field
+          label="服务器地址"
+          value={address}
+          onChange={(value) => { setAddress(value); setError(''); }}
+          error={error}
+          inputMode="url"
+          autoCapitalize="off"
+          spellCheck={false}
+          placeholder="https://forum.example.com"
+          hint={ALLOWS_HTTP_SERVER ? '调试版允许 HTTP。' : '正式服务器须使用 HTTPS。'}
+        />
+      </form>
+    </Modal>
+  );
+}
+
 export function Login() {
   const { signIn } = useAuth();
   const nav = useNavigate();
@@ -208,6 +245,7 @@ export function Login() {
   const [busy, setBusy] = useState(false);
   const [show, setShow] = useState(false);
   const [forgot, setForgot] = useState(false);
+  const [server, setServer] = useState(false);
   const c = useCaptcha(step === 'pass');
 
   const go = (s: typeof step, d: typeof dir) => {
@@ -220,6 +258,7 @@ export function Login() {
     e.preventDefault();
     setErr(null);
     if (step === 'user') {
+      if (IS_APP_BUILD && !API_BASE) return setServer(true);
       if (!f.username.trim()) return setErr({ field: 'username', msg: '请输入用户名' });
       return go('pass', 'fwd');
     }
@@ -249,12 +288,17 @@ export function Login() {
       step={step}
       dir={dir}
       title="登录"
+      aside={IS_APP_BUILD && (
+        <button type="button" className="btn btn-text" onClick={() => setServer(true)}>
+          <Server size={16} /> 服务器地址
+        </button>
+      )}
       subtitle="使用你的校墙账号"
       onSubmit={submit}
       left={
-        <Link to="/register" className="btn btn-text">
-          创建账号
-        </Link>
+        IS_APP_BUILD && !API_BASE ? (
+          <button type="button" className="btn btn-text" onClick={() => setServer(true)}>创建账号</button>
+        ) : <Link to="/register" className="btn btn-text">创建账号</Link>
       }
       right={nextBtn('下一步', busy)}
     >
@@ -270,6 +314,7 @@ export function Login() {
         autoFocus
       />
       <p className="auth-note">还没有账号？校墙只能凭邀请码注册，可以向班长或管理员要一个。</p>
+      {server && <ServerAddressModal onClose={() => setServer(false)} />}
     </AuthShell>
   ) : (
     <AuthShell

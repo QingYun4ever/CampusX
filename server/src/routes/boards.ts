@@ -2,15 +2,17 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { all, get, now, run, tx, type Row } from '../db.ts';
 import type { SessionUser } from '../auth.ts';
-import { boardRole, hydrate, postSelect } from '../serialize.ts';
+import { boardRole, HIDDEN_BOARDS, hydrate, postSelect } from '../serialize.ts';
 import { HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 
 const PAGE = 20;
 
 const BOARD_SELECT = `
-SELECT b.id, b.slug, b.name, b.description, b.icon, b.created_by, b.created_at, b.owner_id,
+SELECT b.id, b.slug, b.name, b.description, b.icon, b.created_by, b.created_at, b.owner_id, b.visibility,
   b.announcement, b.announcement_at, b.announcement_by,
+  (SELECT COUNT(*) FROM board_viewers v WHERE v.board_id = b.id) AS viewer_count,
+  (b.id IN ${HIDDEN_BOARDS}) AS hidden,
   (SELECT COUNT(*) FROM board_members m WHERE m.board_id = b.id) AS member_count,
   (SELECT COUNT(*) FROM posts p WHERE p.board_id = b.id AND p.parent_id IS NULL AND p.deleted = 0 AND p.status = 'ok') AS post_count,
   EXISTS(SELECT 1 FROM board_members m WHERE m.board_id = b.id AND m.user_id = $me) AS joined
@@ -25,6 +27,7 @@ function boardDTO(r: Row) {
     icon: r.icon as string,
     createdBy: (r.created_by as number | null) ?? null,
     ownerId: (r.owner_id as number | null) ?? null,
+    visibility: (r.visibility === 'private' ? 'private' : 'public') as 'public' | 'private',
     memberCount: r.member_count as number,
     postCount: r.post_count as number,
     joined: !!r.joined,
@@ -45,6 +48,7 @@ function boardDetail(r: Row, user: SessionUser) {
     `SELECT ${USER_COLS} FROM board_mods m JOIN users u ON u.id = m.user_id WHERE m.board_id = $b ORDER BY m.created_at`,
     { b: base.id },
   ).map(userPublic);
+  const myRole = boardRole(base.id, user);
   return {
     ...base,
     owner: userRow(base.ownerId),
@@ -52,23 +56,38 @@ function boardDetail(r: Row, user: SessionUser) {
     announcement: (r.announcement as string)
       ? { text: r.announcement as string, updatedAt: r.announcement_at as number, by: userRow(r.announcement_by as number | null) }
       : null,
-    myRole: boardRole(base.id, user) as 'owner' | 'mod' | 'admin' | null,
+    myRole,
+    /** 私密吧里吧主指定的可见成员人数 */
+    viewerCount: r.viewer_count as number,
+    deletePostCount: myRole === 'owner' || user.role === 'admin'
+      ? get<{ n: number }>('SELECT COUNT(*) AS n FROM posts WHERE board_id = $b', { b: base.id })!.n
+      : null,
   };
 }
 
-const boardSchema = z.object({
+const boardFields = {
   slug: z
     .string()
     .trim()
     .regex(/^[a-z0-9-]{2,24}$/, '地址为 2-24 位小写字母、数字或 -'),
   name: z.string().trim().min(1, '请填写名称').max(16, '名称最多 16 字'),
-  description: z.string().trim().max(100, '简介最多 100 字').default(''),
-  icon: z.string().trim().min(1).max(8).default('💬'),
+  description: z.string().trim().max(100, '简介最多 100 字'),
+  icon: z.string().trim().min(1).max(8),
+  visibility: z.enum(['public', 'private']),
+};
+const boardSchema = z.object({
+  ...boardFields,
+  description: boardFields.description.default(''),
+  icon: boardFields.icon.default('💬'),
+  visibility: boardFields.visibility.default('public'),
 });
+// 修改时不能带默认值，否则只改名字也会把简介、图标、可见范围重置掉（zod 4 的 partial 会保留 default）
+const boardPatchSchema = z.object(boardFields).omit({ slug: true }).partial();
 
 function findRow(slug: string, meId: number) {
   const r = get(`${BOARD_SELECT} WHERE b.slug = $slug`, { slug, me: meId });
   if (!r) throw new HttpError(404, '吧不存在');
+  if (r.hidden) throw new HttpError(403, '这是私密吧，只有吧主邀请的同学可以查看');
   return r;
 }
 function findBoard(slug: string, meId: number) {
@@ -81,8 +100,7 @@ const slugOf = (req: { params: unknown }) => (req.params as { slug: string }).sl
 
 /** 吧主或站点管理员 */
 function requireOwner(boardId: number, user: SessionUser) {
-  const role = boardRole(boardId, user);
-  if (role !== 'owner' && role !== 'admin') throw new HttpError(403, '只有吧主可以这样做');
+  if (user.role !== 'admin' && boardRole(boardId, user) !== 'owner') throw new HttpError(403, '只有吧主可以这样做');
 }
 /** 吧主、吧务或站点管理员 */
 function requireManager(boardId: number, user: SessionUser) {
@@ -99,7 +117,9 @@ const follow = (b: number, u: number) =>
 export async function boardRoutes(app: FastifyInstance) {
   app.get('/boards', async (req) => {
     const user = me(req);
-    const rows = all(`${BOARD_SELECT} ORDER BY member_count DESC, b.id ASC`, { me: user.id });
+    const rows = all(`${BOARD_SELECT} WHERE b.id NOT IN ${HIDDEN_BOARDS} ORDER BY member_count DESC, b.id ASC`, {
+      me: user.id,
+    });
     return rows.map(boardDTO);
   });
 
@@ -110,8 +130,8 @@ export async function boardRoutes(app: FastifyInstance) {
     if (get('SELECT 1 FROM boards WHERE name = $n', { n: body.name })) throw new HttpError(409, '已有同名的吧');
     tx(() => {
       const { lastId } = run(
-        `INSERT INTO boards (slug, name, description, icon, created_by, owner_id, created_at)
-         VALUES ($slug, $name, $description, $icon, $by, $by, $t)`,
+        `INSERT INTO boards (slug, name, description, icon, visibility, created_by, owner_id, created_at)
+         VALUES ($slug, $name, $description, $icon, $visibility, $by, $by, $t)`,
         { ...body, by: user.id, t: now() },
       );
       run('INSERT INTO board_members (board_id, user_id, created_at) VALUES ($b, $u, $t)', {
@@ -131,11 +151,14 @@ export async function boardRoutes(app: FastifyInstance) {
     const user = me(req);
     const b = findBoard(slugOf(req), user.id);
     requireOwner(b.id, user);
-    const body = parse(boardSchema.omit({ slug: true }).partial(), req.body);
+    const body = parse(boardPatchSchema, req.body);
+    if (body.name && get('SELECT 1 FROM boards WHERE name = $n AND id != $id', { n: body.name, id: b.id })) {
+      throw new HttpError(409, '已有同名的吧');
+    }
     run(
       `UPDATE boards SET name = COALESCE($name, name), description = COALESCE($description, description),
-       icon = COALESCE($icon, icon) WHERE id = $id`,
-      { ...body, id: b.id },
+       icon = COALESCE($icon, icon), visibility = COALESCE($visibility, visibility) WHERE id = $id`,
+      { name: null, description: null, icon: null, visibility: null, ...body, id: b.id },
     );
     return detail(b.slug, user);
   });
@@ -220,12 +243,87 @@ export async function boardRoutes(app: FastifyInstance) {
     return hydrate(rows, user.id);
   });
 
+  /* ---------- 私密吧的可见成员（吧主设置；吧务可以查看名单） ---------- */
+  app.get('/boards/:slug/viewers', async (req) => {
+    const user = me(req);
+    const b = findBoard(slugOf(req), user.id);
+    const role = boardRole(b.id, user);
+    if (role !== 'owner' && role !== 'mod') throw new HttpError(403, '只有吧主和吧务可以这样做');
+    return all(
+      `SELECT ${USER_COLS} FROM board_viewers v JOIN users u ON u.id = v.user_id WHERE v.board_id = $b
+       ORDER BY u.class_name, u.display_name`,
+      { b: b.id },
+    ).map(userPublic);
+  });
+
+  /** 按用户名添加，或者把某个班的同学全部加进来 */
+  app.post('/boards/:slug/viewers', async (req) => {
+    const user = me(req);
+    const b = findBoard(slugOf(req), user.id);
+    if (b.ownerId !== user.id) throw new HttpError(403, '只有吧主可以这样做');
+    const body = parse(
+      z.object({
+        usernames: z.array(z.string().trim().min(1)).max(200).default([]),
+        className: z.string().trim().max(20).optional(),
+      }),
+      req.body,
+    );
+    const ids = body.usernames.map(findUser);
+    if (body.className) {
+      ids.push(...all<{ id: number }>('SELECT id FROM users WHERE class_name = $c', { c: body.className }).map((r) => r.id));
+    }
+    if (!ids.length) throw new HttpError(400, '请选择要添加的同学');
+    let added = 0;
+    tx(() => {
+      for (const uid of new Set(ids)) {
+        if (uid === b.ownerId) continue;
+        added += run('INSERT OR IGNORE INTO board_viewers (board_id, user_id, created_at) VALUES ($b, $u, $t)', {
+          b: b.id,
+          u: uid,
+          t: now(),
+        }).changes as number;
+      }
+    });
+    return { added, board: detail(b.slug, user) };
+  });
+
+  app.delete('/boards/:slug/viewers/:username', async (req) => {
+    const user = me(req);
+    const b = findBoard(slugOf(req), user.id);
+    if (b.ownerId !== user.id) throw new HttpError(403, '只有吧主可以这样做');
+    const uid = findUser((req.params as { username: string }).username);
+    tx(() => {
+      run('DELETE FROM board_viewers WHERE board_id = $b AND user_id = $u', { b: b.id, u: uid });
+      // 不再能看到这个吧，顺便取消关注（吧务仍然可见，保留）
+      if (!get('SELECT 1 FROM board_mods WHERE board_id = $b AND user_id = $u', { b: b.id, u: uid })) {
+        run('DELETE FROM board_members WHERE board_id = $b AND user_id = $u', { b: b.id, u: uid });
+      }
+    });
+    return detail(b.slug, user);
+  });
+
+  /** 全站的班级（添加可见成员时按班级批量添加） */
+  app.get('/classes', async () => {
+    return all<{ name: string; count: number }>(
+      `SELECT class_name AS name, COUNT(*) AS count FROM users WHERE class_name != ''
+       GROUP BY class_name ORDER BY count DESC, class_name LIMIT 100`,
+    );
+  });
+
+  /**
+   * 删除吧：吧主或站点管理员。吧里的帖子、回复和它们的转发、点赞、回应、通知一并删除，
+   * 不会变成「不属于任何吧」的帖子出现在首页。
+   */
   app.delete('/boards/:slug', async (req) => {
     const user = me(req);
-    if (user.role !== 'admin') throw new HttpError(403, '只有管理员可以删除吧');
-    const b = findBoard((req.params as { slug: string }).slug, user.id);
-    run('DELETE FROM boards WHERE id = $id', { id: b.id });
-    return { ok: true };
+    const b = findBoard(slugOf(req), user.id);
+    requireOwner(b.id, user);
+    const n = tx(() => {
+      const r = run('DELETE FROM posts WHERE board_id = $b', { b: b.id });
+      run('DELETE FROM boards WHERE id = $b', { b: b.id });
+      return r.changes as number;
+    });
+    return { ok: true, deletedPosts: n };
   });
 
   app.post('/boards/:slug/join', async (req) => {

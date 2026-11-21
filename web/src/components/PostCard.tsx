@@ -7,6 +7,7 @@ import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
 import { markViewed, useViewTracking } from '../lib/views';
 import { useCompose } from './compose';
+import { ContentLink } from './ContentLink';
 import { Avatar, Emoji, emojiUrl, Empty, Modal, openLightbox, Rolling, Spinner, toast, toneFor, usePopover, Verified } from './ui';
 
 /* ---------- 正文 ---------- */
@@ -49,10 +50,10 @@ export function PlainText({ text }: { text: string }) {
           );
         }
         return (
-          <a key={i} href={p} target="_blank" rel="noopener noreferrer nofollow" onClick={stop}>
+          <ContentLink key={i} href={p}>
             {p.replace(/^https?:\/\//, '').slice(0, 40)}
             {p.length > 48 ? '…' : ''}
-          </a>
+          </ContentLink>
         );
       })}
     </div>

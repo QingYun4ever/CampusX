@@ -1,5 +1,28 @@
 apply plugin: 'com.android.application'
 
+// 签名材料保存在仓库外；storeFile 相对于配置文件所在目录解析。
+def releaseSigningPath = providers.environmentVariable('FORUM_ANDROID_SIGNING_PROPERTIES').orNull
+def releaseSigningFile = releaseSigningPath ? file(releaseSigningPath) : null
+def releaseSigning = new Properties()
+if (releaseSigningFile?.isFile()) {
+    releaseSigningFile.withInputStream { releaseSigning.load(it) }
+}
+def releaseSigningKeys = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
+def hasReleaseSigning = releaseSigningKeys.every { releaseSigning.getProperty(it) }
+
+def requireReleaseSigning = tasks.register('requireReleaseSigning') {
+    doLast {
+        if (!hasReleaseSigning) {
+            throw new GradleException('请将 FORUM_ANDROID_SIGNING_PROPERTIES 指向包含完整签名信息的 release 配置文件。')
+        }
+    }
+}
+tasks.configureEach {
+    if (name in ['packageRelease', 'packageReleaseBundle']) {
+        dependsOn(requireReleaseSigning)
+    }
+}
+
 android {
     namespace = "com.tongxuequan.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +39,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile = new File(releaseSigningFile.parentFile, releaseSigning.getProperty('storeFile'))
+                storePassword = releaseSigning.getProperty('storePassword')
+                keyAlias = releaseSigning.getProperty('keyAlias')
+                keyPassword = releaseSigning.getProperty('keyPassword')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

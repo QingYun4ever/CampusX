@@ -9,6 +9,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.8.0',
+    date: '2026-11-21',
+    title: '私密吧与删吧',
+    changes: [
+      ['new', '建吧时可选择公开或私密。吧主可以逐个或按班级添加可见成员。'],
+      ['new', '吧主可以删除吧，吧里的帖子和回复会一并删除。'],
+      ['fix', '只修改吧名时，不再重置简介和图标。'],
+    ],
+  },
+  {
     version: '0.7.0',
     date: '2026-11-21',
     title: '改名校墙，私信和浏览数',

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, now, run, tx } from '../db.ts';
 import { enqueue, moderationOn } from '../moderation.ts';
-import { boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publishEffects, REACTIONS, unnotify } from '../serialize.ts';
+import { boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 
@@ -24,10 +24,11 @@ function page<T extends { id: number }>(items: T[], cursorOf: (x: T) => string =
   return { items, nextCursor: items.length >= PAGE ? cursorOf(items[items.length - 1]) : null };
 }
 
-/** 如果是转发行，取它的原帖 id。审核中/未通过的帖子对别人来说不存在 */
+/** 如果是转发行，取它的原帖 id。审核中/未通过的帖子、看不到的私密吧里的帖子，对别人来说都不存在 */
 function resolveTarget(id: number, meId: number) {
-  const p = get<{ id: number; author_id: number; repost_of: number | null; deleted: number }>(
-    "SELECT id, author_id, repost_of, deleted FROM posts WHERE id = $id AND (status = 'ok' OR author_id = $me)",
+  const p = get<{ id: number; author_id: number; repost_of: number | null; deleted: number; board_id: number | null }>(
+    `SELECT id, author_id, repost_of, deleted, board_id FROM posts
+     WHERE id = $id AND (status = 'ok' OR author_id = $me) AND ${visibleTo()}`,
     { id, me: meId },
   );
   if (!p) throw new HttpError(404, '帖子不存在');
@@ -74,7 +75,7 @@ export async function postRoutes(app: FastifyInstance) {
       boardId = parent!.board_id;
     } else if (body.boardSlug) {
       const b = get<{ id: number }>('SELECT id FROM boards WHERE slug = $s', { s: body.boardSlug });
-      if (!b) throw new HttpError(404, '吧不存在');
+      if (!b || !canViewBoard(b.id, user)) throw new HttpError(404, '吧不存在');
       boardId = b.id;
     }
 
@@ -202,6 +203,9 @@ export async function postRoutes(app: FastifyInstance) {
   app.post('/posts/:id/repost', async (req) => {
     const user = me(req);
     const target = resolveTarget(Number((req.params as { id: string }).id), user.id);
+    if (target.board_id && get("SELECT 1 FROM boards WHERE id = $b AND visibility = 'private'", { b: target.board_id })) {
+      throw new HttpError(400, '私密吧里的帖子不能转发');
+    }
     tx(() => {
       if (get('SELECT 1 FROM posts WHERE repost_of = $p AND author_id = $u', { p: target.id, u: user.id })) return;
       const t = now();
@@ -285,8 +289,8 @@ export async function postRoutes(app: FastifyInstance) {
     tx(() => {
       for (const id of new Set(ids)) {
         const p = get<{ author_id: number }>(
-          "SELECT author_id FROM posts WHERE id = $id AND status = 'ok' AND deleted = 0 AND repost_of IS NULL",
-          { id },
+          `SELECT author_id FROM posts WHERE id = $id AND status = 'ok' AND deleted = 0 AND repost_of IS NULL AND ${visibleTo()}`,
+          { id, me: user.id },
         );
         if (!p || p.author_id === user.id) continue;
         const r = run('INSERT OR IGNORE INTO post_views (post_id, user_id, created_at) VALUES ($p, $u, $t)', { p: id, u: user.id, t });
@@ -327,12 +331,12 @@ export async function postRoutes(app: FastifyInstance) {
   });
 
   /* ---------- 标签 ---------- */
-  app.get('/tags/trending', async () => {
+  app.get('/tags/trending', async (req) => {
     return all<{ tag: string; count: number }>(
       `SELECT t.tag, COUNT(*) AS count FROM post_tags t JOIN posts p ON p.id = t.post_id
-       WHERE p.status = 'ok' AND p.deleted = 0 AND p.created_at > $since
+       WHERE p.status = 'ok' AND p.deleted = 0 AND p.created_at > $since AND ${visibleTo('p.')}
        GROUP BY t.tag ORDER BY count DESC, MAX(p.id) DESC LIMIT 10`,
-      { since: now() - 30 * 86_400_000 },
+      { since: now() - 30 * 86_400_000, me: me(req).id },
     );
   });
 
@@ -350,8 +354,8 @@ export async function postRoutes(app: FastifyInstance) {
     const count =
       get<{ n: number }>(
         `SELECT COUNT(*) AS n FROM post_tags t JOIN posts p ON p.id = t.post_id
-         WHERE t.tag = $tag AND p.deleted = 0 AND p.status = 'ok'`,
-        { tag },
+         WHERE t.tag = $tag AND p.deleted = 0 AND p.status = 'ok' AND ${visibleTo('p.')}`,
+        { tag, me: user.id },
       )?.n ?? 0;
     return { ...page(hydrate(rows, user.id)), tag, count };
   });

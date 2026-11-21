@@ -17,6 +17,7 @@ import {
   Users as UsersIcon,
   X,
 } from 'lucide-react';
+import { ContentLink } from '../components/ContentLink';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Logo } from '../components/Logo';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Spinner, toast, useModalClose, Verified } from '../components/ui';
@@ -389,9 +390,9 @@ function LogItem({ log, onDecided }: { log: ModLog; onDecided: () => void }) {
         {log.post.images.length > 0 && (
           <div className="log-thumbs">
             {log.post.images.map((src) => (
-              <a key={src} href={media(src)} target="_blank" rel="noreferrer">
+              <ContentLink key={src} href={media(src)} image>
                 <img src={media(src)} alt="" loading="lazy" />
-              </a>
+              </ContentLink>
             ))}
           </div>
         )}
@@ -406,9 +407,9 @@ function LogItem({ log, onDecided }: { log: ModLog; onDecided: () => void }) {
           ) : null}
           <span>帖子{STATUS[st] ?? st}</span>
           {st !== 'deleted' && (
-            <a href={`/post/${log.post.id}`} target="_blank" rel="noreferrer">
+            <Link to={`/post/${log.post.id}`}>
               查看帖子 <ExternalLink size={12} />
-            </a>
+            </Link>
           )}
         </div>
       </div>

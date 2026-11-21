@@ -1,12 +1,12 @@
 import { useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Crown, Megaphone, Pencil, Plus, Shield, UserMinus, X } from 'lucide-react';
+import { ChevronRight, Crown, Lock, Megaphone, Pencil, Plus, Shield, UserMinus, X } from 'lucide-react';
 import { Composer } from '../components/Composer';
 import { Feed } from '../components/Feed';
 import { PostCard, RichText } from '../components/PostCard';
 import { Avatar, BoardMark, toneFor, Empty, Field, Modal, PostSkeleton, Tabs, toast, TopBar, Verified } from '../components/ui';
-import { api, type Board, type BoardDetail, type Post, type User } from '../lib/api';
+import { api, type Board, type BoardDetail, type Page, type Post, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { timeAgo } from '../lib/format';
 
@@ -38,7 +38,7 @@ function JoinButton({ board }: { board: Board }) {
   );
 }
 
-function BoardForm({ board, onClose }: { board?: Board; onClose: () => void }) {
+function BoardForm({ board, onClose }: { board?: BoardDetail; onClose: () => void }) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const [f, setF] = useState({
@@ -46,16 +46,20 @@ function BoardForm({ board, onClose }: { board?: Board; onClose: () => void }) {
     name: board?.name ?? '',
     description: board?.description ?? '',
     icon: board?.icon ?? '💬',
+    visibility: board?.visibility ?? 'public',
   });
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const submit = async () => {
     setBusy(true);
     try {
+      const { slug, ...patch } = f;
       const r = board
-        ? await api<Board>(`/boards/${board.slug}`, { method: 'PATCH', body: { name: f.name, description: f.description, icon: f.icon } })
-        : await api<Board>('/boards', { body: f });
-      qc.invalidateQueries({ queryKey: ['boards'] });
-      qc.invalidateQueries({ queryKey: ['board', r.slug] });
+        ? await api<BoardDetail>(`/boards/${board.slug}`, { method: 'PATCH', body: patch })
+        : await api<BoardDetail>('/boards', { body: { slug, ...patch } });
+      qc.setQueryData(['board', r.slug], r);
+      if (board && board.visibility !== r.visibility) void qc.invalidateQueries();
+      else void qc.invalidateQueries({ queryKey: ['boards'] });
       toast(board ? '已保存' : '创建成功');
       onClose();
       if (!board) nav(`/b/${r.slug}`);
@@ -65,6 +69,7 @@ function BoardForm({ board, onClose }: { board?: Board; onClose: () => void }) {
       setBusy(false);
     }
   };
+  if (deleting && board) return <DeleteBoardModal board={board} onClose={() => setDeleting(false)} />;
   return (
     <Modal
       title={board ? '编辑吧' : '创建新吧'}
@@ -102,6 +107,80 @@ function BoardForm({ board, onClose }: { board?: Board; onClose: () => void }) {
           maxLength={100}
           counter
         />
+        <div className="radio-list" role="radiogroup" aria-label="可见范围">
+          <h4 className="team-h">可见范围</h4>
+          {([
+            ['public', '公开', '所有同学可见'],
+            ['private', '私密', '只有你邀请的同学可见'],
+          ] as const).map(([value, label, description]) => (
+            <label key={value} className={`radio-item${f.visibility === value ? ' on' : ''}`}>
+              <input
+                type="radio"
+                name="visibility"
+                checked={f.visibility === value}
+                onChange={() => setF({ ...f, visibility: value })}
+              />
+              <span><b>{label}</b><small className="muted">{description}</small></span>
+            </label>
+          ))}
+        </div>
+        {board && (
+          <button className="btn btn-outline danger" style={{ color: 'var(--danger)' }} disabled={busy} onClick={() => setDeleting(true)}>
+            删除这个吧
+          </button>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function DeleteBoardModal({ board, onClose }: { board: BoardDetail; onClose: () => void }) {
+  const qc = useQueryClient();
+  const nav = useNavigate();
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const q = useQuery({
+    queryKey: ['board', board.slug],
+    queryFn: () => api<BoardDetail>(`/boards/${board.slug}`),
+    refetchOnMount: 'always',
+  });
+  const current = q.data;
+  const count = current?.deletePostCount;
+  const ready = !busy && !q.isFetching && !q.isError && count != null && name === current?.name;
+  const remove = async () => {
+    if (!ready) return;
+    setBusy(true);
+    try {
+      await api(`/boards/${board.slug}`, { method: 'DELETE' });
+      void qc.invalidateQueries();
+      nav('/boards', { replace: true });
+      toast('已删除');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title="删除这个吧"
+      onClose={onClose}
+      right={
+        <button className="btn btn-outline danger" style={{ color: 'var(--danger)' }} disabled={!ready} onClick={remove}>
+          确认删除
+        </button>
+      }
+    >
+      <div className="modal-body">
+        {q.isFetching ? (
+          <p className="muted">正在统计帖子…</p>
+        ) : q.isError || !current || count == null ? (
+          <p role="alert">无法确认要删除的帖子数。</p>
+        ) : (
+          <>
+            <p>删除后会一起删掉 {count} 条帖子和回复，无法恢复。</p>
+            <Field label="输入吧名确认" hint={`请输入「${current.name}」`} value={name} onChange={setName} autoComplete="off" />
+          </>
+        )}
       </div>
     </Modal>
   );
@@ -130,7 +209,10 @@ export function Boards() {
           <Link key={b.slug} to={`/b/${b.slug}`} className="board-row enter" style={{ '--i': i } as CSSProperties}>
             <BoardMark name={b.name} slug={b.slug} size={48} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="name">{b.name}吧</div>
+              <div className="name team-part">
+                {b.name}吧
+                {b.visibility === 'private' && <Lock size={13} className="muted" aria-label="私密" />}
+              </div>
               {b.description && <div className="muted ellipsis small">{b.description}</div>}
               <div className="faint small">
                 {b.postCount} 帖 · {b.memberCount} 人关注
@@ -236,7 +318,7 @@ function AnnouncementEditor({ b, onClose }: { b: BoardDetail; onClose: () => voi
 }
 
 /* ---------- 吧务团队 ---------- */
-function TeamMember({ u, role, action }: { u: User; role: 'owner' | 'mod'; action?: React.ReactNode }) {
+function TeamMember({ u, role, action }: { u: User; role?: 'owner' | 'mod'; action?: React.ReactNode }) {
   return (
     <div className="team-row">
       <Link to={`/u/${u.username}`} className="team-user">
@@ -245,9 +327,9 @@ function TeamMember({ u, role, action }: { u: User; role: 'owner' | 'mod'; actio
           <div className="name">
             <span className="ellipsis">{u.displayName}</span>
             <Verified user={u} size={15} />
-            <span className={`tag ${role}`}>{role === 'owner' ? '吧主' : '吧务'}</span>
+            {role && <span className={`tag ${role}`}>{role === 'owner' ? '吧主' : '吧务'}</span>}
           </div>
-          <div className="muted small ellipsis">@{u.username}</div>
+          <div className="muted small ellipsis">@{u.username}{!role && u.className && ` · ${u.className}`}</div>
         </div>
       </Link>
       {action}
@@ -397,6 +479,111 @@ function TeamStrip({ b, onOpen }: { b: BoardDetail; onOpen: () => void }) {
   );
 }
 
+function ViewersModal({ b, onClose }: { b: BoardDetail; onClose: () => void }) {
+  const qc = useQueryClient();
+  const owner = b.myRole === 'owner';
+  const path = `/boards/${b.slug}/viewers`;
+  const [name, setName] = useState('');
+  const [showClasses, setShowClasses] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const username = name.trim().replace(/^@/, '');
+  const viewers = useQuery({ queryKey: ['board-viewers', b.slug], queryFn: () => api<User[]>(path) });
+  const search = useQuery({
+    queryKey: ['viewer-search', username],
+    queryFn: () => api<Page<User>>(`/search?type=users&q=${encodeURIComponent(username)}`),
+    enabled: owner && !!username,
+  });
+  const classes = useQuery({
+    queryKey: ['classes'],
+    queryFn: () => api<{ name: string; count: number }[]>('/classes'),
+    enabled: owner && showClasses,
+  });
+  const candidates = search.data?.items.filter((u) => u.id !== b.ownerId && !viewers.data?.some((v) => v.id === u.id));
+
+  const change = async (target: { username: string } | { className: string }, remove = false) => {
+    setBusy(true);
+    try {
+      let board: BoardDetail;
+      let message: string;
+      if (remove && 'username' in target) {
+        board = await api<BoardDetail>(`${path}/${encodeURIComponent(target.username)}`, { method: 'DELETE' });
+        message = '已移除';
+      } else {
+        const result = await api<{ added: number; board: BoardDetail }>(path, {
+          body: 'username' in target ? { usernames: [target.username] } : target,
+        });
+        board = result.board;
+        message = result.added ? `已添加 ${result.added} 位同学` : '没有新增成员';
+      }
+      qc.setQueryData(['board', b.slug], board);
+      await qc.invalidateQueries({ queryKey: ['board-viewers', b.slug] });
+      if (remove) void qc.invalidateQueries({ queryKey: ['boards'] });
+      toast(message);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="可见成员" onClose={onClose}>
+      <div className="modal-body team">
+        <p className="muted small">吧主、吧务和网站管理员始终可见</p>
+        <div>
+          <h4 className="team-h">成员名单 <span className="muted">{b.viewerCount} 人</span></h4>
+          {viewers.isPending ? <p className="muted small">正在加载…</p>
+            : viewers.isError ? <p className="muted small" role="alert">成员名单加载失败</p>
+            : !viewers.data.length && <p className="muted small">还没有添加同学。</p>}
+          {viewers.data?.map((u) => (
+            <TeamMember key={u.id} u={u} action={owner && (
+              <button className="icon-btn" disabled={busy} aria-label={`移除 ${u.displayName}`} onClick={() => change(u, true)}>
+                <X size={18} />
+              </button>
+            )} />
+          ))}
+        </div>
+        {owner && (
+          <>
+            <div>
+              <Field label="搜索同学" value={name} onChange={setName} placeholder="昵称或用户名" autoComplete="off" />
+              {username && (search.isPending ? <p className="muted small">正在搜索…</p>
+                : search.isError ? <p className="muted small" role="alert">搜索失败</p>
+                : !candidates?.length && <p className="muted small">没有可添加的同学。</p>)}
+              {candidates?.map((u) => (
+                <TeamMember key={u.id} u={u} action={(
+                  <button className="btn btn-outline sm" disabled={busy} aria-label={`添加 ${u.displayName}`} onClick={() => change(u)}>
+                    添加
+                  </button>
+                )} />
+              ))}
+            </div>
+            <div>
+              <button className="btn btn-outline sm" aria-expanded={showClasses} onClick={() => setShowClasses(!showClasses)}>
+                按班级添加
+              </button>
+              {showClasses && (
+                <div className="chip-row" style={{ marginTop: 8 }}>
+                  {classes.isPending ? <p className="muted small">正在加载…</p>
+                    : classes.isError ? <p className="muted small" role="alert">班级加载失败</p>
+                    : !classes.data.length && <p className="muted small">没有可添加的班级。</p>}
+                  {classes.data?.map(({ name, count }) => (
+                    <button key={name} className="chip" disabled={busy} onClick={() => {
+                      if (confirm(`让「${name}」的同学都能看到这个吧？`)) void change({ className: name });
+                    }}>
+                      {name} · {count} 人
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function Pinned({ slug }: { slug: string }) {
   const q = useQuery({ queryKey: ['board-pinned', slug], queryFn: () => api<Post[]>(`/boards/${slug}/pinned`) });
   if (!q.data?.length) return null;
@@ -411,15 +598,30 @@ function Pinned({ slug }: { slug: string }) {
 
 export function BoardPage() {
   const { slug = '' } = useParams();
+  const me = useMe();
   const [sort, setSort] = useState<'active' | 'new'>('active');
   const [editing, setEditing] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
   const [team, setTeam] = useState(false);
+  const [viewers, setViewers] = useState(false);
   const q = useQuery({ queryKey: ['board', slug], queryFn: () => api<BoardDetail>(`/boards/${slug}`) });
   if (q.isPending) return <><TopBar back title="吧" /><PostSkeleton /></>;
-  if (q.isError) return <><TopBar back title="吧" /><Empty title="没有这个吧">它可能已经被删除了。</Empty></>;
+  if (q.isError) return (
+    <>
+      <TopBar back title="吧" />
+      {q.error.message.includes('私密') ? (
+        <div className="empty">
+          <Lock size={24} className="muted" aria-hidden />
+          <h3>这是私密吧</h3>
+          <p>只有吧主邀请的同学可以查看。</p>
+        </div>
+      ) : <Empty title="没有这个吧">它可能已经被删除了。</Empty>}
+    </>
+  );
   const b = q.data;
-  const canEdit = b.myRole === 'owner' || b.myRole === 'admin';
+  const canEdit = b.myRole === 'owner' || me.role === 'admin';
+  const isPrivate = b.visibility === 'private';
+  const canSeeViewers = isPrivate && (b.myRole === 'owner' || b.myRole === 'mod');
   return (
     <>
       <TopBar back title={`${b.name}吧`} sub={`${b.postCount} 帖`} />
@@ -428,6 +630,7 @@ export function BoardPage() {
         <div className="board-hero-info">
           <h2>
             {b.name}吧
+            {isPrivate && <span className="tag team-part"><Lock size={12} aria-hidden /> 私密</span>}
             {b.myRole === 'owner' && <span className="tag owner">我是吧主</span>}
             {b.myRole === 'mod' && <span className="tag mod">我是吧务</span>}
           </h2>
@@ -450,6 +653,12 @@ export function BoardPage() {
           <JoinButton board={b} />
         </div>
         <TeamStrip b={b} onOpen={() => setTeam(true)} />
+        {canSeeViewers && (
+          <button className="board-team" onClick={() => setViewers(true)}>
+            <span className="team-part"><Lock size={14} aria-hidden /> 私密吧 · {b.viewerCount} 位同学可见</span>
+            <ChevronRight size={16} className="muted chev" aria-hidden />
+          </button>
+        )}
       </div>
       <Announcement b={b} onEdit={() => setAnnouncing(true)} />
       <div className="desktop-composer">
@@ -475,6 +684,7 @@ export function BoardPage() {
       {editing && <BoardForm board={b} onClose={() => setEditing(false)} />}
       {announcing && <AnnouncementEditor b={b} onClose={() => setAnnouncing(false)} />}
       {team && <TeamModal b={b} onClose={() => setTeam(false)} />}
+      {viewers && canSeeViewers && <ViewersModal b={b} onClose={() => setViewers(false)} />}
     </>
   );
 }

@@ -9,8 +9,22 @@ export const REACTIONS = [
 ] as const;
 
 /**
+ * 当前用户（$me）看不到的私密吧（SQL 子查询，使用前要绑定 $me）。
+ * 私密吧只对吧主、吧务、吧主指定的可见成员和站点管理员可见。
+ */
+export const HIDDEN_BOARDS = `(SELECT hb.id FROM boards hb WHERE hb.visibility = 'private'
+  AND hb.owner_id IS NOT $me
+  AND NOT EXISTS (SELECT 1 FROM users ha WHERE ha.id = $me AND ha.role = 'admin')
+  AND NOT EXISTS (SELECT 1 FROM board_mods hm WHERE hm.board_id = hb.id AND hm.user_id = $me)
+  AND NOT EXISTS (SELECT 1 FROM board_viewers hv WHERE hv.board_id = hb.id AND hv.user_id = $me))`;
+
+/** 帖子对 $me 可见（不在看不到的私密吧里）。alias 是表别名前缀，如 'p.' */
+export const visibleTo = (alias = '') => `(${alias}board_id IS NULL OR ${alias}board_id NOT IN ${HIDDEN_BOARDS})`;
+
+/**
  * 帖子查询的公共 SELECT。$me 为当前用户 id，用于计算 liked / reposted。
  * 审核中、未通过的帖子只对作者本人可见（作者看起来和正常发出一样）。
+ * 私密吧里的帖子只对能看到这个吧的人可见；转发了这种帖子的转发行会在 hydrate 里被丢掉。
  */
 export function postSelect(extraCols = '') {
   return `
@@ -38,7 +52,7 @@ SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.con
   (p.board_id IS NOT NULL AND (b.owner_id = $me
      OR EXISTS(SELECT 1 FROM board_mods bm WHERE bm.board_id = p.board_id AND bm.user_id = $me))) AS board_manager
   ${extraCols}
-FROM (SELECT * FROM posts WHERE status = 'ok' OR author_id = $me) p
+FROM (SELECT * FROM posts WHERE (status = 'ok' OR author_id = $me) AND ${visibleTo()}) p
 JOIN users u ON u.id = p.author_id
 LEFT JOIN boards b ON b.id = p.board_id
 LEFT JOIN posts pp ON pp.id = p.parent_id
@@ -267,4 +281,12 @@ export function boardRole(boardId: number | null, user: { id: number; role: stri
   if (r?.owner_id === user.id) return 'owner';
   if (r?.is_mod) return 'mod';
   return user.role === 'admin' ? 'admin' : null;
+}
+
+/** 能不能看到这个吧：公开吧所有人；私密吧只有吧主、吧务、可见成员和站点管理员 */
+export function canViewBoard(boardId: number, user: { id: number; role: string }) {
+  const b = get<{ visibility: string }>('SELECT visibility FROM boards WHERE id = $b', { b: boardId });
+  if (!b) return false;
+  if (b.visibility !== 'private' || boardRole(boardId, user)) return true;
+  return !!get('SELECT 1 FROM board_viewers WHERE board_id = $b AND user_id = $u', { b: boardId, u: user.id });
 }

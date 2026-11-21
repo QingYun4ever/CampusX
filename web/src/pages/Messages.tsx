@@ -18,8 +18,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, ArrowLeft, Check, CheckCheck, Clock, Copy, MessageSquarePlus, Search, Send, Trash2, Undo2 } from 'lucide-react';
 import { PlainText } from '../components/PostCard';
 import { Avatar, Empty, Modal, Spinner, toast, Verified } from '../components/ui';
+import { isAndroid } from '../lib/android';
 import { api, type ChatPage, type Conversation, type DmMessage, type DmUser, type Page, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
+import { useEscape } from '../lib/escape';
 
 /* ---------- 时间显示 ---------- */
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -309,6 +311,17 @@ function ChatView({ username }: { username: string }) {
     }
   }, [msgs, loading]);
 
+  // 键盘改变可见高度时，原本在底部的会话继续显示最新消息。
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!isAndroid || !el || !('ResizeObserver' in window)) return;
+    const observer = new ResizeObserver(() => {
+      if (stick.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [error]);
+
   const onScroll = async () => {
     const el = scroller.current!;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
@@ -357,16 +370,20 @@ function ChatView({ username }: { username: string }) {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [draft]);
 
+  useEscape(() => setCtx(null), ctx !== null);
   useEffect(() => {
     if (!ctx) return;
     const close = () => setCtx(null);
+    const otherKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') close();
+    };
     window.addEventListener('pointerdown', close);
     window.addEventListener('scroll', close, true);
-    window.addEventListener('keydown', close);
+    window.addEventListener('keydown', otherKey);
     return () => {
       window.removeEventListener('pointerdown', close);
       window.removeEventListener('scroll', close, true);
-      window.removeEventListener('keydown', close);
+      window.removeEventListener('keydown', otherKey);
     };
   }, [ctx]);
 
@@ -530,6 +547,21 @@ function ChatView({ username }: { username: string }) {
 
 export function Messages() {
   const { username } = useParams();
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+    if (!isAndroid || !viewport) return;
+    // 一些 WebView 的 IME 只缩小 VisualViewport，100dvh 不会跟着变。
+    const resize = () => {
+      root.style.setProperty('--dm-viewport-height', `${viewport.height}px`);
+    };
+    resize();
+    viewport.addEventListener('resize', resize);
+    return () => {
+      viewport.removeEventListener('resize', resize);
+      root.style.removeProperty('--dm-viewport-height');
+    };
+  }, []);
   useEffect(() => {
     document.title = '私信 · 校墙';
     return () => {

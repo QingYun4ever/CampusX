@@ -7,6 +7,12 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   backgroundColor: '#05070d',
   ios: { contentInset: 'never' },
+  plugins: {
+    SystemBars: {
+      insetsHandling: 'css',
+      initialViewportFitValueHint: 'cover',
+    },
+  },
 };
 
 export default config;
