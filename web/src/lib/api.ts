@@ -50,11 +50,33 @@ export function setToken(t: string | null) {
   }
 }
 
-export function setAppServerAddress(value: string) {
+const NOT_CAMPUS = '这个地址不是校墙服务器，请检查服务器地址或反向代理配置';
+
+function parseServer(value: string) {
   const origin = serverOrigin(value);
   if (!origin) {
     throw new Error(ALLOWS_HTTP_SERVER ? '请输入完整的 HTTP 或 HTTPS 地址，不带路径' : '请输入完整的 HTTPS 地址，不带路径');
   }
+  return origin;
+}
+
+/** 保存前先确认这个地址真的是校墙：/api/health 要返回 { ok: true } */
+export async function probeServer(value: string) {
+  const origin = parseServer(value);
+  let res: Response;
+  try {
+    res = await fetch(`${origin}/api/health`, { signal: AbortSignal.timeout(8000) });
+  } catch {
+    // 别的网站一般不带校墙的跨域头，在 App 里同样表现为请求失败
+    throw new Error('连不上这个地址，或者它不是校墙服务器');
+  }
+  const data = await res.json().catch(() => null);
+  if (data?.ok !== true) throw new Error(res.status >= 500 ? `服务器暂时不可用（${res.status}）` : NOT_CAMPUS);
+  return origin;
+}
+
+export function setAppServerAddress(value: string) {
+  const origin = parseServer(value);
   if (origin === API_BASE) return false;
   try {
     localStorage.setItem(SERVER_KEY, origin);
@@ -90,9 +112,17 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
   try {
     res = await fetch(`${API_BASE}/api${path}`, { method: opts.method ?? (body ? 'POST' : 'GET'), headers, body });
   } catch {
-    throw new ApiError('网络连接失败，请检查网络', 0);
+    // App 里连到别的网站（没有校墙的跨域头）也会落到这里，所以一并提示检查地址
+    throw new ApiError(IS_APP_BUILD ? '连不上服务器，请检查网络和服务器地址' : '网络连接失败，请检查网络', 0);
   }
-  const data = await res.json().catch(() => null);
+  const text = await res.text().catch(() => '');
+  let data;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // 拿到的不是 JSON（常见是一整页 HTML）：地址指到了别的网站，或者反向代理把 /api 转错了地方
+    throw new ApiError(res.status >= 500 ? `服务器暂时不可用（${res.status}）` : NOT_CAMPUS, res.status);
+  }
   if (!res.ok) {
     if (res.status === 401 && token) {
       setToken(null);

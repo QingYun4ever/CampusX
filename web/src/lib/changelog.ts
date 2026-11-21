@@ -9,6 +9,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.9.3',
+    date: '2026-11-21',
+    title: '连接问题提示',
+    changes: [
+      ['fix', 'App 里验证码加载失败时不再显示空白，会说明原因，点图片可以重试。'],
+      ['improve', '设置服务器地址时会先确认它是校墙服务器，填错了当场提示。'],
+    ],
+  },
+  {
     version: '0.9.2',
     date: '2026-11-21',
     title: '自定义背景与恢复码',

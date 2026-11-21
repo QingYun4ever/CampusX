@@ -11,21 +11,26 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ChevronDown, RotateCw, Server } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { Avatar, Field, Modal } from '../components/ui';
-import { ALLOWS_HTTP_SERVER, API_BASE, api, IS_APP_BUILD, setAppServerAddress, type User } from '../lib/api';
+import { ALLOWS_HTTP_SERVER, API_BASE, api, IS_APP_BUILD, probeServer, setAppServerAddress, type User } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { getMode, setMode, type Mode } from '../lib/theme';
 
 /* ---------------- 验证码 ---------------- */
 function useCaptcha(enabled: boolean) {
   const [cap, setCap] = useState<{ id: string; src: string } | null>(null);
+  const [err, setErr] = useState('');
   const [spin, setSpin] = useState(0);
   const refresh = useCallback(async () => {
     setSpin((n) => n + 1);
+    setErr('');
     try {
       const r = await api<{ id: string; svg: string }>('/captcha');
+      if (typeof r?.id !== 'string' || typeof r.svg !== 'string') throw new Error('验证码加载失败');
       setCap({ id: r.id, src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(r.svg)}` });
-    } catch {
+    } catch (e) {
+      // 不能只留一块空白：把原因告诉用户，点图片可以重试
       setCap(null);
+      setErr(e instanceof Error ? e.message : '验证码加载失败');
     }
   }, []);
   useEffect(() => {
@@ -35,7 +40,7 @@ function useCaptcha(enabled: boolean) {
     const t = setInterval(refresh, 4 * 60_000);
     return () => clearInterval(t);
   }, [enabled, refresh]);
-  return { cap, refresh, spin };
+  return { cap, err, refresh, spin };
 }
 
 function Captcha({
@@ -56,14 +61,14 @@ function Captcha({
         label="验证码"
         value={value}
         onChange={onChange}
-        error={error}
+        error={error || c.err}
         maxLength={6}
         autoComplete="off"
         autoCapitalize="off"
         spellCheck={false}
       />
       <button type="button" className="captcha-img" onClick={c.refresh} aria-label="换一张验证码" title="看不清？换一张">
-        {c.cap ? <img src={c.cap.src} alt="验证码图片" /> : <span className="captcha-ph" />}
+        {c.cap ? <img src={c.cap.src} alt="验证码图片" /> : c.err ? <span className="captcha-fail">点击重试</span> : <span className="captcha-ph" />}
         <span className="captcha-refresh">
           <RotateCw size={14} style={{ transform: `rotate(${c.spin * 360}deg)` }} />
         </span>
@@ -201,22 +206,28 @@ const nextBtn = (label: string, busy: boolean) => (
 function ServerAddressModal({ onClose }: { onClose: () => void }) {
   const [address, setAddress] = useState(API_BASE);
   const [error, setError] = useState('');
-  const save = (event: FormEvent) => {
+  const [busy, setBusy] = useState(false);
+  const save = async (event: FormEvent) => {
     event.preventDefault();
     // 弹窗用 portal 渲染，提交事件不能传到外层登录表单。
     event.stopPropagation();
+    if (busy) return;
+    setBusy(true);
     try {
-      if (setAppServerAddress(address)) window.location.reload();
+      const origin = await probeServer(address);
+      if (setAppServerAddress(origin)) window.location.reload();
       else onClose();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   };
   return (
     <Modal
       title="服务器地址"
       onClose={onClose}
-      right={<button className="btn btn-light" type="submit" form="server-address">保存</button>}
+      right={<button className="btn btn-light" type="submit" form="server-address" disabled={busy}>{busy ? '连接中…' : '保存'}</button>}
     >
       <form id="server-address" className="modal-body" onSubmit={save} noValidate>
         <Field

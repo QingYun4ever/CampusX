@@ -2592,6 +2592,14 @@ a.card-row:hover {
   background-size: 300% 100%;
   animation: shimmer 1.6s linear infinite;
 }
+.captcha-fail {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 13px;
+  color: #5f6368;
+}
 .captcha-refresh {
   position: absolute;
   right: 4px;
