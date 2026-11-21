@@ -2,6 +2,7 @@ import { App as AndroidApp } from '@capacitor/app';
 import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ComposeProvider } from './components/compose';
+import { AppServices } from './components/AppServices';
 import { Layout } from './components/Layout';
 import { Logo } from './components/Logo';
 import { Empty, Overlays } from './components/ui';
@@ -10,6 +11,7 @@ import { useAuth } from './lib/auth';
 import { dismissTopOverlay } from './lib/escape';
 import { Home } from './pages/Home';
 import { Login, Register } from './pages/Auth';
+import { TermsGate, TermsPage } from './pages/Terms';
 
 const Admin = lazy(() => import('./pages/Admin').then(({ Admin }) => ({ default: Admin })));
 const Boards = lazy(() => import('./pages/Boards').then(({ Boards }) => ({ default: Boards })));
@@ -61,6 +63,7 @@ export function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/terms" element={<TermsPage />} />
           <Route path="*" element={<Navigate to="/login" replace state={{ from: loc.pathname }} />} />
         </Routes>
         <Overlays />
@@ -68,11 +71,22 @@ export function App() {
     );
   }
 
+  if (user.termsPending && loc.pathname !== '/terms') {
+    return (
+      <>
+        <TermsGate />
+        <Overlays />
+      </>
+    );
+  }
+
   return (
     <ComposeProvider>
+      <AppServices />
       <Routes>
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/register" element={<Navigate to="/" replace />} />
+        <Route path="/terms" element={<TermsPage />} />
         {/* 管理后台是独立页面，不套用主站的三栏布局 */}
         <Route path="/admin/*" element={<Suspense fallback={<div className="splash" aria-label="加载中"><Logo size={56} /></div>}><Admin /></Suspense>} />
         <Route element={<Layout />}>

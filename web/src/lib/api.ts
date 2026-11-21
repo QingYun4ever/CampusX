@@ -172,6 +172,8 @@ export interface User extends UserLite {
   gradYear: number | null;
   createdAt: number;
   isFollowing?: boolean;
+  /** 只有 /auth/me 返回：还没同意最新的用户协议 */
+  termsPending?: boolean;
 }
 
 export interface Profile extends User {

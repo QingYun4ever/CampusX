@@ -20,7 +20,7 @@ import {
 import { ContentLink } from '../components/ContentLink';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Logo } from '../components/Logo';
-import { Avatar, Empty, Field, Modal, PostSkeleton, Spinner, toast, useModalClose, Verified } from '../components/ui';
+import { Avatar, Empty, Field, Modal, PostSkeleton, Spinner, Switch, toast, useModalClose, Verified } from '../components/ui';
 import { api, media, WEB_ORIGIN, type Invite, type User, type UserLite } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
@@ -84,14 +84,6 @@ const CATEGORY: Record<string, string> = {
   other: '其他',
 };
 const STATUS: Record<string, string> = { ok: '已公开', pending: '审核中', rejected: '未通过，未发布', deleted: '已删除' };
-
-function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <button role="switch" aria-checked={on} aria-label={label} className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
-      <i />
-    </button>
-  );
-}
 
 function PageHead({ title, sub, right }: { title: string; sub?: ReactNode; right?: ReactNode }) {
   return (

@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, ChevronRight, LogOut, Plus, Shield, Trash2 } from 'lucide-react';
+import { Check, ChevronRight, FileText, LogOut, Plus, Shield, Trash2 } from 'lucide-react';
 import { TopBar } from '../components/ui';
 import { useAuth, useMe } from '../lib/auth';
 import { CURRENT } from '../lib/changelog';
@@ -24,6 +24,7 @@ import {
   type Mode,
 } from '../lib/theme';
 import { AccountSecurity } from './AccountSecurity';
+import { PushSettings, UpdateRow } from './AppSettings';
 
 const MODES: { id: Mode; name: string }[] = [
   { id: 'light', name: '浅色' },
@@ -241,6 +242,7 @@ export function Settings() {
       <TopBar back title="设置" />
       <AccountSecurity />
       <Appearance />
+      <PushSettings />
 
       {me.role === 'admin' && (
         <Link to="/admin" className="list-link">
@@ -252,6 +254,13 @@ export function Settings() {
           <ChevronRight size={18} className="muted" />
         </Link>
       )}
+
+      <UpdateRow />
+      <Link to="/terms" className="list-link">
+        <FileText size={20} />
+        <span className="grow">用户协议</span>
+        <ChevronRight size={18} className="muted" />
+      </Link>
 
       <button className="list-link danger" onClick={signOut}>
         <LogOut size={20} />

@@ -1,23 +1,34 @@
 package com.tongxuequan.app;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
+import android.os.Build;
+import android.provider.Settings;
 import android.view.Window;
 import androidx.activity.result.ActivityResult;
+import androidx.core.app.NotificationManagerCompat;
+import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
-@CapacitorPlugin(name = "AndroidShell")
+@CapacitorPlugin(
+    name = "AndroidShell",
+    permissions = { @Permission(strings = { Manifest.permission.POST_NOTIFICATIONS }, alias = "notifications") }
+)
 public class AndroidShellPlugin extends Plugin {
     @PluginMethod
     public void openBrowser(PluginCall call) {
@@ -90,5 +101,90 @@ public class AndroidShellPlugin extends Plugin {
         } catch (IOException e) {
             call.reject("保存失败");
         }
+    }
+
+    /* ---------------- 通知 ---------------- */
+
+    private boolean notificationsAllowed() {
+        boolean perm = Build.VERSION.SDK_INT < 33 || getPermissionState("notifications") == PermissionState.GRANTED;
+        return perm && NotificationManagerCompat.from(getContext()).areNotificationsEnabled();
+    }
+
+    private void resolvePermission(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("granted", notificationsAllowed());
+        // 已经被拒绝过、系统不再弹窗：只能去系统设置里开
+        r.put("canAsk", Build.VERSION.SDK_INT >= 33 && getPermissionState("notifications") != PermissionState.DENIED);
+        call.resolve(r);
+    }
+
+    @PluginMethod
+    public void checkNotifications(PluginCall call) {
+        resolvePermission(call);
+    }
+
+    @PluginMethod
+    public void requestNotifications(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= 33 && getPermissionState("notifications") != PermissionState.GRANTED) {
+            requestPermissionForAlias("notifications", call, "notificationPermissionResult");
+            return;
+        }
+        resolvePermission(call);
+    }
+
+    @PermissionCallback
+    private void notificationPermissionResult(PluginCall call) {
+        resolvePermission(call);
+    }
+
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        Intent intent;
+        if (Build.VERSION.SDK_INT >= 26) {
+            intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
+        } else {
+            intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getContext().getPackageName()));
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (ActivityNotFoundException e) {
+            call.reject("打不开系统设置");
+        }
+    }
+
+    /** 保存推送设置。token 为空表示关闭推送（退出登录、或者用户关掉了） */
+    @PluginMethod
+    public void configurePush(PluginCall call) {
+        String apiBase = call.getString("apiBase");
+        String token = call.getString("token");
+        android.content.SharedPreferences p = PushWorker.prefs(getContext());
+        if (apiBase == null || token == null || token.isEmpty() || !Boolean.TRUE.equals(call.getBoolean("enabled", false))) {
+            p.edit().remove("token").apply();
+            PushWorker.cancel(getContext());
+            call.resolve();
+            return;
+        }
+        android.content.SharedPreferences.Editor e = p.edit();
+        // 换了账号或服务器就从现在开始算，不补推旧消息
+        if (!token.equals(p.getString("token", null)) || !apiBase.equals(p.getString("apiBase", null))) e.putLong("since", 0);
+        e.putString("apiBase", apiBase)
+            .putString("token", token)
+            .putBoolean("dm", call.getBoolean("dm", true))
+            .putBoolean("posts", call.getBoolean("posts", true))
+            .putBoolean("interactions", call.getBoolean("interactions", true))
+            .apply();
+        PushWorker.createChannels(getContext());
+        PushWorker.schedule(getContext());
+        call.resolve();
+    }
+
+    /** 点了通知：让网页跳到对应页面。网页还没加载好时事件会先留着 */
+    public void openPath(String path) {
+        JSObject d = new JSObject();
+        d.put("path", path);
+        notifyListeners("openPath", d, true);
     }
 }

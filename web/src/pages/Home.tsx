@@ -57,6 +57,8 @@ export function Home() {
   const openAccount = useAccountSheet();
   const me = useMe();
   const [tab, setTab] = useState<Tab>(() => {
+    // 从「关注的人发了新帖」通知点进来
+    if (new URLSearchParams(window.location.search).get('tab') === 'following') return 'following';
     try {
       return (sessionStorage.getItem(TAB_KEY) as Tab) || 'all';
     } catch {

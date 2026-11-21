@@ -75,6 +75,13 @@ const boardFields = {
   icon: z.string().trim().min(1).max(8),
   visibility: z.enum(['public', 'private']),
 };
+/** 每人最多创建几个吧（管理员不限）。自己建的、或者转给自己的都算；吧删掉之后名额就空出来 */
+export const MAX_BOARDS_PER_USER = 2;
+function boardQuota(userId: number) {
+  const used = get<{ n: number }>('SELECT COUNT(*) AS n FROM boards WHERE created_by = $u OR owner_id = $u', { u: userId })!.n;
+  return { used, max: MAX_BOARDS_PER_USER };
+}
+
 const boardSchema = z.object({
   ...boardFields,
   description: boardFields.description.default(''),
@@ -123,9 +130,18 @@ export async function boardRoutes(app: FastifyInstance) {
     return rows.map(boardDTO);
   });
 
+  app.get('/boards/quota', async (req) => {
+    const user = me(req);
+    if (user.role === 'admin') return { used: 0, max: null };
+    return boardQuota(user.id);
+  });
+
   app.post('/boards', async (req) => {
     const user = me(req);
     const body = parse(boardSchema, req.body);
+    if (user.role !== 'admin' && boardQuota(user.id).used >= MAX_BOARDS_PER_USER) {
+      throw new HttpError(403, `每位同学最多创建 ${MAX_BOARDS_PER_USER} 个吧`);
+    }
     if (get('SELECT 1 FROM boards WHERE slug = $s', { s: body.slug })) throw new HttpError(409, '该地址已被使用');
     if (get('SELECT 1 FROM boards WHERE name = $n', { n: body.name })) throw new HttpError(409, '已有同名的吧');
     tx(() => {

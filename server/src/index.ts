@@ -8,6 +8,7 @@ import { createInvite, formatInvite, type SessionUser, touchSeen, userFromToken 
 import { config, uploadsDir } from './config.ts';
 import { get, now } from './db.ts';
 import { resumePending } from './moderation.ts';
+import { appRoutes } from './routes/app.ts';
 import { authRoutes } from './routes/auth.ts';
 import { boardRoutes } from './routes/boards.ts';
 import { dmRoutes } from './routes/dm.ts';
@@ -49,7 +50,8 @@ app.decorateRequest('user', null);
 app.addHook('onRequest', async (req) => {
   const h = req.headers.authorization;
   req.user = h?.startsWith('Bearer ') ? userFromToken(h.slice(7)) : null;
-  if (req.user) touchSeen(req.user.id);
+  // App 后台取推送不算「在线」
+  if (req.user && !req.url.startsWith('/api/push/')) touchSeen(req.user.id);
 });
 
 // 除登录/注册/验证码外，所有 API 都需要登录（平台只对同学开放）
@@ -62,6 +64,7 @@ const PUBLIC_API = [
   '/api/auth/username/check',
   '/api/auth/logout',
   '/api/health',
+  '/api/app/latest',
 ];
 app.addHook('preHandler', async (req) => {
   const url = req.url.split('?')[0];
@@ -92,6 +95,7 @@ await app.register(
     await api.register(boardRoutes);
     await api.register(miscRoutes);
     await api.register(dmRoutes);
+    await api.register(appRoutes);
   },
   { prefix: '/api' },
 );

@@ -11,6 +11,7 @@ import {
   sessionTokenHash,
   verifyPassword,
 } from '../auth.ts';
+import { TERMS_VERSION } from '../config.ts';
 import { get, now, run, tx } from '../db.ts';
 import { HttpError, me, parse } from '../util.ts';
 import { userById } from './users-common.ts';
@@ -34,6 +35,7 @@ const registerSchema = z.object({
   displayName: z.string().trim().min(1, '请填写昵称').max(20, '昵称最多 20 字'),
   className: z.string().trim().max(20, '班级最多 20 字').optional().default(''),
   inviteCode: z.string().trim().min(1, '请填写邀请码'),
+  agreeTerms: z.literal(true, '请先阅读并同意用户协议'),
   ...captchaFields,
 });
 
@@ -90,8 +92,8 @@ export async function authRoutes(app: FastifyInstance) {
       // 第一个注册的人自动成为管理员
       const isFirst = !get('SELECT 1 FROM users LIMIT 1');
       const { lastId } = run(
-        `INSERT INTO users (username, password_hash, display_name, class_name, role, created_at)
-         VALUES ($u, $h, $d, $c, $role, $t)`,
+        `INSERT INTO users (username, password_hash, display_name, class_name, role, created_at, terms_version, terms_accepted_at)
+         VALUES ($u, $h, $d, $c, $role, $t, $tv, $t)`,
         {
           u: body.username,
           h: passwordHash,
@@ -99,6 +101,7 @@ export async function authRoutes(app: FastifyInstance) {
           c: body.className,
           role: isFirst ? 'admin' : 'user',
           t: now(),
+          tv: TERMS_VERSION,
         },
       );
       const used = run(
@@ -158,7 +161,19 @@ export async function authRoutes(app: FastifyInstance) {
   app.get('/auth/me', async (req) => {
     const u = userById(me(req).id);
     if (!u) throw new HttpError(401, '请先登录');
-    return u;
+    const t = get<{ terms_version: number }>('SELECT terms_version FROM users WHERE id = $id', { id: u.id })!;
+    // 协议更新过、或者老用户还没同意过：前端会弹窗请他确认
+    return { ...u, termsPending: t.terms_version < TERMS_VERSION };
+  });
+
+  app.post('/me/terms', async (req) => {
+    const user = me(req);
+    run('UPDATE users SET terms_version = $v, terms_accepted_at = $t WHERE id = $id', {
+      v: TERMS_VERSION,
+      t: now(),
+      id: user.id,
+    });
+    return { ok: true };
   });
 
   app.post('/me/password', strict, async (req) => {

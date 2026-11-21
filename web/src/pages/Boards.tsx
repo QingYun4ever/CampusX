@@ -38,7 +38,7 @@ function JoinButton({ board }: { board: Board }) {
   );
 }
 
-function BoardForm({ board, onClose }: { board?: BoardDetail; onClose: () => void }) {
+function BoardForm({ board, onClose, quota }: { board?: BoardDetail; onClose: () => void; quota?: Quota }) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const [f, setF] = useState({
@@ -88,6 +88,11 @@ function BoardForm({ board, onClose }: { board?: BoardDetail; onClose: () => voi
             <div className="muted small">/b/{f.slug || board?.slug || '…'}</div>
           </div>
         </div>
+        {!board && quota?.max != null && (
+          <p className="board-quota">
+            每位同学最多创建 {quota.max} 个吧，你还可以再建 {Math.max(0, quota.max - quota.used)} 个。
+          </p>
+        )}
         <Field label="名称" value={f.name} onChange={(v) => setF({ ...f, name: v })} maxLength={16} counter placeholder="例如：高三2班" />
         {!board && (
           <Field
@@ -186,16 +191,25 @@ function DeleteBoardModal({ board, onClose }: { board: BoardDetail; onClose: () 
   );
 }
 
+type Quota = { used: number; max: number | null };
+
 export function Boards() {
   const q = useQuery({ queryKey: ['boards'], queryFn: () => api<Board[]>('/boards') });
+  const quota = useQuery({ queryKey: ['boards', 'quota'], queryFn: () => api<Quota>('/boards/quota') });
   const [creating, setCreating] = useState(false);
+  const full = !!quota.data?.max && quota.data.used >= quota.data.max;
   return (
     <>
       <TopBar
         title="吧"
         sub={q.data ? `${q.data.length} 个吧` : undefined}
         right={
-          <button className="btn btn-outline sm" onClick={() => setCreating(true)}>
+          <button
+            className="btn btn-outline sm"
+            onClick={() =>
+              full ? toast(`每位同学最多创建 ${quota.data!.max} 个吧，你已经建满了`, 'error') : setCreating(true)
+            }
+          >
             <Plus size={16} /> 新建
           </button>
         }
@@ -222,7 +236,7 @@ export function Boards() {
           </Link>
         ))
       )}
-      {creating && <BoardForm onClose={() => setCreating(false)} />}
+      {creating && <BoardForm onClose={() => setCreating(false)} quota={quota.data} />}
     </>
   );
 }

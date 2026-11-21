@@ -6,6 +6,7 @@ import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { PostCard } from '../components/PostCard';
 import { Avatar, Emoji, Empty, TopBar } from '../components/ui';
 import { api, type Notification } from '../lib/api';
+import { PushAsk } from './AppSettings';
 import { timeAgo } from '../lib/format';
 
 const META = {
@@ -105,6 +106,7 @@ export function Notifications() {
   return (
     <>
       <TopBar title="通知" />
+      <PushAsk />
       <InfiniteList
         q={q}
         empty={<Empty title="暂无通知">别人回复、点赞、回应、转发、引用或关注你时会显示在这里。</Empty>}

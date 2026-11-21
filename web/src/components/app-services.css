@@ -1,0 +1,140 @@
+.update {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 12px;
+}
+.update-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.update-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  flex: none;
+}
+.update-head strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+}
+.update-head span {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.update-notes {
+  margin: 0;
+  padding: 12px 14px 12px 32px;
+  border-radius: var(--r);
+  background: var(--bg-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.update-notes li::marker {
+  color: var(--text-3);
+}
+.update-tip {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.update-main {
+  height: 44px;
+  font-size: 16px;
+}
+.update-more {
+  align-self: center;
+  margin-top: -6px;
+  font-size: 14px;
+}
+.update-lines {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+.update-foot {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.update-foot .btn:first-child {
+  padding-left: 0;
+}
+.update-foot .btn:last-child {
+  padding-right: 0;
+}
+.update-foot .btn {
+  color: var(--text-2);
+}
+
+/* 设置页：推送通知 */
+.push-settings .setting-row .grow {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.push-settings .setting-row > svg {
+  flex: none;
+  color: var(--text-2);
+}
+.push-kinds {
+  display: flex;
+  flex-direction: column;
+  margin: -4px 0 0 36px;
+  border-left: 2px solid var(--line);
+}
+.push-kinds .setting-row {
+  padding: 8px 0 8px 14px;
+  font-size: 15px;
+}
+.push-blocked {
+  color: var(--danger) !important;
+}
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+/* 通知页顶部：建议打开推送 */
+.push-ask {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 16px 4px;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+}
+.push-ask > svg {
+  flex: none;
+  color: var(--accent);
+}
+.push-ask p {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.push-ask p strong {
+  display: block;
+  font-size: 15px;
+}
+.push-ask .btn {
+  flex: none;
+}

@@ -8,10 +8,11 @@ import {
   type ReactNode,
 } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronDown, RotateCw, Server } from 'lucide-react';
+import { ChevronDown, RotateCw, Server, CircleAlert } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { Avatar, Field, Modal } from '../components/ui';
 import { ALLOWS_HTTP_SERVER, API_BASE, api, IS_APP_BUILD, probeServer, setAppServerAddress, type User } from '../lib/api';
+import { TermsModal } from './Terms';
 import { useAuth } from '../lib/auth';
 import { getMode, setMode, type Mode } from '../lib/theme';
 
@@ -450,6 +451,8 @@ export function Register() {
     password2: '',
     captchaText: '',
   });
+  const [agree, setAgree] = useState(false);
+  const [terms, setTerms] = useState(false);
   const [note, setNote] = useState('');
   const [err, setErr] = useState<{ field: string; msg: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -492,9 +495,10 @@ export function Register() {
           return go('verify');
         case 'verify': {
           if (!f.captchaText) return fail('captchaText', '请输入验证码');
+          if (!agree) return fail('agree', '请先阅读并同意用户协议');
           const { password2: _, ...body } = f;
           const r = await api<{ token: string; user: User }>('/auth/register', {
-            body: { ...body, captchaId: c.cap?.id },
+            body: { ...body, agreeTerms: true, captchaId: c.cap?.id },
           });
           signIn(r.token, r.user);
           nav('/', { replace: true });
@@ -691,6 +695,33 @@ export function Register() {
             </div>
           </dl>
           <Captcha value={f.captchaText} onChange={set('captchaText')} error={fe('captchaText')} c={c} />
+          <div>
+            <label className="check terms-agree">
+              <input
+                type="checkbox"
+                checked={agree}
+                onChange={(e) => {
+                  setAgree(e.target.checked);
+                  if (err?.field === 'agree') setErr(null);
+                }}
+              />
+              <span className="box" />
+              <span>
+                我已阅读并同意
+                <button type="button" onClick={() => setTerms(true)}>
+                  《校墙用户协议》
+                </button>
+              </span>
+            </label>
+            {fe('agree') && (
+              <div className="tf-msg terms-agree-error" role="alert">
+                <span className="tf-error">
+                  <CircleAlert size={15} /> {fe('agree')}
+                </span>
+              </div>
+            )}
+          </div>
+          {terms && <TermsModal onClose={() => setTerms(false)} />}
         </AuthShell>
       );
   }

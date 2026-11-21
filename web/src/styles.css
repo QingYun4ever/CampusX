@@ -5249,3 +5249,9 @@ img.emoji {
   font-size: 14px;
   color: var(--danger);
 }
+
+.board-quota {
+  margin: -4px 0 4px;
+  font-size: 13px;
+  color: var(--text-2);
+}

@@ -43,9 +43,22 @@ export const config = {
   ]),
   sessionDays: 60,
   maxUploadBytes: 8 * 1024 * 1024,
+  /** App 更新：从这个 GitHub 仓库的 Releases 找最新安装包 */
+  releaseRepo: process.env.APP_RELEASE_REPO?.trim() || 'QingYun4ever/CampusX',
+  /** 下载加速镜像，按顺序尝试；格式是「前缀 + GitHub 原始下载地址」。设为 none 只用 GitHub 直连 */
+  downloadMirrors:
+    process.env.APP_DOWNLOAD_MIRRORS?.trim() === 'none'
+      ? []
+      : list(process.env.APP_DOWNLOAD_MIRRORS, ['https://ghfast.top/', 'https://gh-proxy.com/', 'https://ghproxy.net/']),
   maxPostLength: 2000,
   smtp: smtpConfig(),
 };
 
 export const uploadsDir = path.join(config.dataDir, 'uploads');
 export const accountSecurityKeyPath = path.join(config.dataDir, 'account-security.key');
+
+/**
+ * 用户协议版本，和 web/src/pages/Terms.tsx 里的 TERMS_VERSION 保持一致。
+ * 协议有实质修改时两边一起加 1，所有人下次打开会被请求重新确认。
+ */
+export const TERMS_VERSION = 1;

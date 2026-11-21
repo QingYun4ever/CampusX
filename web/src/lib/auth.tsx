@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, getToken, setToken, type User } from './api';
+import { stopPush, syncPush } from './push';
 
 interface AuthCtx {
   user: User | null;
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onExpired = () => {
+      stopPush();
       setUser(null);
       qc.clear();
     };
@@ -37,13 +39,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     (token: string, u: User) => {
       setToken(token);
+      void syncPush();
       qc.clear();
       setUser(u);
+      // 登录接口返回的是公开资料，再取一次自己的完整信息（比如要不要确认用户协议）
+      api<User>('/auth/me').then(setUser).catch(() => {});
     },
     [qc],
   );
 
   const signOut = useCallback(async () => {
+    stopPush();
     await api('/auth/logout', { method: 'POST' }).catch(() => {});
     setToken(null);
     qc.clear();

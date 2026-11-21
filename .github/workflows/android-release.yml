@@ -50,6 +50,11 @@ jobs:
             exit 1
           fi
           printf '%s  %s\n' "$sha" "$name" > "$name.sha256"
+          # 标签注释第一行是摘要，后面几行是这一版的更新说明（App 里的更新提示会显示）
+          curl -fsS "${auth[@]}" "$api/git/tags/$oid" | jq -r '.message | split("\n")[1:] | join("\n")' \
+            | sed '/^-----BEGIN PGP/,$d' | sed '/./,$!d' > notes.md
+          [[ -s notes.md ]] || echo '已签名的 Android 安装包。' > notes.md
+          printf '\n正式版仅支持 HTTPS 服务器。\n' >> notes.md
           printf 'tag=%s\napk=%s\n' "$tag" "$name" >> "$GITHUB_OUTPUT"
 
       - name: 上传 APK 到 GitHub Releases
@@ -61,6 +66,6 @@ jobs:
         run: |
           trap 'echo "::error::GitHub 发布或清理交接失败（脚本第 $LINENO 行）。"' ERR
           gh release create "$tag" "$name" "$name.sha256" --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "校墙 $tag" --notes '已签名的 Android 安装包，正式版仅支持 HTTPS。'
+            --title "校墙 $tag" --notes-file notes.md
           gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/android-apk/$tag"
           gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$GITHUB_REF_NAME"

@@ -1,0 +1,119 @@
+.terms {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+}
+.terms-lead {
+  margin: 0 0 4px;
+  color: var(--text-2);
+}
+.terms h3 {
+  margin: 22px 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.terms p {
+  margin: 0 0 6px;
+}
+.terms ul {
+  margin: 0;
+  padding-left: 1.3em;
+}
+.terms li {
+  margin: 3px 0;
+}
+.terms li::marker {
+  color: var(--text-3);
+}
+.terms strong {
+  font-weight: 600;
+}
+.terms-date {
+  margin-top: 22px !important;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.terms-modal .modal-body {
+  padding-bottom: 24px;
+}
+
+.terms-page {
+  min-height: 100dvh;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 20px calc(32px + env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+.terms-page > header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 -20px 8px;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+}
+.terms-page > header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.terms-gate {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+.terms-gate > header {
+  position: static;
+  align-items: flex-start;
+  padding-top: calc(36px + env(safe-area-inset-top));
+  margin-bottom: 4px;
+  background: none;
+  backdrop-filter: none;
+}
+.terms-gate > header h1 {
+  font-size: 24px;
+}
+.terms-gate > header p {
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: 15px;
+}
+.terms-gate > footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px max(20px, calc((100vw - 640px) / 2 + 20px)) calc(12px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+}
+
+.terms-agree {
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.terms-agree .box {
+  flex: none;
+  margin-top: 1px;
+}
+.terms-agree button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.terms-agree button:hover {
+  text-decoration: underline;
+}
+.terms-agree-error {
+  margin-top: 6px;
+}
