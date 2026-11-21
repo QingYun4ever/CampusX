@@ -38,7 +38,7 @@ export const ACCENTS = [
 export const BG_MIX = { dark: 0.3, light: 0.16 };
 const BASE = { dark: '#000000', light: '#ffffff' };
 
-const K = { mode: 'txq_mode', bg: 'txq_bg', accent: 'txq_accent', legacy: 'txq_theme' };
+const K = { mode: 'txq_mode', bg: 'txq_bg', customBgs: 'txq_bg_custom', accent: 'txq_accent', legacy: 'txq_theme' };
 
 function read(k: string) {
   try {
@@ -99,6 +99,32 @@ export function getBg(): Bg {
   }
   if (read(K.legacy) === 'dim') return BG_PRESETS.find((b) => b.id === 'navy')!;
   return BG_PRESETS[0];
+}
+
+/* ---------- 自己调的背景：可以存好几个，只保存在本机 ---------- */
+export const MAX_CUSTOM_BGS = 12;
+export const isCustomBg = (bg: Bg) => bg.id.startsWith('custom');
+
+export function getCustomBgs(): Bg[] {
+  let list: Bg[] = [];
+  try {
+    const v = JSON.parse(read(K.customBgs) ?? '[]');
+    if (Array.isArray(v)) {
+      list = v
+        .filter((b) => b && typeof b.id === 'string' && b.id.startsWith('custom') && HEX.test(b.c1) && HEX.test(b.c2))
+        .map((b) => ({ id: b.id, c1: b.c1, c2: b.c2, angle: Number(b.angle) || 0 }))
+        .slice(0, MAX_CUSTOM_BGS);
+    }
+  } catch {
+    /* ignore */
+  }
+  // 旧版本只有一个「自定义」，正在用的话收进列表
+  const cur = getBg();
+  if (isCustomBg(cur) && !list.some((b) => b.id === cur.id)) list.unshift(cur);
+  return list;
+}
+export function saveCustomBgs(list: Bg[]) {
+  write(K.customBgs, JSON.stringify(list.slice(0, MAX_CUSTOM_BGS)));
 }
 
 /** 返回预设 id，或者自定义的 #rrggbb */

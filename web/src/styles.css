@@ -2103,10 +2103,11 @@ a.card-row:hover {
   transform: scale(1);
 }
 .accent-row {
-  display: flex;
-  justify-content: space-around;
-  gap: 12px;
-  flex-wrap: wrap;
+  /* 七个圆点在手机上也排成一行，不会把「自定义」挤到第二行 */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+  justify-items: center;
+  gap: 8px;
 }
 .accent-dot {
   width: 44px;
@@ -3066,16 +3067,20 @@ a.tag-chip:active {
 .rx-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   height: 30px;
-  padding: 0 10px 0 8px;
+  padding: 0 10px 0 7px;
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  --rx-bg: var(--bg);
+  background: var(--rx-bg);
   transition:
     background-color 0.2s,
+    border-color 0.2s,
     color 0.2s,
     transform 0.2s var(--spring);
   animation: pop-in 0.32s var(--spring) backwards;
@@ -3083,14 +3088,19 @@ a.tag-chip:active {
   user-select: none;
 }
 .rx-pill:hover {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  --rx-bg: color-mix(in srgb, var(--text) 4%, var(--bg));
 }
 .rx-pill:active {
-  transform: scale(0.92);
+  transform: scale(0.94);
 }
+/* 自己回应过的：只描一圈淡淡的强调色，不整块填满 */
 .rx-pill.on {
-  background: var(--accent);
-  color: var(--on-accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong));
+  --rx-bg: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  color: var(--text);
+}
+.rx-pill.on:hover {
+  --rx-bg: color-mix(in srgb, var(--accent) 13%, var(--bg));
 }
 img.emoji {
   display: block;
@@ -3114,11 +3124,10 @@ img.emoji {
   display: inline-flex;
 }
 .rx-faces .avatar {
-  box-shadow: 0 0 0 1.5px var(--bg);
+  /* 描边跟随药丸底色，叠在一起的头像才分得开 */
+  box-shadow: 0 0 0 1.5px var(--rx-bg);
+  transition: box-shadow 0.2s;
   animation: pop-in 0.3s var(--spring) backwards;
-}
-.rx-pill.on .rx-faces .avatar {
-  box-shadow: 0 0 0 1.5px var(--accent);
 }
 .rx-faces .avatar + .avatar {
   margin-left: -6px;
@@ -3841,6 +3850,39 @@ img.emoji {
   transform: scale(1);
   color: #fff;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+.swatch.add {
+  background: transparent;
+  border: 1.5px dashed var(--line-strong);
+  color: var(--text-2);
+}
+.swatch.add svg {
+  transform: scale(1);
+}
+.swatch-opt:hover .swatch.add {
+  border-color: var(--text-2);
+  color: var(--text);
+}
+.diy-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.diy-foot .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-text.danger {
+  color: var(--danger);
+}
+.btn-text.danger:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.diy-tip {
+  margin: 10px 0 0;
 }
 .diy-panel {
   display: grid;

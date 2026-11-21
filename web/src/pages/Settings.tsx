@@ -1,8 +1,7 @@
 import { useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, ChevronRight, LogOut, Palette, Plus, Shield } from 'lucide-react';
-import { Field, toast, TopBar } from '../components/ui';
-import { api, setToken } from '../lib/api';
+import { Check, ChevronRight, LogOut, Plus, Shield, Trash2 } from 'lucide-react';
+import { TopBar } from '../components/ui';
 import { useAuth, useMe } from '../lib/auth';
 import { CURRENT } from '../lib/changelog';
 import {
@@ -12,8 +11,12 @@ import {
   bgColors,
   getAccent,
   getBg,
+  getCustomBgs,
   getMode,
+  isCustomBg,
+  MAX_CUSTOM_BGS,
   resolvedMode,
+  saveCustomBgs,
   setAccent,
   setBg,
   setMode,
@@ -38,8 +41,9 @@ function Appearance() {
   const [mode, setM] = useState<Mode>(getMode());
   const [bg, setB] = useState<Bg>(getBg());
   const [accent, setA] = useState(getAccent());
-  const custom = bg.id === 'custom';
-  const [diy, setDiy] = useState(custom);
+  const [customs, setCustoms] = useState<Bg[]>(getCustomBgs);
+  const custom = isCustomBg(bg);
+  const [diy, setDiy] = useState(false);
   const look = resolvedMode(mode);
   const isPresetAccent = ACCENTS.some((a) => a.id === accent);
 
@@ -55,7 +59,29 @@ function Appearance() {
     setA(a);
     setAccent(a, animate);
   };
-  const customBg: Bg = custom ? bg : { id: 'custom', c1: '#6a8caf', c2: '#c3829e', angle: 160 };
+  const storeCustoms = (list: Bg[]) => {
+    setCustoms(list);
+    saveCustomBgs(list);
+  };
+  /** 调色时同步更新列表里那一项 */
+  const editBg = (next: Bg) => {
+    pickBg(next, false);
+    storeCustoms(customs.map((c) => (c.id === next.id ? next : c)));
+  };
+  const addBg = () => {
+    // 从当前背景出发再调，比每次都从同一组颜色开始顺手
+    const base = bg.id === 'none' ? { c1: '#6a8caf', c2: '#c3829e', angle: 160 } : bg;
+    const next: Bg = { id: `custom-${Date.now().toString(36)}`, c1: base.c1, c2: base.c2, angle: base.angle };
+    storeCustoms([...customs, next]);
+    pickBg(next);
+    setDiy(true);
+  };
+  const removeBg = () => {
+    const rest = customs.filter((c) => c.id !== bg.id);
+    storeCustoms(rest);
+    setDiy(false);
+    pickBg(BG_PRESETS[0]);
+  };
 
   return (
     <>
@@ -98,32 +124,50 @@ function Appearance() {
               <span>{b.name}</span>
             </button>
           ))}
-          <button
-            role="radio"
-            aria-checked={custom}
-            className={`swatch-opt ${custom ? 'on' : ''}`}
-            onClick={() => {
-              setDiy(true);
-              if (!custom) pickBg(customBg);
-            }}
-          >
-            <span className="swatch diy" style={custom ? swatch(bg, look) : undefined}>
-              {custom ? <Check size={16} strokeWidth={3} /> : <Palette size={18} />}
-            </span>
-            <span>自定义</span>
-          </button>
+          {customs.map((c, i) => {
+            const on = bg.id === c.id;
+            return (
+              <button
+                key={c.id}
+                role="radio"
+                aria-checked={on}
+                className={`swatch-opt ${on ? 'on' : ''}`}
+                title={on ? '再点一次调整颜色' : undefined}
+                onClick={() => {
+                  if (on) setDiy(!diy);
+                  else {
+                    setDiy(false);
+                    pickBg(c);
+                  }
+                }}
+              >
+                <span className="swatch" style={swatch(c, look)}>
+                  <Check size={16} strokeWidth={3} />
+                </span>
+                <span>自定义 {i + 1}</span>
+              </button>
+            );
+          })}
+          {customs.length < MAX_CUSTOM_BGS && (
+            <button className="swatch-opt" onClick={addBg} aria-label="添加自定义背景">
+              <span className="swatch add">
+                <Plus size={20} strokeWidth={2.25} />
+              </span>
+              <span>添加</span>
+            </button>
+          )}
         </div>
         {diy && custom && (
           <div className="diy-panel">
             <div className="diy-preview" style={swatch(bg, look)} />
             <div className="diy-controls">
               <label className="color-field">
-                <input type="color" value={bg.c1} onChange={(e) => pickBg({ ...bg, c1: e.target.value }, false)} />
+                <input type="color" value={bg.c1} onChange={(e) => editBg({ ...bg, c1: e.target.value })} />
                 <span>起始色</span>
                 <code>{bg.c1}</code>
               </label>
               <label className="color-field">
-                <input type="color" value={bg.c2} onChange={(e) => pickBg({ ...bg, c2: e.target.value }, false)} />
+                <input type="color" value={bg.c2} onChange={(e) => editBg({ ...bg, c2: e.target.value })} />
                 <span>结束色</span>
                 <code>{bg.c2}</code>
               </label>
@@ -135,13 +179,23 @@ function Appearance() {
                   max={360}
                   step={5}
                   value={bg.angle}
-                  onChange={(e) => pickBg({ ...bg, angle: Number(e.target.value) }, false)}
+                  onChange={(e) => editBg({ ...bg, angle: Number(e.target.value) })}
                 />
                 <code>{bg.angle}°</code>
               </label>
+              <div className="diy-foot">
+                <button className="btn btn-text danger sm" onClick={removeBg}>
+                  <Trash2 size={15} />
+                  删除这个背景
+                </button>
+                <button className="btn btn-outline sm" onClick={() => setDiy(false)}>
+                  完成
+                </button>
+              </div>
             </div>
           </div>
         )}
+        {custom && !diy && <p className="section-sub diy-tip">再点一次选中的自定义背景可以调整颜色。</p>}
       </section>
 
       <section className="section">
@@ -182,71 +236,11 @@ function Appearance() {
 export function Settings() {
   const me = useMe();
   const { signOut } = useAuth();
-  const [pw, setPw] = useState({ oldPassword: '', newPassword: '', confirm: '' });
-  const [busy, setBusy] = useState(false);
-
-  const mismatch = pw.confirm && pw.newPassword !== pw.confirm ? '两次输入的新密码不一样' : '';
-  const changePw = async () => {
-    if (pw.newPassword.length < 8) return toast('新密码至少 8 位', 'error');
-    if (mismatch) return;
-    setBusy(true);
-    try {
-      const r = await api<{ token: string | null }>('/me/password', {
-        body: { oldPassword: pw.oldPassword, newPassword: pw.newPassword },
-      });
-      if (r.token) setToken(r.token);
-      setPw({ oldPassword: '', newPassword: '', confirm: '' });
-      toast('密码已修改，其他设备需要重新登录');
-    } catch (e) {
-      toast((e as Error).message, 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <>
       <TopBar back title="设置" />
       <AccountSecurity />
       <Appearance />
-
-      <section className="section">
-        <h3>修改密码</h3>
-        <Field
-          label="当前密码"
-          type="password"
-          value={pw.oldPassword}
-          onChange={(v) => setPw({ ...pw, oldPassword: v })}
-          autoComplete="current-password"
-        />
-        <div className="row">
-          <Field
-            label="新密码"
-            type="password"
-            value={pw.newPassword}
-            onChange={(v) => setPw({ ...pw, newPassword: v })}
-            autoComplete="new-password"
-            hint="至少 8 位"
-          />
-          <Field
-            label="确认新密码"
-            type="password"
-            value={pw.confirm}
-            onChange={(v) => setPw({ ...pw, confirm: v })}
-            autoComplete="new-password"
-            error={mismatch}
-          />
-        </div>
-        <div>
-          <button
-            className="btn btn-primary"
-            disabled={busy || !pw.oldPassword || !pw.newPassword || !!mismatch}
-            onClick={changePw}
-          >
-            修改密码
-          </button>
-        </div>
-      </section>
 
       {me.role === 'admin' && (
         <Link to="/admin" className="list-link">

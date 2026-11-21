@@ -1,15 +1,21 @@
 package com.tongxuequan.app;
 
+import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.view.Window;
+import androidx.activity.result.ActivityResult;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 
 @CapacitorPlugin(name = "AndroidShell")
 public class AndroidShellPlugin extends Plugin {
@@ -52,5 +58,37 @@ public class AndroidShellPlugin extends Plugin {
             window.getDecorView().requestApplyInsets();
             call.resolve();
         });
+    }
+
+    /** 用系统的「另存为」让用户自己选位置，不需要存储权限 */
+    @PluginMethod
+    public void saveText(PluginCall call) {
+        String name = call.getString("name");
+        if (name == null || name.isEmpty() || call.getString("text") == null) {
+            call.reject("缺少文件名或内容");
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, name);
+        startActivityForResult(call, intent, "saveTextResult");
+    }
+
+    @ActivityCallback
+    private void saveTextResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        Intent data = result.getData();
+        if (result.getResultCode() != Activity.RESULT_OK || data == null || data.getData() == null) {
+            call.reject("已取消");
+            return;
+        }
+        try (OutputStream out = getContext().getContentResolver().openOutputStream(data.getData(), "wt")) {
+            if (out == null) throw new IOException("无法写入");
+            out.write(("\ufeff" + call.getString("text")).getBytes(StandardCharsets.UTF_8));
+            call.resolve();
+        } catch (IOException e) {
+            call.reject("保存失败");
+        }
     }
 }

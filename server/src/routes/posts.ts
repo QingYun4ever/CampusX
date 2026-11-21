@@ -292,18 +292,18 @@ export async function postRoutes(app: FastifyInstance) {
     return rows.map((r) => ({ emoji: r.emoji as string, createdAt: r.reacted_at as number, user: userPublic(r) }));
   });
 
-  /* ---------- 浏览数：前端把看到的帖子批量报上来，每人每帖只算一次，作者自己不算 ---------- */
+  /* ---------- 浏览数：前端把看到的帖子批量报上来，每人每帖只算一次（作者自己看也算） ---------- */
   app.post('/posts/views', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req) => {
     const user = me(req);
     const { ids } = parse(z.object({ ids: z.array(z.number().int().positive()).max(50) }), req.body);
     const t = now();
     tx(() => {
       for (const id of new Set(ids)) {
-        const p = get<{ author_id: number }>(
-          `SELECT author_id FROM posts WHERE id = $id AND status = 'ok' AND deleted = 0 AND repost_of IS NULL AND ${visibleTo()}`,
+        const p = get(
+          `SELECT 1 FROM posts WHERE id = $id AND status = 'ok' AND deleted = 0 AND repost_of IS NULL AND ${visibleTo()}`,
           { id, me: user.id },
         );
-        if (!p || p.author_id === user.id) continue;
+        if (!p) continue;
         const r = run('INSERT OR IGNORE INTO post_views (post_id, user_id, created_at) VALUES ($p, $u, $t)', { p: id, u: user.id, t });
         if (r.changes) run('UPDATE posts SET view_count = view_count + 1 WHERE id = $id', { id });
       }

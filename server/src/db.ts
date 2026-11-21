@@ -239,7 +239,7 @@ CREATE INDEX IF NOT EXISTS idx_board_mods_user ON board_mods(user_id);
 CREATE INDEX IF NOT EXISTS idx_posts_pinned ON posts(board_id, pinned_at) WHERE pinned_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_seen ON users(last_seen_at);
 
--- 浏览：每人每帖记一次（作者自己不算）
+-- 浏览：每人每帖记一次（作者自己也算）
 CREATE TABLE IF NOT EXISTS post_views (
   post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

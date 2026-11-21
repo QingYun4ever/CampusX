@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Mail, ShieldCheck } from 'lucide-react';
+import { Check, ChevronRight, Copy, Download, KeyRound, Mail, ShieldCheck } from 'lucide-react';
 import { Field, Modal, Spinner, toast } from '../components/ui';
-import { api } from '../lib/api';
+import { api, setToken } from '../lib/api';
+import { AndroidShell, isAndroid } from '../lib/android';
+import { useMe } from '../lib/auth';
 import './account-security.css';
 
 type Security = { email: string | null; emailAvailable: boolean; twoFactorEnabled: boolean };
@@ -106,6 +108,109 @@ function EmailSettings({ status, update, back }: { status: Security; update: (st
   );
 }
 
+/** 恢复码文件：纯文本，换台电脑、打印出来都能直接看懂 */
+function recoveryText(codes: string[], username: string) {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const when = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return [
+    '校墙 · 两步验证恢复码',
+    '',
+    `账号：@${username}`,
+    `生成于：${when}`,
+    `网站：${location.origin}`,
+    '',
+    ...codes.map((c, i) => `${String(i + 1).padStart(2, ' ')}.  ${c}`),
+    '',
+    '验证器用不了的时候（换手机、删了 App），登录时在验证码一栏填任意一个还没用过的恢复码。',
+    '每个恢复码只能用一次。重新开启两步验证后，这里的恢复码会全部作废。',
+    '请把这个文件放在安全的地方，不要发给任何人。',
+    '',
+  ].join('\r\n');
+}
+
+function RecoveryCodes({ codes, done }: { codes: string[]; done: () => void }) {
+  const me = useMe();
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const text = recoveryText(codes, me.username);
+  const filename = `校墙恢复码-${me.username}.txt`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(codes.join('\n'));
+      setCopied(true);
+      setSaved(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast('复制失败，可以手动选中恢复码', 'error');
+    }
+  };
+  const download = async () => {
+    if (isAndroid) {
+      try {
+        await AndroidShell.saveText({ name: filename, text });
+        setSaved(true);
+        toast('已保存恢复码');
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : '';
+        if (!msg.includes('取消')) toast(msg.includes('not implemented') ? '当前 App 版本不支持下载，请先复制保存' : '保存失败，请先复制保存', 'error');
+      }
+      return;
+    }
+    // 加 BOM，Windows 记事本才不会把中文认成乱码
+    const url = URL.createObjectURL(new Blob(['\ufeff' + text], { type: 'text/plain;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setSaved(true);
+  };
+
+  return (
+    <div className="modal-body security-panel recovery">
+      <div className="recovery-head">
+        <span className="recovery-icon"><ShieldCheck size={22} /></span>
+        <div>
+          <h3>两步验证已开启</h3>
+          <p>验证器用不了时，可以用下面的恢复码登录。每个只能用一次，关掉这个窗口后就看不到了。</p>
+        </div>
+      </div>
+      <div className="recovery-sheet">
+        <ol className="recovery-codes" aria-label="恢复码">
+          {codes.map((c, i) => (
+            <li key={c}>
+              <span className="recovery-no" aria-hidden>{String(i + 1).padStart(2, '0')}</span>
+              <code>{c}</code>
+            </li>
+          ))}
+        </ol>
+        <div className="recovery-tools">
+          <button type="button" className="btn btn-outline sm" onClick={copy}>
+            {copied ? <Check size={16} /> : <Copy size={16} />}
+            {copied ? '已复制' : '复制'}
+          </button>
+          <button type="button" className="btn btn-outline sm" onClick={download}>
+            <Download size={16} />
+            下载 .txt
+          </button>
+        </div>
+      </div>
+      <label className="check recovery-confirm">
+        <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
+        <span className="box" />
+        我已经把恢复码保存好了
+      </label>
+      <div className="security-actions">
+        <button type="button" className="btn btn-primary" disabled={!saved} onClick={done}>完成</button>
+      </div>
+    </div>
+  );
+}
+
 function TwoFactorSettings({ status, update, back }: { status: Security; update: (status: Security) => void; back: () => void }) {
   const [setup, setSetup] = useState<{ secret: string; uri: string } | null>(null);
   const [qr, setQr] = useState<string>();
@@ -153,26 +258,7 @@ function TwoFactorSettings({ status, update, back }: { status: Security; update:
     }
   };
 
-  if (codes) return (
-    <div className="modal-body security-panel">
-      <h3>保存恢复码</h3>
-      <p>两步验证已开启。这些恢复码只显示一次，每个只能用一次。请存放在安全的地方。</p>
-      <ul className="security-recovery" aria-label="恢复码">
-        {codes.map((item) => <li key={item}><code>{item}</code></li>)}
-      </ul>
-      <div className="security-actions">
-        <button type="button" className="btn btn-outline" onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(codes.join('\n'));
-            toast('已复制恢复码');
-          } catch {
-            toast('复制失败，可以手动选中恢复码', 'error');
-          }
-        }}>复制恢复码</button>
-        <button type="button" className="btn btn-primary" onClick={back}>完成</button>
-      </div>
-    </div>
-  );
+  if (codes) return <RecoveryCodes codes={codes} done={back} />;
 
   return (
     <form className="modal-body security-panel" onSubmit={submit}>
@@ -201,9 +287,68 @@ function TwoFactorSettings({ status, update, back }: { status: Security; update:
   );
 }
 
+function PasswordSettings({ back }: { back: () => void }) {
+  const [pw, setPw] = useState({ oldPassword: '', newPassword: '', confirm: '' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const mismatch = pw.confirm && pw.newPassword !== pw.confirm ? '两次输入的新密码不一样' : '';
+  const short = pw.newPassword && pw.newPassword.length < 8 ? '至少 8 位' : '';
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy || short || mismatch) return;
+    setBusy(true);
+    setError('');
+    try {
+      const r = await api<{ token: string | null }>('/me/password', {
+        body: { oldPassword: pw.oldPassword, newPassword: pw.newPassword },
+      });
+      if (r.token) setToken(r.token);
+      toast('密码已修改，其他设备需要重新登录');
+      back();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '修改失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="modal-body security-panel" onSubmit={submit}>
+      <p className="muted">修改后，其他已登录的设备会退出，需要用新密码重新登录。</p>
+      <Password value={pw.oldPassword} onChange={(v) => setPw({ ...pw, oldPassword: v })} />
+      <Field
+        label="新密码"
+        type="password"
+        autoComplete="new-password"
+        value={pw.newPassword}
+        onChange={(v) => setPw({ ...pw, newPassword: v })}
+        hint="至少 8 位"
+        required
+      />
+      <Field
+        label="确认新密码"
+        type="password"
+        autoComplete="new-password"
+        value={pw.confirm}
+        onChange={(v) => setPw({ ...pw, confirm: v })}
+        error={mismatch}
+        required
+      />
+      {error && <p className="security-error" role="alert">{error}</p>}
+      <div className="security-actions">
+        <button type="button" className="btn btn-text" onClick={back}>取消</button>
+        <button className="btn btn-primary" disabled={busy || !pw.oldPassword || !pw.newPassword || !pw.confirm || !!short || !!mismatch}>
+          {busy ? '正在修改…' : '修改密码'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function AccountSecurity() {
   const qc = useQueryClient();
-  const [view, setView] = useState<'email' | 'factor' | null>(null);
+  const [view, setView] = useState<'password' | 'email' | 'factor' | null>(null);
   const q = useQuery({ queryKey: securityKey, queryFn: () => api<Security>('/me/security') });
   const status = q.data;
   const update = (next: Security) => qc.setQueryData(securityKey, next);
@@ -213,6 +358,10 @@ export function AccountSecurity() {
       <section className="section">
         <h3>账户安全</h3>
         <div>
+          <button type="button" className="list-link" onClick={() => setView('password')}>
+            <KeyRound size={18} /> <span>修改密码</span>
+            <ChevronRight size={16} className="security-end" />
+          </button>
           <button type="button" className="list-link" onClick={() => setView('email')}>
             <Mail size={18} /> <span>邮箱绑定</span>
             <span className="muted small security-end">
@@ -227,7 +376,12 @@ export function AccountSecurity() {
           </button>
         </div>
       </section>
-      {view && (
+      {view === 'password' && (
+        <Modal title="修改密码" onClose={close}>
+          <PasswordSettings back={close} />
+        </Modal>
+      )}
+      {view && view !== 'password' && (
         <Modal title={view === 'email' ? '邮箱绑定' : '两步验证'} onClose={close}>
           {q.isPending ? <div className="modal-body"><Spinner inline /></div> : q.isError ? (
             <div className="modal-body">
