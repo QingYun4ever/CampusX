@@ -119,7 +119,7 @@ function Overview() {
   ];
   return (
     <>
-      <PageHead title="概览" sub="同学圈的整体情况" />
+      <PageHead title="概览" sub="校墙的整体情况" />
       <div className="stat-grid">
         {tiles.map(([label, value, delta, tone], i) => (
           <div key={label} className={`stat-tile enter ${tone ?? ''}`} style={{ '--i': i } as CSSProperties}>
@@ -516,7 +516,7 @@ function Invites() {
   const copy = async (code: string) => {
     const link = `${WEB_ORIGIN}/register?invite=${code}`;
     try {
-      await navigator.clipboard.writeText(`同学圈注册链接：${link}\n邀请码：${code}`);
+      await navigator.clipboard.writeText(`校墙注册链接：${link}\n邀请码：${code}`);
       toast('注册链接和邀请码已复制');
     } catch {
       toast(code);
@@ -768,9 +768,9 @@ export function Admin() {
     refetchInterval: 30_000,
   });
   useEffect(() => {
-    document.title = '管理后台 · 同学圈';
+    document.title = '管理后台 · 校墙';
     return () => {
-      document.title = '同学圈';
+      document.title = '校墙';
     };
   }, []);
   if (me.role !== 'admin') {
@@ -793,12 +793,12 @@ export function Admin() {
       <header className="admin-top">
         <Link to="/admin" className="admin-brand">
           <Logo size={26} />
-          <span>同学圈</span>
+          <span>校墙</span>
           <span className="admin-badge">管理后台</span>
         </Link>
         <span className="spacer" />
         <Link to="/" className="btn btn-outline sm admin-back">
-          <ArrowLeft size={16} /> <span>返回同学圈</span>
+          <ArrowLeft size={16} /> <span>返回校墙</span>
         </Link>
         <Avatar src={me.avatar} name={me.displayName} size={32} />
       </header>

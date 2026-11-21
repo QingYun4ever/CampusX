@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, now, run, tx } from '../db.ts';
 import { enqueue, moderationOn } from '../moderation.ts';
-import { extractTags, hydrate, normalizeTag, notify, postById, postSelect, publishEffects, REACTIONS, unnotify } from '../serialize.ts';
+import { boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publishEffects, REACTIONS, unnotify } from '../serialize.ts';
+import { USER_COLS, userPublic } from './users-common.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 
 const PAGE = 20;
@@ -140,12 +141,15 @@ export async function postRoutes(app: FastifyInstance) {
   app.delete('/posts/:id', async (req) => {
     const user = me(req);
     const id = Number((req.params as { id: string }).id);
-    const p = get<{ author_id: number; repost_of: number | null; parent_id: number | null; deleted: number; status: string }>(
-      'SELECT author_id, repost_of, parent_id, deleted, status FROM posts WHERE id = $id',
+    const p = get<{ author_id: number; repost_of: number | null; parent_id: number | null; board_id: number | null; deleted: number; status: string }>(
+      'SELECT author_id, repost_of, parent_id, board_id, deleted, status FROM posts WHERE id = $id',
       { id },
     );
     if (!p || p.deleted) throw new HttpError(404, '帖子不存在');
-    if (p.author_id !== user.id && user.role !== 'admin') throw new HttpError(403, '没有权限');
+    // 作者本人、站点管理员、这个吧的吧主 / 吧务可以删除（转发行只有本人能删）
+    const allowed =
+      p.author_id === user.id || (!p.repost_of && (user.role === 'admin' || !!boardRole(p.board_id, user)));
+    if (!allowed) throw new HttpError(403, '没有权限');
     tx(() => {
       if (p.repost_of) {
         run('DELETE FROM posts WHERE id = $id', { id });
@@ -153,7 +157,7 @@ export async function postRoutes(app: FastifyInstance) {
         return;
       }
       // 软删除，保留楼中楼结构
-      run(`UPDATE posts SET deleted = 1, content = '', images = '[]' WHERE id = $id`, { id });
+      run(`UPDATE posts SET deleted = 1, content = '', images = '[]', pinned_at = NULL WHERE id = $id`, { id });
       run('DELETE FROM posts WHERE repost_of = $id', { id });
       run('DELETE FROM notifications WHERE post_id = $id', { id });
       if (p.parent_id && p.status === 'ok') {
@@ -224,20 +228,26 @@ export async function postRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  /* ---------- 表情回应 ---------- */
+  /* ---------- 表情回应（Telegram 式：每人每帖一个，选别的会替换） ---------- */
   const reactionKey = (raw: string) => {
     if (!(REACTIONS as readonly string[]).includes(raw)) throw new HttpError(400, '不支持这个表情');
     return raw;
   };
-  app.put('/posts/:id/reactions/:key', async (req) => {
+  app.put('/posts/:id/reactions/:key', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req) => {
     const user = me(req);
     const params = req.params as { id: string; key: string };
+    const emoji = reactionKey(params.key);
     const target = resolveTarget(Number(params.id), user.id);
-    run('INSERT OR IGNORE INTO reactions (post_id, user_id, emoji, created_at) VALUES ($p, $u, $e, $t)', {
-      p: target.id,
-      u: user.id,
-      e: reactionKey(params.key),
-      t: now(),
+    tx(() => {
+      run('DELETE FROM reactions WHERE post_id = $p AND user_id = $u', { p: target.id, u: user.id });
+      run('INSERT INTO reactions (post_id, user_id, emoji, created_at) VALUES ($p, $u, $e, $t)', {
+        p: target.id,
+        u: user.id,
+        e: emoji,
+        t: now(),
+      });
+      unnotify(target.author_id, user.id, 'reaction', target.id);
+      notify(target.author_id, user.id, 'reaction', target.id, emoji);
     });
     return postById(target.id, user.id)?.reactions ?? [];
   });
@@ -245,12 +255,75 @@ export async function postRoutes(app: FastifyInstance) {
     const user = me(req);
     const params = req.params as { id: string; key: string };
     const target = resolveTarget(Number(params.id), user.id);
-    run('DELETE FROM reactions WHERE post_id = $p AND user_id = $u AND emoji = $e', {
-      p: target.id,
-      u: user.id,
-      e: reactionKey(params.key),
+    tx(() => {
+      const r = run('DELETE FROM reactions WHERE post_id = $p AND user_id = $u AND emoji = $e', {
+        p: target.id,
+        u: user.id,
+        e: reactionKey(params.key),
+      });
+      if (r.changes) unnotify(target.author_id, user.id, 'reaction', target.id);
     });
     return postById(target.id, user.id)?.reactions ?? [];
+  });
+  /** 谁回应了（按时间倒序） */
+  app.get('/posts/:id/reactions', async (req) => {
+    const user = me(req);
+    const target = resolveTarget(Number((req.params as { id: string }).id), user.id);
+    const rows = all(
+      `SELECT r.emoji, r.created_at AS reacted_at, ${USER_COLS} FROM reactions r JOIN users u ON u.id = r.user_id
+       WHERE r.post_id = $p ORDER BY r.created_at DESC LIMIT 500`,
+      { p: target.id },
+    );
+    return rows.map((r) => ({ emoji: r.emoji as string, createdAt: r.reacted_at as number, user: userPublic(r) }));
+  });
+
+  /* ---------- 浏览数：前端把看到的帖子批量报上来，每人每帖只算一次，作者自己不算 ---------- */
+  app.post('/posts/views', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req) => {
+    const user = me(req);
+    const { ids } = parse(z.object({ ids: z.array(z.number().int().positive()).max(50) }), req.body);
+    const t = now();
+    tx(() => {
+      for (const id of new Set(ids)) {
+        const p = get<{ author_id: number }>(
+          "SELECT author_id FROM posts WHERE id = $id AND status = 'ok' AND deleted = 0 AND repost_of IS NULL",
+          { id },
+        );
+        if (!p || p.author_id === user.id) continue;
+        const r = run('INSERT OR IGNORE INTO post_views (post_id, user_id, created_at) VALUES ($p, $u, $t)', { p: id, u: user.id, t });
+        if (r.changes) run('UPDATE posts SET view_count = view_count + 1 WHERE id = $id', { id });
+      }
+    });
+    return { ok: true };
+  });
+
+  /* ---------- 吧内置顶（吧主 / 吧务 / 管理员） ---------- */
+  const MAX_PINNED = 3;
+  const pinTarget = (req: { params: unknown }, user: { id: number; role: string }) => {
+    const id = Number((req.params as { id: string }).id);
+    const p = get<{ id: number; board_id: number | null; parent_id: number | null; repost_of: number | null; deleted: number; status: string; pinned_at: number | null }>(
+      'SELECT id, board_id, parent_id, repost_of, deleted, status, pinned_at FROM posts WHERE id = $id',
+      { id },
+    );
+    if (!p || p.deleted || p.status !== 'ok') throw new HttpError(404, '帖子不存在');
+    if (!p.board_id || p.parent_id || p.repost_of) throw new HttpError(400, '只能置顶吧里的主楼');
+    if (!boardRole(p.board_id, user)) throw new HttpError(403, '只有吧主和吧务可以置顶');
+    return p;
+  };
+  app.post('/posts/:id/pin', async (req) => {
+    const user = me(req);
+    const p = pinTarget(req, user);
+    if (!p.pinned_at) {
+      const n = get<{ n: number }>('SELECT COUNT(*) AS n FROM posts WHERE board_id = $b AND pinned_at IS NOT NULL', { b: p.board_id })!.n;
+      if (n >= MAX_PINNED) throw new HttpError(400, `每个吧最多置顶 ${MAX_PINNED} 条，先取消一条吧`);
+      run('UPDATE posts SET pinned_at = $t WHERE id = $id', { t: now(), id: p.id });
+    }
+    return { ok: true };
+  });
+  app.delete('/posts/:id/pin', async (req) => {
+    const user = me(req);
+    const p = pinTarget(req, user);
+    run('UPDATE posts SET pinned_at = NULL WHERE id = $id', { id: p.id });
+    return { ok: true };
   });
 
   /* ---------- 标签 ---------- */

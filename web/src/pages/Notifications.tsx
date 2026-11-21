@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AtSign, Heart, MessageCircle, Repeat2, UserPlus } from 'lucide-react';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { PostCard } from '../components/PostCard';
-import { Avatar, Empty, TopBar } from '../components/ui';
+import { Avatar, Emoji, Empty, TopBar } from '../components/ui';
 import { api, type Notification } from '../lib/api';
 import { timeAgo } from '../lib/format';
 
@@ -14,6 +14,7 @@ const META = {
   follow: { icon: <UserPlus size={24} color="var(--accent)" fill="var(--accent)" />, text: '关注了你' },
   reply: { icon: <MessageCircle size={24} color="var(--accent)" />, text: '回复了你' },
   mention: { icon: <AtSign size={24} color="var(--accent)" />, text: '提到了你' },
+  reaction: { icon: null, text: '回应了你的帖子' },
 };
 
 function Item({ n }: { n: Notification }) {
@@ -32,7 +33,7 @@ function Item({ n }: { n: Notification }) {
       className={`notif ${n.read ? '' : 'unread'}`}
       onClick={() => nav(n.post ? `/post/${n.post.id}` : `/u/${n.actor.username}`)}
     >
-      <div className="notif-icon">{m.icon}</div>
+      <div className="notif-icon">{m.icon ?? (n.extra ? <Emoji e={n.extra} size={26} /> : null)}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <Link to={`/u/${n.actor.username}`} onClick={(e) => e.stopPropagation()}>
           <Avatar src={n.actor.avatar} name={n.actor.displayName} size={32} />
@@ -71,7 +72,7 @@ export function Notifications() {
       <TopBar title="通知" />
       <InfiniteList
         q={q}
-        empty={<Empty title="暂无通知">别人回复、点赞、转发或关注你时会显示在这里。</Empty>}
+        empty={<Empty title="暂无通知">别人回复、点赞、回应、转发或关注你时会显示在这里。</Empty>}
         getKey={(n) => n.id}
         render={(n) => <Item n={n} />}
       />

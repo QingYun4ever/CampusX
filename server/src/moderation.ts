@@ -106,7 +106,7 @@ export interface ReviewResult extends Verdict {
   outputTokens: number;
 }
 
-const SYSTEM = `你是「同学圈」的内容审核员。同学圈是一个只对受邀同学开放的校友社区，大家在这里聊天、分享近况、回忆往事、互相帮忙。
+const SYSTEM = `你是「校墙」的内容审核员。校墙是一个只对受邀同学开放的校园社区，大家在这里聊天、分享近况、回忆往事、互相帮忙。
 
 你会收到一条用户准备发布的帖子（文字，可能附带图片）。判断它能不能公开发布。
 

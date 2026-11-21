@@ -88,6 +88,8 @@ export interface UserLite {
   className: string;
   verified?: boolean;
   verifiedNote?: string;
+  /** 作者在帖子所在吧的身份（只在帖子里有） */
+  boardRole?: 'owner' | 'mod' | null;
 }
 
 export interface User extends UserLite {
@@ -116,9 +118,28 @@ export interface Board extends BoardRef {
   id: number;
   description: string;
   createdBy: number | null;
+  ownerId: number | null;
   memberCount: number;
   postCount: number;
   joined: boolean;
+}
+
+/** 吧详情页：吧主、吧务、公告、我的身份 */
+export interface BoardDetail extends Board {
+  owner: User | null;
+  mods: User[];
+  announcement: { text: string; updatedAt: number; by: User | null } | null;
+  /** owner 吧主 / mod 吧务 / admin 站点管理员 / null 普通成员 */
+  myRole: 'owner' | 'mod' | 'admin' | null;
+}
+
+export interface SiteStats {
+  online: number;
+  onlineUsers: User[];
+  users: number;
+  posts: number;
+  postsToday: number;
+  boards: number;
 }
 
 export interface Post {
@@ -133,32 +154,66 @@ export interface Post {
   likeCount: number;
   replyCount: number;
   repostCount: number;
+  viewCount: number;
   liked: boolean;
   reposted: boolean;
   deleted: boolean;
   createdAt: number;
   tags: string[];
   reactions: Reaction[];
+  pinned: boolean;
+  /** 我是这条帖子所在吧的吧主 / 吧务 */
+  canModerate: boolean;
   repostOf: Post | null;
 }
 
 export interface Reaction {
+  /** emoji 本身 */
   key: string;
   count: number;
   me: boolean;
+  /** 最近回应的几个人 */
+  users: { username: string; displayName: string; avatar: string | null }[];
 }
 
-/** 和 GitHub 一样的 8 个表情回应 */
-export const REACTIONS: { key: string; emoji: string; name: string }[] = [
-  { key: '+1', emoji: '👍', name: '赞同' },
-  { key: '-1', emoji: '👎', name: '反对' },
-  { key: 'laugh', emoji: '😄', name: '笑' },
-  { key: 'hooray', emoji: '🎉', name: '庆祝' },
-  { key: 'confused', emoji: '😕', name: '疑惑' },
-  { key: 'heart', emoji: '❤️', name: '爱心' },
-  { key: 'rocket', emoji: '🚀', name: '火箭' },
-  { key: 'eyes', emoji: '👀', name: '围观' },
+/**
+ * Telegram 式表情回应：每人每帖一个，换一个会替换。顺序就是选择面板里的顺序，前 7 个是快捷栏。
+ * 服务端 serialize.ts 里有同样的列表。
+ */
+export const REACTIONS = [
+  '👍', '👎', '❤️', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱', '😢', '🎉', '🤩', '🙏', '👌', '😍',
+  '🤣', '💯', '⚡', '🏆', '💔', '🤨', '😐', '😭', '🤓', '👻', '👀', '🙈', '😇', '😨', '🤝', '✍️',
+  '🤗', '🫡', '💅', '🤪', '🗿', '🆒', '💘', '🦄', '😘', '😎', '🤷', '😡', '🥱', '🥴', '🌚', '🐳',
+  '🍓', '🍾', '🎃', '❤️‍🔥',
 ];
+export const QUICK_REACTIONS = REACTIONS.slice(0, 7);
+
+/* ---------- 私信 ---------- */
+export interface DmUser extends User {
+  lastSeenAt: number | null;
+}
+export interface DmMessage {
+  id: number;
+  senderId: number;
+  content: string;
+  deleted: boolean;
+  createdAt: number;
+  /** 前端发送中 / 发送失败 */
+  pending?: boolean;
+  failed?: boolean;
+}
+export interface Conversation {
+  peer: DmUser;
+  unread: number;
+  last: DmMessage & { read: boolean };
+}
+export interface ChatPage {
+  peer: DmUser;
+  messages: DmMessage[];
+  hasMore: boolean;
+  peerReadUpTo: number;
+  deletedIds: number[];
+}
 
 export interface Page<T> {
   items: T[];
@@ -167,8 +222,10 @@ export interface Page<T> {
 
 export interface Notification {
   id: number;
-  type: 'like' | 'reply' | 'repost' | 'follow' | 'mention';
+  type: 'like' | 'reply' | 'repost' | 'follow' | 'mention' | 'reaction';
   read: boolean;
+  /** reaction：用的哪个表情 */
+  extra?: string;
   createdAt: number;
   actor: User;
   post: Post | null;

@@ -162,12 +162,26 @@ export const now = () => Date.now();
 // 增量迁移：给老数据库补上后来加的列
 function addColumn(table: string, col: string, def: string) {
   const cols = all<{ name: string }>(`PRAGMA table_info(${table})`).map((c) => c.name);
-  if (!cols.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+  if (cols.includes(col)) return false;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+  return true;
 }
 addColumn('users', 'verified', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'verified_note', "TEXT NOT NULL DEFAULT ''");
 // 审核状态：ok 公开；pending 审核中；rejected 未通过。后两种只有作者自己看得到
 addColumn('posts', 'status', "TEXT NOT NULL DEFAULT 'ok'");
+// 在线状态：最近一次请求的时间（每分钟最多写一次）
+addColumn('users', 'last_seen_at', 'INTEGER');
+// 吧主、公告、置顶
+if (addColumn('boards', 'owner_id', 'INTEGER REFERENCES users(id) ON DELETE SET NULL')) {
+  db.exec('UPDATE boards SET owner_id = created_by');
+}
+addColumn('boards', 'announcement', "TEXT NOT NULL DEFAULT ''");
+addColumn('boards', 'announcement_at', 'INTEGER');
+addColumn('boards', 'announcement_by', 'INTEGER REFERENCES users(id) ON DELETE SET NULL');
+addColumn('posts', 'pinned_at', 'INTEGER');
+// 通知的附加信息（例如表情回应用的哪个表情）
+addColumn('notifications', 'extra', "TEXT NOT NULL DEFAULT ''");
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS settings (
@@ -206,7 +220,58 @@ CREATE TABLE IF NOT EXISTS reactions (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (post_id, user_id, emoji)
 );
+
+-- 吧务（小吧主）。吧主记在 boards.owner_id
+CREATE TABLE IF NOT EXISTS board_mods (
+  board_id   INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (board_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_board_mods_user ON board_mods(user_id);
+CREATE INDEX IF NOT EXISTS idx_posts_pinned ON posts(board_id, pinned_at) WHERE pinned_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_seen ON users(last_seen_at);
+
+-- 浏览：每人每帖记一次（作者自己不算）
+CREATE TABLE IF NOT EXISTS post_views (
+  post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (post_id, user_id)
+) WITHOUT ROWID;
+
+-- 私信
+CREATE TABLE IF NOT EXISTS dm_messages (
+  id           INTEGER PRIMARY KEY,
+  sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content      TEXT NOT NULL,
+  deleted      INTEGER NOT NULL DEFAULT 0,
+  read_at      INTEGER,
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dm_pair ON dm_messages(sender_id, recipient_id, id);
+CREATE INDEX IF NOT EXISTS idx_dm_pair2 ON dm_messages(recipient_id, sender_id, id);
+CREATE INDEX IF NOT EXISTS idx_dm_unread ON dm_messages(recipient_id, read_at) WHERE read_at IS NULL;
 `);
+addColumn('posts', 'view_count', 'INTEGER NOT NULL DEFAULT 0');
+
+// 表情回应从 GitHub 式的 8 个英文 key 换成 Telegram 式的 emoji，并且每人每帖只保留一个
+{
+  const OLD: Record<string, string> = {
+    '+1': '👍', '-1': '👎', laugh: '😁', hooray: '🎉', confused: '🤔', heart: '❤️', rocket: '🔥', eyes: '👀',
+  };
+  if (get(`SELECT 1 FROM reactions WHERE emoji IN (${Object.keys(OLD).map((k) => `'${k}'`).join(',')}) LIMIT 1`)) {
+    tx(() => {
+      for (const [k, v] of Object.entries(OLD)) {
+        run('UPDATE OR IGNORE reactions SET emoji = $v WHERE emoji = $k', { k, v });
+        run('DELETE FROM reactions WHERE emoji = $k', { k });
+      }
+      run(`DELETE FROM reactions WHERE rowid NOT IN (
+             SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (PARTITION BY post_id, user_id ORDER BY created_at DESC) AS rn FROM reactions) WHERE rn = 1)`);
+    });
+  }
+}
 
 // 首次启动：建几个默认的吧
 if (!get('SELECT 1 FROM boards LIMIT 1')) {

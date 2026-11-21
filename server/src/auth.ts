@@ -63,6 +63,17 @@ export function userFromToken(token: string): SessionUser | null {
   return { id: row.id, username: row.username, role: row.role };
 }
 
+/* ---------------- 在线状态 ---------------- */
+
+const lastTouch = new Map<number, number>();
+/** 记录用户最近一次活动；同一个人每分钟最多写一次数据库 */
+export function touchSeen(id: number) {
+  const t = now();
+  if ((lastTouch.get(id) ?? 0) > t - 60_000) return;
+  lastTouch.set(id, t);
+  run('UPDATE users SET last_seen_at = $t WHERE id = $id', { t, id });
+}
+
 /* ---------------- 图形验证码（内存存储，一次性） ---------------- */
 
 const captchas = new Map<string, { text: string; expires: number }>();

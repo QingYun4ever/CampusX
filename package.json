@@ -10,7 +10,8 @@
     "build": "npm run build -w web",
     "start": "npm run start -w server",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
-    "invite": "npm run invite -w server --"
+    "invite": "npm run invite -w server --",
+    "backup": "npm run backup -w server --"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

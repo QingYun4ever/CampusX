@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Camera, GraduationCap, School, Settings } from 'lucide-react';
+import { CalendarDays, Camera, GraduationCap, Mail, School, Settings } from 'lucide-react';
 import { Feed } from '../components/Feed';
 import { FollowButton } from '../components/FollowButton';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Tabs, toast, toneFor, TopBar, useModalClose, Verified } from '../components/ui';
@@ -63,7 +63,12 @@ export function Profile() {
               编辑资料
             </button>
           ) : (
-            <FollowButton username={u.username} initial={u.isFollowing} />
+            <>
+              <Link to={`/messages/${u.username}`} className="icon-btn outlined" aria-label="发私信" title="发私信">
+                <Mail size={19} />
+              </Link>
+              <FollowButton username={u.username} initial={u.isFollowing} />
+            </>
           )}
         </div>
         <div className="profile-avatar avatar" style={{ width: 'min(134px, 25vw)', height: 'min(134px, 25vw)' }}>

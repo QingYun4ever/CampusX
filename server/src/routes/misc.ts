@@ -52,7 +52,7 @@ export async function miscRoutes(app: FastifyInstance) {
     const user = me(req);
     const q = req.query as { cursor?: string };
     const rows = all(
-      `SELECT n.id AS nid, n.type, n.post_id, n.read, n.created_at AS n_created_at, ${USER_COLS}
+      `SELECT n.id AS nid, n.type, n.post_id, n.read, n.extra, n.created_at AS n_created_at, ${USER_COLS}
        FROM notifications n JOIN users u ON u.id = n.actor_id
        WHERE n.user_id = $me AND ($cursor IS NULL OR n.id < $cursor)
        ORDER BY n.id DESC LIMIT 30`,
@@ -66,12 +66,36 @@ export async function miscRoutes(app: FastifyInstance) {
         id: r.nid as number,
         type: r.type as string,
         read: !!r.read,
+        extra: (r.extra as string) ?? '',
         createdAt: r.n_created_at as number,
         actor: userPublic(r),
         post: r.post_id ? (posts.get(r.post_id) ?? null) : null,
       }))
       .filter((n) => !n.post?.deleted && (n.type === 'follow' || n.post));
     return { items, nextCursor: rows.length >= 30 ? String(rows[rows.length - 1].nid) : null };
+  });
+
+  /* ---------- 站点概况（右栏：在线、总人数） ---------- */
+  const ONLINE_WINDOW = 5 * 60_000;
+  app.get('/stats/site', async () => {
+    const since = now() - ONLINE_WINDOW;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const n = (sql: string, params: Record<string, number> = {}) => get<{ n: number }>(sql, params)!.n;
+    return {
+      online: n('SELECT COUNT(*) AS n FROM users WHERE last_seen_at > $s', { s: since }),
+      onlineUsers: all(
+        `SELECT ${USER_COLS} FROM users u WHERE u.last_seen_at > $s ORDER BY u.last_seen_at DESC LIMIT 10`,
+        { s: since },
+      ).map(userPublic),
+      users: n('SELECT COUNT(*) AS n FROM users'),
+      posts: n("SELECT COUNT(*) AS n FROM posts WHERE deleted = 0 AND repost_of IS NULL AND status = 'ok'"),
+      postsToday: n(
+        "SELECT COUNT(*) AS n FROM posts WHERE deleted = 0 AND repost_of IS NULL AND status = 'ok' AND created_at >= $t",
+        { t: today.getTime() },
+      ),
+      boards: n('SELECT COUNT(*) AS n FROM boards'),
+    };
   });
 
   app.get('/notifications/unread-count', async (req) => {

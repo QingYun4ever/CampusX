@@ -21,6 +21,7 @@ import {
   Home,
   LayoutGrid,
   LogOut,
+  Mail,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
@@ -29,14 +30,16 @@ import {
   Shield,
   User as UserIcon,
 } from 'lucide-react';
-import { api, type Board, type User } from '../lib/api';
+import { api, type Board, type SiteStats, type User } from '../lib/api';
+import { CURRENT, hasUnseen } from '../lib/changelog';
 import { useAuth, useMe } from '../lib/auth';
 import { getNavCollapsed, getNavWidth, NAV_W, setNavCollapsed, setNavWidth } from '../lib/theme';
 import { useCompose } from './compose';
 import { FollowButton } from './FollowButton';
 import { Logo } from './Logo';
 import { preloadMarkdown } from './PostCard';
-import { Avatar, BoardMark, Modal, useModalClose, Verified } from './ui';
+import { useDmUnread } from '../pages/Messages';
+import { Avatar, BoardMark, Modal, Rolling, useModalClose, Verified } from './ui';
 
 function useUnread() {
   return useQuery({
@@ -156,18 +159,20 @@ function Nav({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void
   const me = useMe();
   const compose = useCompose();
   const unread = useUnread().data;
+  const dmUnread = useDmUnread().data;
   const menu = useAccountMenu();
   const items: [string, string, typeof Home, number?][] = [
     ['/', '首页', Home],
     ['/boards', '吧', LayoutGrid],
     ['/search', '搜索', Search],
     ['/notifications', '通知', Bell, unread],
+    ['/messages', '私信', Mail, dmUnread],
   ];
 
   return (
     <nav className="nav">
       <div className="nav-top">
-        <Link to="/" className="brand" aria-label="同学圈首页">
+        <Link to="/" className="brand" aria-label="校墙首页">
           <Logo size={30} />
         </Link>
         <button
@@ -234,6 +239,57 @@ function Nav({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void
         </button>
       </div>
     </nav>
+  );
+}
+
+/** 右栏底部：在线同学和站点数据 */
+function SiteCard() {
+  const q = useQuery({
+    queryKey: ['site-stats'],
+    queryFn: () => api<SiteStats>('/stats/site'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  if (!q.data) return null;
+  const s = q.data;
+  return (
+    <section className="card site-card">
+      <div className="online-head">
+        <span className="live-dot" aria-hidden />
+        <b>
+          <Rolling value={s.online} />
+        </b>
+        <span>人在线</span>
+      </div>
+      {s.onlineUsers.length > 0 && (
+        <div className="online-faces">
+          {s.onlineUsers.map((u) => (
+            <Link key={u.id} to={`/u/${u.username}`} title={u.displayName} className="online-face">
+              <Avatar src={u.avatar} name={u.displayName} size={32} />
+            </Link>
+          ))}
+          {s.online > s.onlineUsers.length && <span className="muted small">+{s.online - s.onlineUsers.length}</span>}
+        </div>
+      )}
+      <div className="site-grid">
+        <div>
+          <b>{s.users}</b>
+          <span>同学</span>
+        </div>
+        <div>
+          <b>{s.posts}</b>
+          <span>帖子</span>
+        </div>
+        <div>
+          <b>{s.postsToday}</b>
+          <span>今日新帖</span>
+        </div>
+        <div>
+          <b>{s.boards}</b>
+          <span>个吧</span>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -324,9 +380,13 @@ function Side() {
         </section>
       )}
 
+      <SiteCard />
+
       <footer className="side-foot">
-        <span>同学圈</span>
-        <span>© {new Date().getFullYear()}</span>
+        <span>校墙 © {new Date().getFullYear()}</span>
+        <Link to="/changelog" className={`changelog-link ${hasUnseen() ? 'unseen' : ''}`}>
+          v{CURRENT} 更新日志
+        </Link>
       </footer>
     </aside>
   );
@@ -335,6 +395,7 @@ function Side() {
 function TabBar() {
   const me = useMe();
   const unread = useUnread().data;
+  const dmUnread = useDmUnread().data;
   const openAccount = useAccountSheet();
   const loc = useLocation();
   const items: [string, string, typeof Home, number?][] = [
@@ -342,6 +403,7 @@ function TabBar() {
     ['/boards', '吧', LayoutGrid],
     ['/search', '搜索', Search],
     ['/notifications', '通知', Bell, unread],
+    ['/messages', '私信', Mail, dmUnread],
   ];
   const mine = loc.pathname.startsWith(`/u/${me.username}`) || loc.pathname === '/settings';
   return (
@@ -392,6 +454,8 @@ function useScrollDirection() {
 export function Layout() {
   const compose = useCompose();
   const loc = useLocation();
+  const isDm = loc.pathname === '/messages' || loc.pathname.startsWith('/messages/');
+  const inChat = loc.pathname.startsWith('/messages/');
   const [collapsed, setCollapsed] = useState(getNavCollapsed);
   const [navW, setNavW] = useState(getNavWidth);
   const [resizing, setResizing] = useState(false);
@@ -480,7 +544,7 @@ export function Layout() {
   return (
     <AccountSheetCtx.Provider value={() => setSheet(true)}>
       <div
-        className={`shell ${collapsed ? 'nav-collapsed' : ''} ${resizing ? 'resizing' : ''}`}
+        className={`shell ${collapsed ? 'nav-collapsed' : ''} ${resizing ? 'resizing' : ''} ${isDm ? 'wide' : ''} ${inChat ? 'in-chat' : ''}`}
         style={{ '--nav-w': `${navW}px` } as CSSProperties}
       >
         <div className="nav-col" ref={navCol}>
@@ -501,7 +565,7 @@ export function Layout() {
           />
         </div>
         <main className="main-col">
-          <div className="page" key={loc.pathname.replace(/\/(followers|following)$/, '')}>
+          <div className="page" key={isDm ? '/messages' : loc.pathname.replace(/\/(followers|following)$/, '')}>
             <Outlet />
           </div>
         </main>
@@ -509,6 +573,7 @@ export function Layout() {
           <Side />
         </div>
       </div>
+      {!isDm && (
       <button
         className="fab mobile-only"
         onClick={() => compose({ boardSlug: /^\/b\/([^/]+)/.exec(loc.pathname)?.[1] })}
@@ -516,7 +581,8 @@ export function Layout() {
       >
         <Feather size={24} />
       </button>
-      <TabBar />
+      )}
+      {!inChat && <TabBar />}
       {sheet && (
         <Modal title="账号" onClose={() => setSheet(false)} className="account-sheet">
           <AccountSheetBody />

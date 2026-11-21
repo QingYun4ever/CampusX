@@ -493,22 +493,41 @@ export function useOnVisible(cb: () => void, enabled: boolean) {
  * 弹出菜单：点外面关闭。
  * float 为 true 时用 fixed 定位贴着触发按钮，不会被弹窗等滚动容器裁掉；下面放不下就向上展开。
  */
-export function usePopover(float = false) {
+/* ---------- 表情图片（Twemoji，各平台显示一致，不会出现方块或错位） ---------- */
+export function emojiUrl(e: string) {
+  const cps = [...e].map((c) => c.codePointAt(0)!);
+  // Twemoji 的文件名：不含零宽连接符时去掉 FE0F 变体选择符
+  const code = (e.includes('\u200d') ? cps : cps.filter((c) => c !== 0xfe0f)).map((c) => c.toString(16)).join('-');
+  return `${import.meta.env.BASE_URL}emoji/${code}.svg`;
+}
+export function Emoji({ e, size = 18 }: { e: string; size?: number }) {
+  return <img className="emoji" src={emojiUrl(e)} alt={e} width={size} height={size} draggable={false} />;
+}
+
+/** float：用 fixed 定位浮在最上层；width：已知宽度时以按钮为中心对齐 */
+export function usePopover(float = false, width = 0) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<CSSProperties>({});
   const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (!open || !float || !ref.current) return;
+  const place = useCallback(() => {
+    if (!ref.current) return false;
     const r = ref.current.getBoundingClientRect();
+    // 按钮已经滚出屏幕就收起
+    if (r.bottom < 0 || r.top > window.innerHeight) return false;
     const below = window.innerHeight - r.bottom - 12;
     const above = r.top - 12;
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - 328));
+    const want = width ? r.left + r.width / 2 - width / 2 : r.left;
+    const left = Math.max(8, Math.min(want, window.innerWidth - (width || 332) - 8));
     setPos(
       below >= 240 || below >= above
         ? { position: 'fixed', top: r.bottom + 4, left, right: 'auto', maxHeight: Math.min(below, 380), transformOrigin: 'top left' }
         : { position: 'fixed', bottom: window.innerHeight - r.top + 4, top: 'auto', left, right: 'auto', maxHeight: Math.min(above, 380), transformOrigin: 'bottom left' },
     );
-  }, [open, float]);
+    return true;
+  }, [width]);
+  useLayoutEffect(() => {
+    if (open && float) place();
+  }, [open, float, place]);
   useEffect(() => {
     if (!open) return;
     const close = (e: Event) => !ref.current?.contains(e.target as Node) && setOpen(false);
@@ -517,17 +536,22 @@ export function usePopover(float = false) {
       e.stopPropagation();
       setOpen(false);
     };
-    const away = (e: Event) => float && !ref.current?.contains(e.target as Node) && setOpen(false);
+    // 页面滚动（包括图片、公式加载后浏览器自动调整的滚动）时跟着按钮移动，而不是直接关掉
+    const follow = (e: Event) => {
+      if (!float || ref.current?.contains(e.target as Node)) return;
+      if (!place()) setOpen(false);
+    };
+    const resize = () => float && setOpen(false);
     document.addEventListener('mousedown', close);
     document.addEventListener('keydown', esc, true);
-    window.addEventListener('scroll', away, true);
-    window.addEventListener('resize', away);
+    window.addEventListener('scroll', follow, true);
+    window.addEventListener('resize', resize);
     return () => {
       document.removeEventListener('mousedown', close);
       document.removeEventListener('keydown', esc, true);
-      window.removeEventListener('scroll', away, true);
-      window.removeEventListener('resize', away);
+      window.removeEventListener('scroll', follow, true);
+      window.removeEventListener('resize', resize);
     };
-  }, [open, float]);
+  }, [open, float, place]);
   return { open, setOpen, ref, style: float ? pos : undefined };
 }

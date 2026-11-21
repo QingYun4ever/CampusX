@@ -1,6 +1,6 @@
 {
-  "name": "同学圈",
-  "short_name": "同学圈",
+  "name": "校墙",
+  "short_name": "校墙",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

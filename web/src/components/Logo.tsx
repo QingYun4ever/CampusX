@@ -12,7 +12,7 @@ export function Wordmark() {
   return (
     <span className="wordmark">
       <Logo size={26} />
-      <span>同学圈</span>
+      <span>校墙</span>
     </span>
   );
 }

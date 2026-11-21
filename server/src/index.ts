@@ -4,12 +4,13 @@ import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyError } from 'fastify';
-import { createInvite, formatInvite, type SessionUser, userFromToken } from './auth.ts';
+import { createInvite, formatInvite, type SessionUser, touchSeen, userFromToken } from './auth.ts';
 import { config, uploadsDir } from './config.ts';
 import { get, now } from './db.ts';
 import { resumePending } from './moderation.ts';
 import { authRoutes } from './routes/auth.ts';
 import { boardRoutes } from './routes/boards.ts';
+import { dmRoutes } from './routes/dm.ts';
 import { miscRoutes } from './routes/misc.ts';
 import { postRoutes } from './routes/posts.ts';
 import { userRoutes } from './routes/users.ts';
@@ -43,6 +44,7 @@ app.decorateRequest('user', null);
 app.addHook('onRequest', async (req) => {
   const h = req.headers.authorization;
   req.user = h?.startsWith('Bearer ') ? userFromToken(h.slice(7)) : null;
+  if (req.user) touchSeen(req.user.id);
 });
 
 // 除登录/注册/验证码外，所有 API 都需要登录（平台只对同学开放）
@@ -82,6 +84,7 @@ await app.register(
     await api.register(userRoutes);
     await api.register(boardRoutes);
     await api.register(miscRoutes);
+    await api.register(dmRoutes);
   },
   { prefix: '/api' },
 );

@@ -1,12 +1,13 @@
-import { lazy, Suspense, useEffect, useState, type CSSProperties, type MouseEvent } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { Heart, Link2, MessageCircle, MoreHorizontal, Repeat2, SmilePlus, Trash2 } from 'lucide-react';
-import { api, media, REACTIONS, WEB_ORIGIN, type Post, type Reaction } from '../lib/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { BarChart2, ChevronDown, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Repeat2, SmilePlus, Trash2 } from 'lucide-react';
+import { api, media, QUICK_REACTIONS, REACTIONS, WEB_ORIGIN, type Post, type Reaction, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
+import { markViewed, useViewTracking } from '../lib/views';
 import { useCompose } from './compose';
-import { Avatar, openLightbox, Rolling, toast, toneFor, usePopover, Verified } from './ui';
+import { Avatar, Emoji, emojiUrl, Empty, Modal, openLightbox, Rolling, Spinner, toast, toneFor, usePopover, Verified } from './ui';
 
 /* ---------- 正文 ---------- */
 // Markdown / LaTeX 渲染器比较大（KaTeX），只有正文里出现相应语法时才加载
@@ -26,7 +27,7 @@ export function RichText({ text }: { text: string }) {
 /* 纯文本：@提及、#话题、链接 */
 const TOKEN = /(@[A-Za-z0-9_]{3,20}|#[^\s#@，。！？、；：,.!?;:()（）「」]{1,20}|https?:\/\/[^\s]+)/g;
 
-function PlainText({ text }: { text: string }) {
+export function PlainText({ text }: { text: string }) {
   const parts = text.split(TOKEN);
   const stop = (e: MouseEvent) => e.stopPropagation();
   return (
@@ -136,90 +137,262 @@ function usePostActions(post: Post) {
   return { liked, likes, reposted, reposts, fx, toggleLike, toggleRepost, share };
 }
 
-/* ---------- 表情回应（类似 GitHub） ---------- */
+/* ---------- 表情回应（Telegram 式） ---------- */
+
+/** 回应时的动效：表情在气泡上方放大弹出，周围散开几个小表情 */
+function reactionBurst(emoji: string, el: Element | null) {
+  if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const r = el.getBoundingClientRect();
+  const layer = document.createElement('div');
+  layer.className = 'rx-fx';
+  layer.style.left = `${r.left + 18}px`;
+  layer.style.top = `${r.top + r.height / 2}px`;
+  const img = (cls: string) => {
+    const i = document.createElement('img');
+    i.className = cls;
+    i.src = emojiUrl(emoji);
+    i.alt = '';
+    return i;
+  };
+  layer.appendChild(img('rx-fx-big'));
+  for (let i = 0; i < 9; i++) {
+    const p = img('rx-fx-p');
+    const ang = (i / 9) * Math.PI * 2 + Math.random() * 0.5;
+    const dist = 38 + Math.random() * 30;
+    p.style.setProperty('--x', `${Math.cos(ang) * dist}px`);
+    p.style.setProperty('--y', `${Math.sin(ang) * dist - 24}px`);
+    p.style.setProperty('--r', `${Math.random() * 120 - 60}deg`);
+    p.style.animationDelay = `${120 + Math.random() * 80}ms`;
+    layer.appendChild(p);
+  }
+  document.body.appendChild(layer);
+  setTimeout(() => layer.remove(), 1100);
+}
+
 function useReactions(post: Post) {
+  const me = useMe();
   const [list, setList] = useState<Reaction[]>(post.reactions);
   const [pop, setPop] = useState<string | null>(null);
+  const [whoOpen, setWhoOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
   useEffect(() => setList(post.reactions), [post.reactions]);
+  const mine = list.find((r) => r.me)?.key ?? null;
+  const self = { username: me.username, displayName: me.displayName, avatar: me.avatar };
+
+  /** 点同一个取消；点别的替换（每人每帖一个） */
   const toggle = async (key: string) => {
-    const cur = list.find((r) => r.key === key);
-    const on = !cur?.me;
-    // 乐观更新
+    const on = mine !== key;
     setList((l) => {
+      let next = l
+        .map((r) =>
+          r.me ? { ...r, count: r.count - 1, me: false, users: r.users.filter((u) => u.username !== me.username) } : r,
+        )
+        .filter((r) => r.count > 0);
       if (on) {
-        return cur ? l.map((r) => (r.key === key ? { ...r, count: r.count + 1, me: true } : r)) : [...l, { key, count: 1, me: true }];
+        const cur = next.find((r) => r.key === key);
+        next = cur
+          ? next.map((r) => (r.key === key ? { ...r, count: r.count + 1, me: true, users: [self, ...r.users].slice(0, 3) } : r))
+          : [...next, { key, count: 1, me: true, users: [self] }];
       }
-      return l.map((r) => (r.key === key ? { ...r, count: r.count - 1, me: false } : r)).filter((r) => r.count > 0);
+      return next;
     });
-    if (on) setPop(key + Date.now());
+    if (on) {
+      setPop(key + Date.now());
+      requestAnimationFrame(() =>
+        reactionBurst(key, root.current?.querySelector(`[data-rx="${CSS.escape(key)}"]`) ?? null),
+      );
+    }
     try {
-      const next = await api<Reaction[]>(`/posts/${post.id}/reactions/${encodeURIComponent(key)}`, { method: on ? 'PUT' : 'DELETE' });
+      const next = await api<Reaction[]>(`/posts/${post.id}/reactions/${encodeURIComponent(key)}`, {
+        method: on ? 'PUT' : 'DELETE',
+      });
       setList(next);
     } catch (e) {
       setList(post.reactions);
       toast((e as Error).message, 'error');
     }
   };
-  return { list, toggle, pop };
+  return { list, toggle, pop, mine, root, whoOpen, setWhoOpen, postId: post.id };
 }
 type Rx = ReturnType<typeof useReactions>;
 
-const EMOJI = Object.fromEntries(REACTIONS.map((r) => [r.key, r]));
+/** 长按（手机）或右键（电脑）查看谁回应了 */
+function useLongPress(fn: () => void) {
+  const t = useRef<number>(0);
+  const fired = useRef(false);
+  const clear = () => clearTimeout(t.current);
+  return {
+    fired,
+    handlers: {
+      onPointerDown: (e: React.PointerEvent) => {
+        if (e.pointerType === 'mouse') return;
+        fired.current = false;
+        t.current = window.setTimeout(() => {
+          fired.current = true;
+          navigator.vibrate?.(10);
+          fn();
+        }, 450);
+      },
+      onPointerUp: clear,
+      onPointerLeave: clear,
+      onPointerCancel: clear,
+      onContextMenu: (e: MouseEvent) => {
+        e.preventDefault();
+        fn();
+      },
+    },
+  };
+}
 
 function ReactionPills({ rx }: { rx: Rx }) {
+  const press = useLongPress(() => rx.setWhoOpen(true));
   if (!rx.list.length) return null;
+  // 和 Telegram 一样：总共没几个人回应时直接显示头像，多了显示数字
+  const total = rx.list.reduce((n, r) => n + r.count, 0);
+  const faces = total <= 3;
   return (
-    <div className="reactions" onClick={(e) => e.stopPropagation()}>
+    <div className="reactions" ref={rx.root} onClick={(e) => e.stopPropagation()}>
       {rx.list.map((r) => (
         <button
           key={r.key}
+          data-rx={r.key}
           className={`rx-pill ${r.me ? 'on' : ''}`}
-          onClick={() => rx.toggle(r.key)}
+          onClick={() => {
+            if (press.fired.current) return;
+            rx.toggle(r.key);
+          }}
+          {...press.handlers}
           aria-pressed={r.me}
-          title={`${EMOJI[r.key]?.name ?? r.key}${r.me ? '（再点一次取消）' : ''}`}
+          aria-label={`${r.key} ${r.count} 人${r.me ? '，包括你' : ''}`}
+          title={`${r.users.map((u) => u.displayName).join('、')}${r.count > r.users.length ? ` 等 ${r.count} 人` : ''}（右键或长按查看全部）`}
         >
           <span className="rx-emoji" key={rx.pop?.startsWith(r.key) ? rx.pop : r.key}>
-            {EMOJI[r.key]?.emoji ?? '❔'}
+            <Emoji e={r.key} size={18} />
           </span>
-          <Rolling value={r.count} />
+          {faces ? (
+            <span className="rx-faces">
+              {r.users.slice(0, 3).map((u) => (
+                <Avatar key={u.username} src={u.avatar} name={u.displayName} size={20} />
+              ))}
+            </span>
+          ) : (
+            <Rolling value={r.count} />
+          )}
         </button>
       ))}
     </div>
   );
 }
 
+/** 选择表情：先是一排快捷表情，点右边的箭头展开全部 */
 function ReactButton({ rx, size }: { rx: Rx; size: number }) {
-  const pop = usePopover(true);
+  const pop = usePopover(true, 324);
+  const [all, setAll] = useState(false);
+  useEffect(() => {
+    if (!pop.open) setAll(false);
+  }, [pop.open]);
+  const pick = (k: string) => {
+    rx.toggle(k);
+    pop.setOpen(false);
+  };
+  const item = (k: string, i: number) => (
+    <button
+      key={k}
+      className={rx.mine === k ? 'on' : ''}
+      style={{ '--i': i } as CSSProperties}
+      aria-label={k}
+      aria-pressed={rx.mine === k}
+      onClick={() => pick(k)}
+    >
+      <Emoji e={k} size={26} />
+    </button>
+  );
   return (
     <div className="popover-anchor" ref={pop.ref} onClick={(e) => e.stopPropagation()}>
-      <button className="act react" onClick={() => pop.setOpen((o) => !o)} aria-label="表情回应" aria-expanded={pop.open} title="表情回应">
+      <button
+        className={`act react ${rx.mine ? 'on' : ''}`}
+        onClick={() => pop.setOpen((o) => !o)}
+        aria-label="表情回应"
+        aria-expanded={pop.open}
+        title="表情回应"
+      >
         <span className="ico">
-          <SmilePlus size={size} />
+          {rx.mine ? <Emoji e={rx.mine} size={size + 1} /> : <SmilePlus size={size} />}
         </span>
       </button>
       {pop.open && (
-        <div className="menu rx-menu" style={pop.style} role="menu">
-          {REACTIONS.map((r, i) => {
-            const on = rx.list.some((x) => x.key === r.key && x.me);
-            return (
-              <button
-                key={r.key}
-                className={on ? 'on' : ''}
-                style={{ '--i': i } as CSSProperties}
-                title={r.name}
-                aria-label={r.name}
-                aria-pressed={on}
-                onClick={() => {
-                  rx.toggle(r.key);
-                  pop.setOpen(false);
-                }}
-              >
-                {r.emoji}
+        <div className={`menu rx-picker ${all ? 'expanded' : ''}`} style={pop.style} role="menu">
+          {all ? (
+            <div className="rx-grid">{REACTIONS.map(item)}</div>
+          ) : (
+            <div className="rx-quick">
+              {QUICK_REACTIONS.map(item)}
+              <button className="rx-more" onClick={() => setAll(true)} aria-label="更多表情" title="更多表情">
+                <ChevronDown size={18} />
               </button>
-            );
-          })}
+            </div>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** 谁回应了：上面一排表情筛选，和 Telegram 一样 */
+function ReactorsModal({ postId, onClose }: { postId: number; onClose: () => void }) {
+  const [tab, setTab] = useState<string | null>(null);
+  const q = useQuery({
+    queryKey: ['reactors', postId],
+    queryFn: () => api<{ emoji: string; createdAt: number; user: User }[]>(`/posts/${postId}/reactions`),
+  });
+  const counts = new Map<string, number>();
+  for (const r of q.data ?? []) counts.set(r.emoji, (counts.get(r.emoji) ?? 0) + 1);
+  const rows = (q.data ?? []).filter((r) => !tab || r.emoji === tab);
+  return (
+    <Modal title="回应" onClose={onClose} className="reactors-modal">
+      <div className="rx-tabs">
+        <button className={!tab ? 'on' : ''} onClick={() => setTab(null)}>
+          <SmilePlus size={16} /> {q.data?.length ?? ''}
+        </button>
+        {[...counts].map(([e, n]) => (
+          <button key={e} className={tab === e ? 'on' : ''} onClick={() => setTab(e)}>
+            <Emoji e={e} size={18} /> {n}
+          </button>
+        ))}
+      </div>
+      {q.isPending ? (
+        <div className="center-pad">
+          <Spinner />
+        </div>
+      ) : !rows.length ? (
+        <Empty title="还没有人回应" />
+      ) : (
+        rows.map((r) => (
+          <Link key={r.user.id + r.emoji} to={`/u/${r.user.username}`} className="user-row" onClick={onClose}>
+            <Avatar src={r.user.avatar} name={r.user.displayName} size={40} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="name">
+                <span className="ellipsis">{r.user.displayName}</span>
+                <Verified user={r.user} size={15} />
+              </div>
+              <div className="muted small">
+                @{r.user.username} · {timeAgo(r.createdAt)}
+              </div>
+            </div>
+            <Emoji e={r.emoji} size={24} />
+          </Link>
+        ))
+      )}
+    </Modal>
+  );
+}
+
+function Reactors({ rx }: { rx: Rx }) {
+  if (!rx.whoOpen) return null;
+  // 弹窗是 portal，React 事件仍会冒泡到帖子卡片上，这里拦住，避免点弹窗时跳转到帖子
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      <ReactorsModal postId={rx.postId} onClose={() => rx.setWhoOpen(false)} />
     </div>
   );
 }
@@ -247,8 +420,11 @@ function ActionBar({ post, big, rx }: { post: Post; big?: boolean; rx: Rx }) {
   };
   return (
     <>
-      {big && (a.reposts > 0 || a.likes > 0) && (
+      {big && (
         <div className="stats">
+          <span>
+            <b>{post.viewCount}</b> 次浏览
+          </span>
           {a.reposts > 0 && (
             <span>
               <b>{a.reposts}</b> 次转发
@@ -258,6 +434,11 @@ function ActionBar({ post, big, rx }: { post: Post; big?: boolean; rx: Rx }) {
             <span>
               <b>{a.likes}</b> 个喜欢
             </span>
+          )}
+          {rx.list.length > 0 && (
+            <button className="stat-link" onClick={() => rx.setWhoOpen(true)}>
+              <b>{rx.list.reduce((n, r) => n + r.count, 0)}</b> 个回应
+            </button>
           )}
         </div>
       )}
@@ -296,6 +477,14 @@ function ActionBar({ post, big, rx }: { post: Post; big?: boolean; rx: Rx }) {
           </span>
           {!big && <Rolling value={a.likes} />}
         </button>
+        {!big && (
+          <span className="act views" title={`${post.viewCount} 次浏览`} aria-label={`${post.viewCount} 次浏览`}>
+            <span className="ico">
+              <BarChart2 size={size} />
+            </span>
+            <Rolling value={post.viewCount} />
+          </span>
+        )}
         <ReactButton rx={rx} size={size} />
         <button className="act share" onClick={stop(a.share)} aria-label="复制链接">
           <span className="ico">
@@ -311,7 +500,11 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
   const me = useMe();
   const { open, setOpen, ref } = usePopover();
   const qc = useQueryClient();
-  if (post.author.id !== me.id && me.role !== 'admin') return null;
+  const mine = post.author.id === me.id;
+  const admin = me.role === 'admin';
+  const mod = post.canModerate || admin;
+  if (!mine && !mod) return null;
+  const canPin = mod && !!post.board && !post.parentId;
   const del = async () => {
     setOpen(false);
     if (!confirm('删除这条帖子？删除后不能恢复。')) return;
@@ -324,6 +517,16 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
       toast((e as Error).message, 'error');
     }
   };
+  const pin = async () => {
+    setOpen(false);
+    try {
+      await api(`/posts/${post.id}/pin`, { method: post.pinned ? 'DELETE' : 'POST' });
+      toast(post.pinned ? '已取消置顶' : '已置顶');
+      qc.invalidateQueries();
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
   return (
     <div ref={ref} onClick={(e) => e.stopPropagation()} className="post-menu">
       <button className="icon-btn more" onClick={() => setOpen((o) => !o)} aria-label="更多" aria-expanded={open}>
@@ -331,12 +534,29 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
       </button>
       {open && (
         <div className="menu" role="menu">
+          {canPin && (
+            <button onClick={pin} role="menuitem">
+              {post.pinned ? <PinOff size={18} /> : <Pin size={18} />}
+              {post.pinned ? '取消置顶' : `在${post.board!.name}吧置顶`}
+            </button>
+          )}
           <button className="danger" onClick={del} role="menuitem">
-            <Trash2 size={18} /> 删除{post.author.id !== me.id ? '（管理员）' : ''}
+            <Trash2 size={18} /> 删除{mine ? '' : post.canModerate ? '（吧务）' : '（管理员）'}
           </button>
         </div>
       )}
     </div>
+  );
+}
+
+/** 作者身份标签：吧主 / 吧务 / 管理员 */
+function RoleTags({ author }: { author: Post['author'] }) {
+  return (
+    <>
+      {author.boardRole === 'owner' && <span className="tag owner">吧主</span>}
+      {author.boardRole === 'mod' && <span className="tag mod">吧务</span>}
+      {author.role === 'admin' && <span className="tag">管理员</span>}
+    </>
   );
 }
 
@@ -349,7 +569,7 @@ function Head({ post, opId }: { post: Post; opId?: number }) {
       </Link>
       <Verified user={post.author} size={17} />
       {opId === post.author.id && <span className="tag op">楼主</span>}
-      {post.author.role === 'admin' && <span className="tag">管理员</span>}
+      <RoleTags author={post.author} />
       <span className="muted handle">@{post.author.username}</span>
       <span className="muted dot">·</span>
       <time className="muted" title={fullTime(post.createdAt)}>
@@ -377,17 +597,22 @@ export function PostCard({
   floor,
   hideReplyTo,
   opId,
+  pinnedContext,
 }: {
   post: Post;
   threadLine?: boolean;
   floor?: number;
   hideReplyTo?: boolean;
+  /** 吧首页的置顶区：顶部显示「置顶」 */
+  pinnedContext?: boolean;
   /** 楼主的用户 id，用于在回复里标出「楼主」 */
   opId?: number;
 }) {
   const nav = useNavigate();
   const post = item.repostOf ?? item;
   const rx = useReactions(post);
+  const el = useRef<HTMLElement>(null);
+  useViewTracking(el, post.id, !post.deleted);
   const open = () => {
     if (window.getSelection()?.toString()) return;
     nav(`/post/${post.id}`);
@@ -408,7 +633,16 @@ export function PostCard({
   }
 
   return (
-    <article className={`post ${threadLine ? 'no-border' : ''} ${item.repostOf ? 'is-repost' : ''}`} onClick={open}>
+    <article
+      ref={el}
+      className={`post ${threadLine ? 'no-border' : ''} ${item.repostOf ? 'is-repost' : ''} ${pinnedContext ? 'is-pinned' : ''}`}
+      onClick={open}
+    >
+      {pinnedContext && (
+        <div className="post-context pinned">
+          <Pin size={14} /> 置顶
+        </div>
+      )}
       {item.repostOf && (
         <div className="post-context">
           <Repeat2 size={14} />
@@ -444,6 +678,7 @@ export function PostCard({
         <TagList tags={post.tags} />
         <ReactionPills rx={rx} />
         <ActionBar post={post} rx={rx} />
+        <Reactors rx={rx} />
       </div>
     </article>
   );
@@ -452,6 +687,9 @@ export function PostCard({
 /* ---------- 详情页主帖（大字号） ---------- */
 export function PostMain({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
   const rx = useReactions(post);
+  useEffect(() => {
+    if (!post.deleted) markViewed(post.id);
+  }, [post.id, post.deleted]);
   if (post.deleted) {
     return (
       <div className="post-main">
@@ -473,7 +711,7 @@ export function PostMain({ post, onDeleted }: { post: Post; onDeleted?: () => vo
               {post.author.displayName}
             </Link>
             <Verified user={post.author} />
-            {post.author.role === 'admin' && <span className="tag">管理员</span>}
+            <RoleTags author={post.author} />
           </div>
           <div className="muted ellipsis">
             @{post.author.username}
@@ -498,6 +736,7 @@ export function PostMain({ post, onDeleted }: { post: Post; onDeleted?: () => vo
       <ReactionPills rx={rx} />
       <div className="time">{fullTime(post.createdAt)}</div>
       <ActionBar post={post} big rx={rx} />
+      <Reactors rx={rx} />
     </div>
   );
 }

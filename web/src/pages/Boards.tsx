@@ -1,12 +1,14 @@
 import { useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus } from 'lucide-react';
+import { ChevronRight, Crown, Megaphone, Pencil, Plus, Shield, UserMinus, X } from 'lucide-react';
 import { Composer } from '../components/Composer';
 import { Feed } from '../components/Feed';
-import { BoardMark, toneFor, Empty, Field, Modal, PostSkeleton, Tabs, toast, TopBar } from '../components/ui';
-import { api, type Board } from '../lib/api';
+import { PostCard, RichText } from '../components/PostCard';
+import { Avatar, BoardMark, toneFor, Empty, Field, Modal, PostSkeleton, Tabs, toast, TopBar, Verified } from '../components/ui';
+import { api, type Board, type BoardDetail, type Post, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
+import { timeAgo } from '../lib/format';
 
 function JoinButton({ board }: { board: Board }) {
   const qc = useQueryClient();
@@ -143,23 +145,292 @@ export function Boards() {
   );
 }
 
+/* ---------- 吧详情：公告 ---------- */
+function Announcement({ b, onEdit }: { b: BoardDetail; onEdit: () => void }) {
+  const [more, setMore] = useState(false);
+  const a = b.announcement;
+  if (!a) {
+    return b.myRole ? (
+      <button className="announce-empty" onClick={onEdit}>
+        <Megaphone size={16} /> 发布公告
+      </button>
+    ) : null;
+  }
+  const long = a.text.length > 140 || a.text.split('\n').length > 4;
+  return (
+    <section className="announce">
+      <div className="announce-head">
+        <span className="announce-ico">
+          <Megaphone size={15} />
+        </span>
+        <b>公告</b>
+        <span className="muted small">
+          {a.by ? `@${a.by.username} · ` : ''}
+          {timeAgo(a.updatedAt)}更新
+        </span>
+        {b.myRole && (
+          <button className="icon-btn sm" onClick={onEdit} aria-label="编辑公告" title="编辑公告">
+            <Pencil size={15} />
+          </button>
+        )}
+      </div>
+      <div className={`announce-body ${long && !more ? 'clamped' : ''}`}>
+        <RichText text={a.text} />
+      </div>
+      {long && (
+        <button className="announce-more" onClick={() => setMore((m) => !m)}>
+          {more ? '收起' : '展开全部'}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function AnnouncementEditor({ b, onClose }: { b: BoardDetail; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [text, setText] = useState(b.announcement?.text ?? '');
+  const [busy, setBusy] = useState(false);
+  const save = async (t: string) => {
+    setBusy(true);
+    try {
+      const r = await api<BoardDetail>(`/boards/${b.slug}/announcement`, { method: 'PUT', body: { text: t } });
+      qc.setQueryData(['board', b.slug], r);
+      toast(t ? '公告已更新' : '公告已清除');
+      onClose();
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title="吧公告"
+      onClose={onClose}
+      right={
+        <button className="btn btn-light" disabled={busy || !text.trim()} onClick={() => save(text.trim())}>
+          发布
+        </button>
+      }
+    >
+      <div className="modal-body">
+        <Field
+          label="公告内容"
+          multiline
+          value={text}
+          onChange={setText}
+          maxLength={1000}
+          counter
+          hint="显示在吧首页最上面。支持 Markdown，比如 **加粗**、列表、链接"
+        />
+        {b.announcement && (
+          <div className="modal-actions">
+            <button className="btn btn-outline danger sm" disabled={busy} onClick={() => save('')}>
+              清除公告
+            </button>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- 吧务团队 ---------- */
+function TeamMember({ u, role, action }: { u: User; role: 'owner' | 'mod'; action?: React.ReactNode }) {
+  return (
+    <div className="team-row">
+      <Link to={`/u/${u.username}`} className="team-user">
+        <Avatar src={u.avatar} name={u.displayName} size={40} />
+        <div style={{ minWidth: 0 }}>
+          <div className="name">
+            <span className="ellipsis">{u.displayName}</span>
+            <Verified user={u} size={15} />
+            <span className={`tag ${role}`}>{role === 'owner' ? '吧主' : '吧务'}</span>
+          </div>
+          <div className="muted small ellipsis">@{u.username}</div>
+        </div>
+      </Link>
+      {action}
+    </div>
+  );
+}
+
+function TeamModal({ b, onClose }: { b: BoardDetail; onClose: () => void }) {
+  const me = useMe();
+  const qc = useQueryClient();
+  const [name, setName] = useState('');
+  const [owner, setOwner] = useState('');
+  const [busy, setBusy] = useState(false);
+  const isOwner = b.myRole === 'owner' || b.myRole === 'admin';
+  const call = async (path: string, init: { method?: string; body?: unknown }, ok: string) => {
+    setBusy(true);
+    try {
+      const r = await api<BoardDetail>(`/boards/${b.slug}${path}`, init);
+      qc.setQueryData(['board', b.slug], r);
+      toast(ok);
+      return true;
+    } catch (e) {
+      toast((e as Error).message, 'error');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const add = async () => {
+    if (await call('/mods', { body: { username: name } }, '已添加吧务')) setName('');
+  };
+  const transfer = async () => {
+    const who = owner.trim().replace(/^@/, '');
+    if (!who) return;
+    const msg = b.owner
+      ? `把吧主转让给 @${who}？${b.myRole === 'owner' ? '你会变成吧务。' : '原吧主会变成吧务。'}`
+      : `设置 @${who} 为吧主？`;
+    if (!confirm(msg)) return;
+    if (await call('/owner', { body: { username: who } }, '吧主已更新')) setOwner('');
+  };
+  return (
+    <Modal title={`${b.name}吧 · 吧务团队`} onClose={onClose}>
+      <div className="modal-body team">
+        <div>
+          <h4 className="team-h">
+            <Crown size={15} /> 吧主
+          </h4>
+          {b.owner ? <TeamMember u={b.owner} role="owner" /> : <p className="muted small">这个吧还没有吧主。</p>}
+        </div>
+        <div>
+          <h4 className="team-h">
+            <Shield size={15} /> 吧务 <span className="muted">{b.mods.length} / 10</span>
+          </h4>
+          {!b.mods.length && <p className="muted small">还没有吧务。吧务可以发公告、置顶和删除吧里的帖子。</p>}
+          {b.mods.map((u) => (
+            <TeamMember
+              key={u.id}
+              u={u}
+              role="mod"
+              action={
+                isOwner ? (
+                  <button
+                    className="icon-btn"
+                    disabled={busy}
+                    aria-label={`移除 ${u.displayName}`}
+                    title="移除吧务"
+                    onClick={() => confirm(`移除吧务 @${u.username}？`) && call(`/mods/${u.username}`, { method: 'DELETE' }, '已移除')}
+                  >
+                    <X size={18} />
+                  </button>
+                ) : u.id === me.id ? (
+                  <button
+                    className="btn btn-outline sm"
+                    disabled={busy}
+                    onClick={() => confirm('确定卸任吧务？') && call(`/mods/${u.username}`, { method: 'DELETE' }, '已卸任')}
+                  >
+                    <UserMinus size={15} /> 卸任
+                  </button>
+                ) : null
+              }
+            />
+          ))}
+          {isOwner && b.mods.length < 10 && (
+            <form
+              className="inline-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (name.trim()) add();
+              }}
+            >
+              <Field label="添加吧务（用户名）" value={name} onChange={setName} prefix="@" />
+              <button className="btn btn-primary" disabled={busy || !name.trim()}>
+                添加
+              </button>
+            </form>
+          )}
+        </div>
+        {isOwner && (
+          <div>
+            <h4 className="team-h">{b.owner ? '转让吧主' : '设置吧主'}</h4>
+            <form
+              className="inline-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                transfer();
+              }}
+            >
+              <Field label="新吧主（用户名）" value={owner} onChange={setOwner} prefix="@" />
+              <button className="btn btn-outline" disabled={busy || !owner.trim()}>
+                {b.owner ? '转让' : '设置'}
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function TeamStrip({ b, onOpen }: { b: BoardDetail; onOpen: () => void }) {
+  return (
+    <button className="board-team" onClick={onOpen}>
+      <span className="team-part">
+        <Crown size={14} className="crown" />
+        {b.owner ? (
+          <>
+            <Avatar src={b.owner.avatar} name={b.owner.displayName} size={22} />
+            <span className="ellipsis">{b.owner.displayName}</span>
+          </>
+        ) : (
+          <span className="muted">暂无吧主</span>
+        )}
+      </span>
+      {b.mods.length > 0 && (
+        <span className="team-part">
+          <span className="muted">吧务</span>
+          <span className="face-stack">
+            {b.mods.slice(0, 4).map((u) => (
+              <Avatar key={u.id} src={u.avatar} name={u.displayName} size={22} />
+            ))}
+          </span>
+          {b.mods.length > 4 && <span className="muted">+{b.mods.length - 4}</span>}
+        </span>
+      )}
+      <ChevronRight size={16} className="muted chev" />
+    </button>
+  );
+}
+
+function Pinned({ slug }: { slug: string }) {
+  const q = useQuery({ queryKey: ['board-pinned', slug], queryFn: () => api<Post[]>(`/boards/${slug}/pinned`) });
+  if (!q.data?.length) return null;
+  return (
+    <div className="pinned-list">
+      {q.data.map((p) => (
+        <PostCard key={p.id} post={p} pinnedContext />
+      ))}
+    </div>
+  );
+}
+
 export function BoardPage() {
   const { slug = '' } = useParams();
-  const me = useMe();
   const [sort, setSort] = useState<'active' | 'new'>('active');
   const [editing, setEditing] = useState(false);
-  const q = useQuery({ queryKey: ['board', slug], queryFn: () => api<Board>(`/boards/${slug}`) });
+  const [announcing, setAnnouncing] = useState(false);
+  const [team, setTeam] = useState(false);
+  const q = useQuery({ queryKey: ['board', slug], queryFn: () => api<BoardDetail>(`/boards/${slug}`) });
   if (q.isPending) return <><TopBar back title="吧" /><PostSkeleton /></>;
   if (q.isError) return <><TopBar back title="吧" /><Empty title="没有这个吧">它可能已经被删除了。</Empty></>;
   const b = q.data;
-  const canEdit = b.createdBy === me.id || me.role === 'admin';
+  const canEdit = b.myRole === 'owner' || b.myRole === 'admin';
   return (
     <>
       <TopBar back title={`${b.name}吧`} sub={`${b.postCount} 帖`} />
       <div className="board-hero" style={{ '--tone': toneFor(b.slug) } as CSSProperties}>
         <BoardMark name={b.name} slug={b.slug} size={72} />
         <div className="board-hero-info">
-          <h2>{b.name}吧</h2>
+          <h2>
+            {b.name}吧
+            {b.myRole === 'owner' && <span className="tag owner">我是吧主</span>}
+            {b.myRole === 'mod' && <span className="tag mod">我是吧务</span>}
+          </h2>
           {b.description && <p className="muted">{b.description}</p>}
           <div className="board-stats">
             <span>
@@ -172,13 +443,15 @@ export function BoardPage() {
         </div>
         <div className="board-hero-actions">
           {canEdit && (
-            <button className="icon-btn outlined" onClick={() => setEditing(true)} aria-label="编辑吧">
+            <button className="icon-btn outlined" onClick={() => setEditing(true)} aria-label="编辑吧资料" title="编辑吧资料">
               <Pencil size={16} />
             </button>
           )}
           <JoinButton board={b} />
         </div>
+        <TeamStrip b={b} onOpen={() => setTeam(true)} />
       </div>
+      <Announcement b={b} onEdit={() => setAnnouncing(true)} />
       <div className="desktop-composer">
         <Composer boardSlug={b.slug} placeholder={`在${b.name}吧发帖`} />
       </div>
@@ -192,6 +465,7 @@ export function BoardPage() {
           ]}
         />
       </div>
+      <Pinned slug={slug} />
       <Feed
         key={sort}
         queryKey={['board-posts', slug, sort]}
@@ -199,6 +473,8 @@ export function BoardPage() {
         empty={<Empty title="还没有帖子">发第一帖，坐个沙发。</Empty>}
       />
       {editing && <BoardForm board={b} onClose={() => setEditing(false)} />}
+      {announcing && <AnnouncementEditor b={b} onClose={() => setAnnouncing(false)} />}
+      {team && <TeamModal b={b} onClose={() => setTeam(false)} />}
     </>
   );
 }

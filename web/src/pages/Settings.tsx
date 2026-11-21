@@ -4,6 +4,7 @@ import { Check, ChevronRight, LogOut, Palette, Plus, Shield } from 'lucide-react
 import { Field, toast, TopBar } from '../components/ui';
 import { api, setToken } from '../lib/api';
 import { useAuth, useMe } from '../lib/auth';
+import { CURRENT } from '../lib/changelog';
 import {
   ACCENTS,
   accentColor,
@@ -265,6 +266,10 @@ export function Settings() {
           </span>
         </span>
       </button>
+
+      <Link to="/changelog" className="version-link">
+        校墙 v{CURRENT} · 更新日志
+      </Link>
     </>
   );
 }

@@ -1,0 +1,109 @@
+/** 更新日志。新版本加在最前面；CURRENT 会显示在页脚和设置页 */
+export type ChangeKind = 'new' | 'improve' | 'fix';
+export interface Release {
+  version: string;
+  date: string;
+  title: string;
+  changes: [ChangeKind, string][];
+}
+
+export const CHANGELOG: Release[] = [
+  {
+    version: '0.7.0',
+    date: '2026-11-21',
+    title: '改名校墙，私信和浏览数',
+    changes: [
+      ['new', '「同学圈」正式改名为「校墙」'],
+      ['new', '私信：仿 Telegram 的聊天界面，显示已读双勾、在线状态，可以撤回自己的消息'],
+      ['new', '帖子浏览数：每位同学看一次算一次，自己看自己的不算'],
+      ['improve', '表情统一用 Twemoji 图片显示，各种手机和电脑上都一样，不再出现方块'],
+      ['fix', '表情面板在页面滚动时自动关闭、打不开「更多表情」的问题'],
+      ['fix', '旧版本页面里个别表情显示错位、提示「不支持这个表情」的问题'],
+    ],
+  },
+  {
+    version: '0.6.0',
+    date: '2026-11-21',
+    title: '吧务团队与新的表情回应',
+    changes: [
+      ['new', '吧主和吧务：吧主可以添加最多 10 位吧务、转让吧主；吧务可以发公告、置顶和删除吧里的帖子'],
+      ['new', '吧公告：显示在吧首页最上面，支持 Markdown'],
+      ['new', '吧内置顶：每个吧最多置顶 3 条主楼'],
+      ['new', '帖子里显示「吧主」「吧务」身份标签'],
+      ['improve', '表情回应改成 Telegram 式：52 个表情，每人每帖一个，选别的会替换；回应时有动效'],
+      ['new', '人少时回应显示头像；右键或长按回应可以看到是谁回应的'],
+      ['new', '有人回应你的帖子时会收到通知'],
+      ['new', '右栏显示在线同学、总人数、今日新帖'],
+      ['new', '更新日志页面'],
+    ],
+  },
+  {
+    version: '0.5.0',
+    date: '2026-11-21',
+    title: '可以拖动的侧栏',
+    changes: [
+      ['new', '拖动左栏边缘调整宽度，拖窄自动收成图标栏，双击恢复默认'],
+      ['fix', '左下角账号菜单被中间栏挡住、圆角被裁掉的问题'],
+    ],
+  },
+  {
+    version: '0.4.0',
+    date: '2026-11-21',
+    title: 'AI 内容审核、标签和表情回应',
+    changes: [
+      ['new', 'AI 内容审核：新帖先经过审核再公开，文字和图片都会审核，发帖的人不会察觉'],
+      ['new', '管理后台可以配置审核模型、查看审核记录、人工通过或拦截'],
+      ['new', '标签：正文里的 #话题 自动成为标签，也可以单独添加；标签页和热门标签'],
+      ['new', '表情回应'],
+    ],
+  },
+  {
+    version: '0.3.0',
+    date: '2026-11-21',
+    title: 'Markdown、外观和独立后台',
+    changes: [
+      ['new', 'Markdown 和 LaTeX 公式，发帖时可以预览'],
+      ['new', '背景渐变：7 种预设，也可以自己调颜色和方向；强调色可以自定义'],
+      ['new', '蓝标认证'],
+      ['new', '管理后台变成独立页面'],
+      ['improve', '个人主页、设置移到左下角头像菜单；左栏可以收起'],
+    ],
+  },
+  {
+    version: '0.2.0',
+    date: '2026-11-21',
+    title: '重新设计登录和注册',
+    changes: [
+      ['improve', '分步登录、注册，带过渡动画'],
+      ['improve', '整体界面去掉大圆角和渐变，换成更克制的样式'],
+    ],
+  },
+  {
+    version: '0.1.0',
+    date: '2026-11-21',
+    title: '校墙上线',
+    changes: [
+      ['new', '邀请码注册'],
+      ['new', '时间线、吧、回复楼层、点赞、转发、@提及、图片'],
+      ['new', '个人主页、关注、通知'],
+      ['new', '管理后台：邀请码、管理员、重置密码'],
+    ],
+  },
+];
+
+export const CURRENT = CHANGELOG[0].version;
+const SEEN_KEY = 'txq_seen_version';
+export const hasUnseen = () => {
+  try {
+    return localStorage.getItem(SEEN_KEY) !== CURRENT;
+  } catch {
+    return false;
+  }
+};
+export const markSeen = () => {
+  try {
+    localStorage.setItem(SEEN_KEY, CURRENT);
+  } catch {
+    /* ignore */
+  }
+};

@@ -1,7 +1,12 @@
 import { all, get, now, run, type Row } from './db.ts';
 
-/** 表情回应（和 GitHub 一样的 8 个） */
-export const REACTIONS = ['+1', '-1', 'laugh', 'hooray', 'confused', 'heart', 'rocket', 'eyes'] as const;
+/** 表情回应（Telegram 式）：每人每帖一个，换一个会替换掉之前的。前端的列表要和这里一致 */
+export const REACTIONS = [
+  '👍', '👎', '❤️', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱', '😢', '🎉', '🤩', '🙏', '👌', '😍',
+  '🤣', '💯', '⚡', '🏆', '💔', '🤨', '😐', '😭', '🤓', '👻', '👀', '🙈', '😇', '😨', '🤝', '✍️',
+  '🤗', '🫡', '💅', '🤪', '🗿', '🆒', '💘', '🦄', '😘', '😎', '🤷', '😡', '🥱', '🥴', '🌚', '🐳',
+  '🍓', '🍾', '🎃', '❤️‍🔥',
+] as const;
 
 /**
  * 帖子查询的公共 SELECT。$me 为当前用户 id，用于计算 liked / reposted。
@@ -10,17 +15,28 @@ export const REACTIONS = ['+1', '-1', 'laugh', 'hooray', 'confused', 'heart', 'r
 export function postSelect(extraCols = '') {
   return `
 SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.content, p.images,
-  p.like_count, p.reply_count, p.repost_count, p.deleted, p.created_at, p.last_activity_at,
+  p.like_count, p.reply_count, p.repost_count, p.view_count, p.deleted, p.created_at, p.last_activity_at,
   u.username, u.display_name, u.avatar, u.role, u.class_name, u.verified, u.verified_note,
   b.slug AS board_slug, b.name AS board_name, b.icon AS board_icon,
   pu.username AS parent_username,
   EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $me) AS liked,
   EXISTS(SELECT 1 FROM posts r WHERE r.repost_of = p.id AND r.author_id = $me) AS reposted,
   (SELECT json_group_array(tag) FROM post_tags WHERE post_id = p.id) AS tags,
-  (SELECT json_group_array(json_object('key', emoji, 'count', n, 'me', mine)) FROM (
-     SELECT emoji, COUNT(*) AS n, MAX(user_id = $me) AS mine, MIN(created_at) AS first
-     FROM reactions WHERE post_id = p.id GROUP BY emoji ORDER BY first
-  )) AS reactions
+  (SELECT json_group_array(json_object('key', emoji, 'count', n, 'me', mine, 'users', json(us))) FROM (
+     SELECT r.emoji, COUNT(*) AS n, MAX(r.user_id = $me) AS mine, MIN(r.created_at) AS first,
+       (SELECT json_group_array(json_object('username', ru.username, 'displayName', ru.display_name, 'avatar', ru.avatar))
+          FROM (SELECT r2.user_id FROM reactions r2 WHERE r2.post_id = p.id AND r2.emoji = r.emoji
+                ORDER BY r2.created_at DESC LIMIT 3) x
+          JOIN users ru ON ru.id = x.user_id) AS us
+     FROM reactions r WHERE r.post_id = p.id GROUP BY r.emoji ORDER BY n DESC, first
+  )) AS reactions,
+  p.pinned_at,
+  CASE WHEN p.board_id IS NULL THEN NULL
+       WHEN b.owner_id = p.author_id THEN 'owner'
+       WHEN EXISTS(SELECT 1 FROM board_mods bm WHERE bm.board_id = p.board_id AND bm.user_id = p.author_id) THEN 'mod'
+  END AS author_board_role,
+  (p.board_id IS NOT NULL AND (b.owner_id = $me
+     OR EXISTS(SELECT 1 FROM board_mods bm WHERE bm.board_id = p.board_id AND bm.user_id = $me))) AS board_manager
   ${extraCols}
 FROM (SELECT * FROM posts WHERE status = 'ok' OR author_id = $me) p
 JOIN users u ON u.id = p.author_id
@@ -40,6 +56,8 @@ export interface PostDTO {
     className: string;
     verified: boolean;
     verifiedNote: string;
+    /** 作者在这条帖子所在吧里的身份 */
+    boardRole: 'owner' | 'mod' | null;
   };
   board: { slug: string; name: string; icon: string } | null;
   parentId: number | null;
@@ -50,13 +68,26 @@ export interface PostDTO {
   likeCount: number;
   replyCount: number;
   repostCount: number;
+  viewCount: number;
   liked: boolean;
   reposted: boolean;
   deleted: boolean;
   createdAt: number;
   tags: string[];
-  reactions: { key: string; count: number; me: boolean }[];
+  reactions: Reaction[];
+  /** 在吧里置顶 */
+  pinned: boolean;
+  /** 当前用户是这条帖子所在吧的吧主 / 吧务（可以置顶、删除） */
+  canModerate: boolean;
   repostOf: PostDTO | null;
+}
+
+export interface Reaction {
+  key: string;
+  count: number;
+  me: boolean;
+  /** 最近回应的几个人（Telegram 在人少时显示头像） */
+  users: { username: string; displayName: string; avatar: string | null }[];
 }
 
 function serializeRow(r: Row): PostDTO {
@@ -72,6 +103,7 @@ function serializeRow(r: Row): PostDTO {
       className: r.class_name ?? '',
       verified: !!r.verified,
       verifiedNote: r.verified_note ?? '',
+      boardRole: (r.author_board_role as 'owner' | 'mod' | null) ?? null,
     },
     board: r.board_slug ? { slug: r.board_slug, name: r.board_name, icon: r.board_icon } : null,
     parentId: r.parent_id ?? null,
@@ -82,6 +114,7 @@ function serializeRow(r: Row): PostDTO {
     likeCount: r.like_count,
     replyCount: r.reply_count,
     repostCount: r.repost_count,
+    viewCount: r.view_count ?? 0,
     liked: !!r.liked,
     reposted: !!r.reposted,
     deleted,
@@ -89,11 +122,14 @@ function serializeRow(r: Row): PostDTO {
     tags: deleted ? [] : (JSON.parse(r.tags ?? '[]') as string[]),
     reactions: deleted
       ? []
-      : (JSON.parse(r.reactions ?? '[]') as { key: string; count: number; me: number }[]).map((x) => ({
+      : (JSON.parse(r.reactions ?? '[]') as (Omit<Reaction, 'me'> & { me: number })[]).map((x) => ({
           key: x.key,
           count: x.count,
           me: !!x.me,
+          users: x.users ?? [],
         })),
+    pinned: !!r.pinned_at,
+    canModerate: !!r.board_manager,
     repostOf: null,
   };
 }
@@ -133,7 +169,7 @@ export function postById(id: number, me: number): PostDTO | undefined {
 
 /* ---------------- 通知 ---------------- */
 
-export function notify(userId: number, actorId: number, type: string, postId: number | null = null) {
+export function notify(userId: number, actorId: number, type: string, postId: number | null = null, extra = '') {
   if (userId === actorId) return;
   // 同一事件不重复通知
   if (
@@ -145,8 +181,8 @@ export function notify(userId: number, actorId: number, type: string, postId: nu
   )
     return;
   run(
-    `INSERT INTO notifications (user_id, actor_id, type, post_id, created_at) VALUES ($u, $a, $type, $p, $t)`,
-    { u: userId, a: actorId, type, p: postId, t: now() },
+    `INSERT INTO notifications (user_id, actor_id, type, post_id, extra, created_at) VALUES ($u, $a, $type, $p, $extra, $t)`,
+    { u: userId, a: actorId, type, p: postId, extra, t: now() },
   );
 }
 
@@ -217,4 +253,18 @@ export function unpublishEffects(postId: number) {
     run('UPDATE posts SET reply_count = MAX(reply_count - 1, 0) WHERE id = $id', { id: p.parent_id });
   }
   run("DELETE FROM notifications WHERE post_id = $id AND type IN ('reply', 'mention')", { id: postId });
+}
+
+/* ---------------- 吧务权限 ---------------- */
+
+/** 'owner' 吧主 / 'mod' 吧务 / 'admin' 站点管理员（没有吧内身份时）/ null */
+export function boardRole(boardId: number | null, user: { id: number; role: string }) {
+  if (!boardId) return user.role === 'admin' ? 'admin' : null;
+  const r = get<{ owner_id: number | null; is_mod: number }>(
+    `SELECT owner_id, EXISTS(SELECT 1 FROM board_mods WHERE board_id = $b AND user_id = $u) AS is_mod FROM boards WHERE id = $b`,
+    { b: boardId, u: user.id },
+  );
+  if (r?.owner_id === user.id) return 'owner';
+  if (r?.is_mod) return 'mod';
+  return user.role === 'admin' ? 'admin' : null;
 }

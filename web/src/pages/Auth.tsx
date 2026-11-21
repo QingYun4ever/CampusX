@@ -164,7 +164,7 @@ function AuthShell({
       </main>
       <footer className="auth-foot">
         <ThemeSelect />
-        <span>同学圈 · 仅限受邀同学</span>
+        <span>校墙 · 仅限受邀同学</span>
       </footer>
     </div>
   );
@@ -249,7 +249,7 @@ export function Login() {
       step={step}
       dir={dir}
       title="登录"
-      subtitle="使用你的同学圈账号"
+      subtitle="使用你的校墙账号"
       onSubmit={submit}
       left={
         <Link to="/register" className="btn btn-text">
@@ -269,7 +269,7 @@ export function Login() {
         spellCheck={false}
         autoFocus
       />
-      <p className="auth-note">还没有账号？同学圈只能凭邀请码注册，可以向班长或管理员要一个。</p>
+      <p className="auth-note">还没有账号？校墙只能凭邀请码注册，可以向班长或管理员要一个。</p>
     </AuthShell>
   ) : (
     <AuthShell
@@ -443,7 +443,7 @@ export function Register() {
         <AuthShell
           {...common}
           title="创建账号"
-          subtitle="同学圈只对受邀的同学开放。输入你收到的邀请码。"
+          subtitle="校墙只对受邀的同学开放。输入你收到的邀请码。"
           aside={progress}
           right={nextBtn('下一步', busy)}
         >

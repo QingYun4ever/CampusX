@@ -13,6 +13,8 @@ import { PostDetail } from './pages/PostDetail';
 import { FollowList, Profile } from './pages/Profile';
 import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
+import { Changelog } from './pages/Changelog';
+import { Messages } from './pages/Messages';
 import { TagPage } from './pages/Tag';
 
 
@@ -59,6 +61,9 @@ export function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/t/:tag" element={<TagPage />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/changelog" element={<Changelog />} />
+          <Route path="/messages" element={<Messages />} />
+          <Route path="/messages/:username" element={<Messages />} />
           <Route path="*" element={<Empty title="页面不存在">链接可能有误，或者页面已被删除。</Empty>} />
         </Route>
       </Routes>
