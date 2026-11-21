@@ -1,0 +1,43 @@
+.security-end {
+  margin-inline-start: auto;
+}
+
+.security-panel p, .security-panel h3 {
+  margin: 0;
+}
+
+.security-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.security-error {
+  color: var(--danger);
+}
+
+.security-qr {
+  align-self: center;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--r);
+}
+
+.security-secret {
+  user-select: all;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.security-recovery {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-2);
+  border-radius: var(--r);
+  user-select: text;
+}

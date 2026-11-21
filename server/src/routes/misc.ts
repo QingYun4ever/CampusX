@@ -6,31 +6,11 @@ import { z } from 'zod';
 import { createInvite, formatInvite, hashPassword, normalizeInvite } from '../auth.ts';
 import { uploadsDir } from '../config.ts';
 import { all, get, now, run } from '../db.ts';
+import { readUploadedImage } from '../image-upload.ts';
 import { configSchema, describeError, getConfig, manualDecision, publicConfig, review, saveConfig, type ModConfig } from '../moderation.ts';
 import { postsByIds } from '../serialize.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
-
-const MIME: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-};
-
-function magicOk(buf: Buffer, ext: string) {
-  switch (ext) {
-    case 'jpg':
-      return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
-    case 'png':
-      return buf.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    case 'gif':
-      return buf.subarray(0, 4).toString('latin1') === 'GIF8';
-    case 'webp':
-      return buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WEBP';
-  }
-  return false;
-}
 
 export async function miscRoutes(app: FastifyInstance) {
   /* ---------- 图片上传 ---------- */
@@ -38,12 +18,9 @@ export async function miscRoutes(app: FastifyInstance) {
     me(req);
     const file = await req.file();
     if (!file) throw new HttpError(400, '没有收到文件');
-    const ext = MIME[file.mimetype];
-    if (!ext) throw new HttpError(400, '只支持 JPG / PNG / WebP / GIF 图片');
-    const buf = await file.toBuffer();
-    if (!magicOk(buf, ext)) throw new HttpError(400, '文件内容不是有效的图片');
+    const { buffer, ext } = await readUploadedImage(file);
     const name = `${randomBytes(12).toString('base64url')}.${ext}`;
-    await fs.writeFile(path.join(uploadsDir, name), buf);
+    await fs.writeFile(path.join(uploadsDir, name), buffer);
     return { url: `/uploads/${name}` };
   });
 

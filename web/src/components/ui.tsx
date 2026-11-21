@@ -17,9 +17,10 @@ import {
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CircleAlert, X } from 'lucide-react';
-import { media } from '../lib/api';
+import { media, type AvatarDecoration } from '../lib/api';
 import { useEscape } from '../lib/escape';
 import { compact } from '../lib/format';
+import './identity.css';
 
 /* ---------- 蓝标认证：由管理员手动指定 ---------- */
 export function Verified({ user, size = 18 }: { user: { verified?: boolean; verifiedNote?: string }; size?: number }) {
@@ -45,25 +46,33 @@ export function toneFor(s: string) {
   return TONES[h % TONES.length];
 }
 
-export function Avatar({ src, name, size = 40 }: { src?: string | null; name: string; size?: number }) {
-  const [failed, setFailed] = useState(false);
+export function Avatar({ src, name, size = 40, decoration }: {
+  src?: string | null;
+  name: string;
+  size?: number;
+  decoration?: AvatarDecoration;
+}) {
+  // 更换头像时，新图片仍可正常加载。
   const url = media(src);
-  if (url && !failed) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  if (url && url !== failedUrl) {
     return (
       <img
         className="avatar"
+        data-avatar-decoration={decoration || undefined}
         src={url}
         alt=""
         width={size}
         height={size}
         style={{ width: size, height: size }}
-        onError={() => setFailed(true)}
+        onError={() => setFailedUrl(url)}
       />
     );
   }
   return (
     <span
       className="avatar"
+      data-avatar-decoration={decoration || undefined}
       style={{ width: size, height: size, fontSize: size * 0.42, background: toneFor(name || '?') }}
       aria-hidden
     >
@@ -382,6 +391,11 @@ export function openLightbox(src: string, from?: HTMLElement | null) {
   window.dispatchEvent(new CustomEvent('app:lightbox', { detail: { src, from } }));
 }
 
+/** 私有图片被撤回或卸载时，关闭同一资源的查看器。 */
+export function closeLightbox(src: string) {
+  window.dispatchEvent(new CustomEvent('app:lightbox-close', { detail: src }));
+}
+
 type ToastItem = { id: number; message: string; type: string; leaving?: boolean };
 
 function Lightbox({ src, from, onDone }: { src: string; from?: HTMLElement | null; onDone: () => void }) {
@@ -448,11 +462,14 @@ export function Overlays() {
       setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), 2900);
     };
     const onImg = (e: Event) => setImg((e as CustomEvent).detail);
+    const onImgClose = (e: Event) => setImg((current) => (current?.src === (e as CustomEvent<string>).detail ? null : current));
     window.addEventListener('app:toast', onToast);
     window.addEventListener('app:lightbox', onImg);
+    window.addEventListener('app:lightbox-close', onImgClose);
     return () => {
       window.removeEventListener('app:toast', onToast);
       window.removeEventListener('app:lightbox', onImg);
+      window.removeEventListener('app:lightbox-close', onImgClose);
     };
   }, []);
   return (
@@ -464,7 +481,9 @@ export function Overlays() {
           </div>
         ))}
       </div>
-      {img && <Lightbox key={img.src} src={img.src} from={img.from} onDone={() => setImg(null)} />}
+      {img && (
+        <Lightbox key={img.src} src={img.src} from={img.from} onDone={() => setImg((current) => (current === img ? null : current))} />
+      )}
     </>
   );
 }

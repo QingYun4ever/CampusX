@@ -27,20 +27,20 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 /* ---------------- 会话（Bearer token，Web 和原生 App 通用） ---------------- */
 
-const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+export const sessionTokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
 
 export function createSession(userId: number): string {
   const token = randomBytes(32).toString('base64url');
   const t = now();
   run(
     'INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES ($h, $uid, $t, $exp)',
-    { h: sha256(token), uid: userId, t, exp: t + config.sessionDays * 86400_000 },
+    { h: sessionTokenHash(token), uid: userId, t, exp: t + config.sessionDays * 86400_000 },
   );
   return token;
 }
 
 export function destroySession(token: string) {
-  run('DELETE FROM sessions WHERE token_hash = $h', { h: sha256(token) });
+  run('DELETE FROM sessions WHERE token_hash = $h', { h: sessionTokenHash(token) });
 }
 
 export interface SessionUser {
@@ -53,7 +53,7 @@ export function userFromToken(token: string): SessionUser | null {
   const row = get<SessionUser & { expires_at: number }>(
     `SELECT u.id, u.username, u.role, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = $h`,
-    { h: sha256(token) },
+    { h: sessionTokenHash(token) },
   );
   if (!row) return null;
   if (row.expires_at < now()) {

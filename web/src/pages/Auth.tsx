@@ -238,9 +238,11 @@ function ServerAddressModal({ onClose }: { onClose: () => void }) {
 export function Login() {
   const { signIn } = useAuth();
   const nav = useNavigate();
-  const [step, setStep] = useState<'user' | 'pass'>('user');
+  const [step, setStep] = useState<'user' | 'pass' | 'factor'>('user');
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
   const [f, setF] = useState({ username: '', password: '', captchaText: '' });
+  const [challenge, setChallenge] = useState('');
+  const [factor, setFactor] = useState('');
   const [err, setErr] = useState<{ field?: string; msg: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [show, setShow] = useState(false);
@@ -250,6 +252,10 @@ export function Login() {
 
   const go = (s: typeof step, d: typeof dir) => {
     setErr(null);
+    if (s !== 'factor') {
+      setChallenge('');
+      setFactor('');
+    }
     setDir(d);
     setStep(s);
   };
@@ -262,25 +268,70 @@ export function Login() {
       if (!f.username.trim()) return setErr({ field: 'username', msg: '请输入用户名' });
       return go('pass', 'fwd');
     }
-    if (!f.password) return setErr({ field: 'password', msg: '请输入密码' });
-    if (!f.captchaText) return setErr({ field: 'captcha', msg: '请输入验证码' });
+    if (step === 'pass') {
+      if (!f.password) return setErr({ field: 'password', msg: '请输入密码' });
+      if (!f.captchaText) return setErr({ field: 'captcha', msg: '请输入验证码' });
+    } else if (!factor.trim()) {
+      return setErr({ field: 'factor', msg: '请输入验证器验证码或恢复码' });
+    }
     setBusy(true);
     try {
-      const r = await api<{ token: string; user: User }>('/auth/login', {
-        body: { ...f, username: f.username.trim(), captchaId: c.cap?.id },
-      });
+      type Session = { token: string; user: User };
+      type NeedsFactor = { twoFactorRequired: true; challenge: string };
+      const r = step === 'factor'
+        ? await api<Session>('/auth/login/2fa', { body: { challenge, code: factor.trim() } })
+        : await api<Session | NeedsFactor>('/auth/login', {
+            body: { ...f, username: f.username.trim(), captchaId: c.cap?.id },
+          });
+      if ('twoFactorRequired' in r) {
+        setChallenge(r.challenge);
+        setF((x) => ({ ...x, password: '', captchaText: '' }));
+        go('factor', 'fwd');
+        return;
+      }
       signIn(r.token, r.user);
       nav('/', { replace: true });
     } catch (e) {
       const msg = (e as Error).message;
-      setErr({ field: msg.includes('验证码') ? 'captcha' : 'password', msg });
-      setF((x) => ({ ...x, captchaText: '' }));
-      c.refresh();
+      if (step === 'factor') {
+        setErr({ field: 'factor', msg });
+        setFactor('');
+      } else {
+        setErr({ field: msg.includes('验证码') ? 'captcha' : 'password', msg });
+        setF((x) => ({ ...x, captchaText: '' }));
+        c.refresh();
+      }
+    } finally {
       setBusy(false);
     }
   };
 
   const fe = (k: string) => (err?.field === k ? err.msg : undefined);
+
+  if (step === 'factor') return (
+    <AuthShell
+      busy={busy}
+      step={step}
+      dir={dir}
+      title="两步验证"
+      subtitle="输入验证器里的验证码，或使用一个未用过的恢复码。"
+      onSubmit={submit}
+      left={<button type="button" className="btn btn-text" disabled={busy} onClick={() => go('pass', 'back')}>返回密码</button>}
+      right={nextBtn(busy ? '正在验证' : '验证', busy)}
+    >
+      <Field
+        variant="outlined"
+        label="验证器验证码或恢复码"
+        value={factor}
+        onChange={setFactor}
+        error={fe('factor')}
+        autoComplete="one-time-code"
+        autoCapitalize="off"
+        spellCheck={false}
+        autoFocus
+      />
+    </AuthShell>
+  );
 
   return step === 'user' ? (
     <AuthShell

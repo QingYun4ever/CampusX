@@ -30,7 +30,7 @@ export function postSelect(extraCols = '') {
   return `
 SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.content, p.images,
   p.like_count, p.reply_count, p.repost_count, p.view_count, p.deleted, p.created_at, p.last_activity_at,
-  u.username, u.display_name, u.avatar, u.role, u.class_name, u.verified, u.verified_note,
+  u.username, u.display_name, u.avatar, u.avatar_decoration, u.role, u.class_name, u.verified, u.verified_note,
   b.slug AS board_slug, b.name AS board_name, b.icon AS board_icon,
   pu.username AS parent_username,
   EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $me) AS liked,
@@ -66,6 +66,7 @@ export interface PostDTO {
     username: string;
     displayName: string;
     avatar: string | null;
+    avatarDecoration: string;
     role: string;
     className: string;
     verified: boolean;
@@ -113,6 +114,7 @@ function serializeRow(r: Row): PostDTO {
       username: r.username,
       displayName: r.display_name,
       avatar: r.avatar ?? null,
+      avatarDecoration: r.avatar_decoration,
       role: r.role,
       className: r.class_name ?? '',
       verified: !!r.verified,

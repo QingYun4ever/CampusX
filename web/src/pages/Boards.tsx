@@ -322,7 +322,7 @@ function TeamMember({ u, role, action }: { u: User; role?: 'owner' | 'mod'; acti
   return (
     <div className="team-row">
       <Link to={`/u/${u.username}`} className="team-user">
-        <Avatar src={u.avatar} name={u.displayName} size={40} />
+        <Avatar src={u.avatar} name={u.displayName} size={40} decoration={u.avatarDecoration} />
         <div style={{ minWidth: 0 }}>
           <div className="name">
             <span className="ellipsis">{u.displayName}</span>
@@ -456,7 +456,7 @@ function TeamStrip({ b, onOpen }: { b: BoardDetail; onOpen: () => void }) {
         <Crown size={14} className="crown" />
         {b.owner ? (
           <>
-            <Avatar src={b.owner.avatar} name={b.owner.displayName} size={22} />
+            <Avatar src={b.owner.avatar} name={b.owner.displayName} size={22} decoration={b.owner.avatarDecoration} />
             <span className="ellipsis">{b.owner.displayName}</span>
           </>
         ) : (
@@ -468,7 +468,7 @@ function TeamStrip({ b, onOpen }: { b: BoardDetail; onOpen: () => void }) {
           <span className="muted">吧务</span>
           <span className="face-stack">
             {b.mods.slice(0, 4).map((u) => (
-              <Avatar key={u.id} src={u.avatar} name={u.displayName} size={22} />
+              <Avatar key={u.id} src={u.avatar} name={u.displayName} size={22} decoration={u.avatarDecoration} />
             ))}
           </span>
           {b.mods.length > 4 && <span className="muted">+{b.mods.length - 4}</span>}

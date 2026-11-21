@@ -10,18 +10,22 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ChangeEvent,
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowLeft, Check, CheckCheck, Clock, Copy, MessageSquarePlus, Search, Send, Trash2, Undo2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, CheckCheck, Clock, Copy, ImagePlus, MessageSquarePlus, Search, Send, Trash2, Undo2 } from 'lucide-react';
+import { EmojiPicker } from '../components/EmojiPicker';
 import { PlainText } from '../components/PostCard';
 import { Avatar, Empty, Modal, Spinner, toast, Verified } from '../components/ui';
 import { isAndroid } from '../lib/android';
 import { api, type ChatPage, type Conversation, type DmMessage, type DmUser, type Page, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { useEscape } from '../lib/escape';
+import { DmImage, DM_IMAGE_LIMIT, DM_IMAGE_MAX_BYTES, DM_IMAGE_TYPES } from './DmImage';
+import './dm-media.css';
 
 /* ---------- 时间显示 ---------- */
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -108,10 +112,10 @@ function NewChat({ onClose }: { onClose: () => void }) {
               nav(`/messages/${u.username}`);
             }}
           >
-            <Avatar src={u.avatar} name={u.displayName} size={40} />
+            <Avatar src={u.avatar} name={u.displayName} size={40} decoration={u.avatarDecoration} />
             <div style={{ minWidth: 0 }}>
               <div className="name">
-                <span className="ellipsis">{u.displayName}</span>
+                <span className="ellipsis" data-admin={u.role === 'admin' || undefined}>{u.displayName}</span>
                 <Verified user={u} size={15} />
               </div>
               <div className="muted small ellipsis">
@@ -176,13 +180,13 @@ function ChatList({ active }: { active?: string }) {
                 style={{ '--i': i } as CSSProperties}
               >
                 <span className="dm-ava">
-                  <Avatar src={c.peer.avatar} name={c.peer.displayName} size={50} />
+                  <Avatar src={c.peer.avatar} name={c.peer.displayName} size={50} decoration={c.peer.avatarDecoration} />
                   {isOnline(c.peer) && <i className="online-dot" />}
                 </span>
                 <span className="dm-item-main">
                   <span className="dm-item-top">
                     <span className="name">
-                      <span className="ellipsis">{c.peer.displayName}</span>
+                      <span className="ellipsis" data-admin={c.peer.role === 'admin' || undefined}>{c.peer.displayName}</span>
                       <Verified user={c.peer} size={15} />
                     </span>
                     <span className="dm-time">
@@ -193,7 +197,7 @@ function ChatList({ active }: { active?: string }) {
                   <span className="dm-item-bottom">
                     <span className="dm-preview">
                       {mine && <span className="dm-you">你：</span>}
-                      {c.last.deleted ? <i>消息已撤回</i> : c.last.content}
+                      {c.last.deleted ? <i>消息已撤回</i> : c.last.content || (c.last.images?.length ? '[图片]' : '')}
                     </span>
                     {c.unread > 0 && <span className="dm-unread">{c.unread > 99 ? '99+' : c.unread}</span>}
                   </span>
@@ -210,40 +214,49 @@ function ChatList({ active }: { active?: string }) {
 
 /* ---------- 对话 ---------- */
 
+const MESSAGE_MAX_LENGTH = 2000;
+type ChatMessage = DmMessage & { localImages?: File[] };
+
+const recalled = (m: ChatMessage): ChatMessage => ({ ...m, deleted: true, content: '', images: [], localImages: undefined });
+
 /** 已发出的按 id 排序，发送中 / 失败的放在最后 */
-const normalize = (list: DmMessage[]) => [
+const normalize = (list: ChatMessage[]) => [
   ...list.filter((m) => !m.pending && !m.failed).sort((a, b) => a.id - b.id),
   ...list.filter((m) => m.pending || m.failed),
 ];
-function merge(list: DmMessage[], incoming: DmMessage[]) {
-  const have = new Set(list.map((m) => m.id));
-  return normalize([...list, ...incoming.filter((m) => !have.has(m.id))]);
+function merge(list: ChatMessage[], incoming: DmMessage[]) {
+  const byId = new Map(list.map((m) => [m.id, m]));
+  for (const m of incoming) {
+    if (!byId.has(m.id) || m.deleted) byId.set(m.id, m.deleted ? recalled(m) : m);
+  }
+  return normalize([...byId.values()]);
 }
 
-type Ctx = { m: DmMessage; x: number; y: number } | null;
+type Ctx = { id: number; x: number; y: number } | null;
 
 function ChatView({ username }: { username: string }) {
   const me = useMe();
   const qc = useQueryClient();
   const nav = useNavigate();
   const [peer, setPeer] = useState<DmUser | null>(null);
-  const [msgs, setMsgs] = useState<DmMessage[]>([]);
+  const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [readUpTo, setReadUpTo] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [draft, setDraft] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const [ctx, setCtx] = useState<Ctx>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const emojiRange = useRef<[number, number] | null>(null);
+  const localId = useRef(0);
   const stick = useRef(true);
-  const prepend = useRef<number | null>(null);
+  const prepend = useRef<{ height: number; top: number } | null>(null);
   const loadingOlder = useRef(false);
-  const lastId = useRef(0);
-
-  useEffect(() => {
-    lastId.current = msgs.reduce((n, m) => (m.id > n && !m.pending ? m.id : n), 0);
-  }, [msgs]);
+  // 发送响应可能先收到更大的 id；轮询只推进自己读过的游标。
+  const pollCursor = useRef(0);
 
   const markRead = useCallback(() => {
     api(`/dm/with/${username}/read`, { method: 'POST' })
@@ -261,6 +274,7 @@ function ChatView({ username }: { username: string }) {
     api<ChatPage>(`/dm/with/${username}`)
       .then((r) => {
         if (!alive) return;
+        pollCursor.current = r.messages.at(-1)?.id ?? 0;
         setPeer(r.peer);
         setMsgs(r.messages);
         setHasMore(r.hasMore);
@@ -277,10 +291,15 @@ function ChatView({ username }: { username: string }) {
   // 轮询新消息
   useEffect(() => {
     if (loading || error) return;
+    let alive = true;
+    let polling = false;
     const tick = async () => {
-      if (document.visibilityState === 'hidden') return;
+      if (polling || document.visibilityState === 'hidden') return;
+      polling = true;
       try {
-        const r = await api<ChatPage>(`/dm/with/${username}?after=${lastId.current}`);
+        const r = await api<ChatPage>(`/dm/with/${username}?after=${pollCursor.current}`);
+        if (!alive) return;
+        pollCursor.current = r.messages.at(-1)?.id ?? pollCursor.current;
         setPeer(r.peer);
         setReadUpTo(r.peerReadUpTo);
         if (r.messages.length) {
@@ -289,14 +308,19 @@ function ChatView({ username }: { username: string }) {
         }
         if (r.deletedIds.length) {
           const del = new Set(r.deletedIds);
-          setMsgs((m) => (m.some((x) => del.has(x.id) && !x.deleted) ? m.map((x) => (del.has(x.id) ? { ...x, deleted: true, content: '' } : x)) : m));
+          setMsgs((m) => (m.some((x) => del.has(x.id) && !x.deleted) ? m.map((x) => (del.has(x.id) ? recalled(x) : x)) : m));
         }
       } catch {
         /* 网络抖动，下次再试 */
+      } finally {
+        polling = false;
       }
     };
     const t = setInterval(tick, 2500);
-    return () => clearInterval(t);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
   }, [username, loading, error, me.id, markRead]);
 
   // 滚动：往上加载旧消息时保持位置；在底部时跟随新消息
@@ -304,17 +328,17 @@ function ChatView({ username }: { username: string }) {
     const el = scroller.current;
     if (!el) return;
     if (prepend.current != null) {
-      el.scrollTop += el.scrollHeight - prepend.current;
+      el.scrollTop = prepend.current.top + el.scrollHeight - prepend.current.height;
       prepend.current = null;
     } else if (stick.current) {
       el.scrollTop = el.scrollHeight;
     }
   }, [msgs, loading]);
 
-  // 键盘改变可见高度时，原本在底部的会话继续显示最新消息。
+  // 输入栏或键盘改变可见高度时，原本在底部的会话继续显示最新消息。
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (!isAndroid || !el || !('ResizeObserver' in window)) return;
+    if (!el || !('ResizeObserver' in window)) return;
     const observer = new ResizeObserver(() => {
       if (stick.current) el.scrollTop = el.scrollHeight;
     });
@@ -328,9 +352,9 @@ function ChatView({ username }: { username: string }) {
     if (el.scrollTop < 120 && hasMore && !loadingOlder.current && msgs.length) {
       loadingOlder.current = true;
       try {
-        const first = msgs.find((m) => !m.pending)?.id ?? 0;
+        const first = msgs.find((m) => m.id > 0)?.id ?? 0;
         const r = await api<ChatPage>(`/dm/with/${username}?before=${first}`);
-        prepend.current = el.scrollHeight;
+        prepend.current = { height: el.scrollHeight, top: el.scrollTop };
         setHasMore(r.hasMore);
         setMsgs((m) => merge(m, r.messages));
       } finally {
@@ -339,20 +363,66 @@ function ChatView({ username }: { username: string }) {
     }
   };
 
-  const send = async (text = draft.trim(), retryId?: number) => {
-    if (!text) return;
-    if (!retryId) setDraft('');
-    const temp: DmMessage = { id: retryId ?? -Date.now(), senderId: me.id, content: text, deleted: false, createdAt: Date.now(), pending: true };
+  const send = async (retry?: ChatMessage) => {
+    const text = retry ? retry.content : draft.trim();
+    const attachments = retry ? retry.localImages : files;
+    if (!text && !attachments?.length) return;
+    if (!retry) {
+      setDraft('');
+      setFiles([]);
+      emojiRange.current = null;
+    }
+    const temp: ChatMessage = {
+      id: retry?.id ?? --localId.current,
+      senderId: me.id,
+      content: text,
+      images: [],
+      localImages: attachments?.length ? attachments : undefined,
+      deleted: false,
+      createdAt: retry?.createdAt ?? Date.now(),
+      pending: true,
+    };
     stick.current = true;
-    setMsgs((m) => normalize(retryId ? m.map((x) => (x.id === retryId ? temp : x)) : [...m, temp]));
+    setMsgs((m) => normalize(retry ? m.map((x) => (x.id === retry.id ? temp : x)) : [...m, temp]));
     try {
-      const real = await api<DmMessage>(`/dm/with/${username}`, { body: { content: text } });
+      let form: FormData | undefined;
+      if (attachments?.length) {
+        form = new FormData();
+        form.set('content', text);
+        for (const file of attachments) form.append('images', file);
+      }
+      const real = await api<DmMessage>(`/dm/with/${username}`, form ? { form } : { body: { content: text } });
       setMsgs((m) => normalize(m.some((x) => x.id === real.id) ? m.filter((x) => x.id !== temp.id) : m.map((x) => (x.id === temp.id ? real : x))));
       qc.invalidateQueries({ queryKey: ['dm-convs'] });
     } catch (e) {
       setMsgs((m) => m.map((x) => (x.id === temp.id ? { ...x, pending: false, failed: true } : x)));
       toast((e as Error).message, 'error');
     }
+  };
+
+  const chooseImages = (e: ChangeEvent<HTMLInputElement>) => {
+    const chosen = Array.from(e.currentTarget.files ?? []);
+    e.currentTarget.value = '';
+    const accepted = chosen.filter((file) => DM_IMAGE_TYPES.includes(file.type) && file.size > 0 && file.size <= DM_IMAGE_MAX_BYTES);
+    const slots = DM_IMAGE_LIMIT - files.length;
+    if (accepted.length) setFiles([...files, ...accepted.slice(0, slots)]);
+    if (accepted.length < chosen.length) toast('请选择不超过 8 MiB 的 JPG、PNG、WebP 或 GIF 图片', 'error');
+    if (accepted.length > slots) toast(`每条消息最多可发 ${DM_IMAGE_LIMIT} 张图片`, 'error');
+  };
+
+  const saveEmojiRange = () => {
+    const el = input.current;
+    if (el) emojiRange.current = [el.selectionStart, el.selectionEnd];
+  };
+  const insertEmoji = (emoji: string) => {
+    const el = input.current;
+    if (!el) return;
+    const [start, end] = emojiRange.current ?? [el.selectionStart, el.selectionEnd];
+    emojiRange.current = null;
+    if (el.value.length - (end - start) + emoji.length > MESSAGE_MAX_LENGTH) return;
+    // 保持表情面板或输入框当前的焦点，不主动弹出键盘。
+    el.setRangeText(emoji, start, end, 'end');
+    setDraft(el.value);
   };
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -392,17 +462,19 @@ function ChatView({ username }: { username: string }) {
     if (!confirm('撤回这条消息？双方都将看不到内容。')) return;
     try {
       await api(`/dm/messages/${m.id}`, { method: 'DELETE' });
-      setMsgs((l) => l.map((x) => (x.id === m.id ? { ...x, deleted: true, content: '' } : x)));
+      setMsgs((l) => l.map((x) => (x.id === m.id ? recalled(x) : x)));
       qc.invalidateQueries({ queryKey: ['dm-convs'] });
     } catch (e) {
       toast((e as Error).message, 'error');
     }
   };
   const openCtx = (e: MouseEvent, m: DmMessage) => {
-    if (m.deleted || m.pending) return;
+    if (m.deleted || m.pending || m.failed || (!m.content && m.senderId !== me.id)) return;
     e.preventDefault();
-    setCtx({ m, x: Math.min(e.clientX, window.innerWidth - 180), y: Math.min(e.clientY, window.innerHeight - 110) });
+    setCtx({ id: m.id, x: Math.min(e.clientX, window.innerWidth - 180), y: Math.min(e.clientY, window.innerHeight - 110) });
   };
+  const contextMessage = ctx ? msgs.find((m) => m.id === ctx.id && !m.deleted) : undefined;
+  const canSend = !loading && (!!draft.trim() || files.length > 0);
 
   if (error) {
     return (
@@ -426,12 +498,12 @@ function ChatView({ username }: { username: string }) {
         {peer && (
           <Link to={`/u/${peer.username}`} className="dm-peer">
             <span className="dm-ava">
-              <Avatar src={peer.avatar} name={peer.displayName} size={40} />
+              <Avatar src={peer.avatar} name={peer.displayName} size={40} decoration={peer.avatarDecoration} />
               {isOnline(peer) && <i className="online-dot" />}
             </span>
             <span style={{ minWidth: 0 }}>
               <span className="name">
-                <span className="ellipsis">{peer.displayName}</span>
+                <span className="ellipsis" data-admin={peer.role === 'admin' || undefined}>{peer.displayName}</span>
                 <Verified user={peer} size={15} />
               </span>
               <span className={`dm-status ${isOnline(peer) ? 'on' : ''}`}>{lastSeen(peer)}</span>
@@ -445,8 +517,8 @@ function ChatView({ username }: { username: string }) {
           <Spinner />
         ) : !msgs.length ? (
           <div className="dm-hello">
-            <Avatar src={peer?.avatar} name={peer?.displayName ?? ''} size={72} />
-            <b>{peer?.displayName}</b>
+            <Avatar src={peer?.avatar} name={peer?.displayName ?? ''} size={72} decoration={peer?.avatarDecoration} />
+            <b data-admin={peer?.role === 'admin' || undefined}>{peer?.displayName}</b>
             <span>还没有消息，打个招呼吧 👋</span>
           </div>
         ) : (
@@ -460,6 +532,7 @@ function ChatView({ username }: { username: string }) {
               const first = newDay || !near(prev);
               const last = !near(next) || (!!next && dayKey(next.createdAt) !== dayKey(m.createdAt));
               const mine = m.senderId === me.id;
+              const images = m.localImages ?? m.images;
               return (
                 <Fragment key={m.id}>
                   {newDay && (
@@ -476,13 +549,22 @@ function ChatView({ username }: { username: string }) {
                         <Undo2 size={14} /> 消息已撤回
                       </span>
                     ) : (
-                      <PlainText text={m.content} />
+                      <>
+                        {!!images?.length && (
+                          <div className="dm-image-grid" data-single={images.length === 1 || undefined}>
+                            {images.map((source, index) => (
+                              <DmImage key={index} source={source} number={index + 1} />
+                            ))}
+                          </div>
+                        )}
+                        {m.content && <PlainText text={m.content} />}
+                      </>
                     )}
                     <span className="dm-meta">
                       {hm(m.createdAt)}
                       {mine &&
                         (m.failed ? (
-                          <button className="dm-retry" onClick={() => send(m.content, m.id)} title="发送失败，点击重试" aria-label="重试">
+                          <button className="dm-retry" onClick={() => send(m)} title="发送失败，点击重试" aria-label="重试">
                             <AlertCircle size={14} />
                           </button>
                         ) : m.pending ? (
@@ -492,6 +574,17 @@ function ChatView({ username }: { username: string }) {
                         ) : (
                           <Check size={15} />
                         ))}
+                      {mine && !m.deleted && !m.pending && !m.failed && !!images?.length && (
+                        <button
+                          type="button"
+                          className="dm-image-recall"
+                          onClick={() => recall(m)}
+                          aria-label="撤回图片消息"
+                          title="撤回消息"
+                        >
+                          <Undo2 size={15} />
+                        </button>
+                      )}
                     </span>
                   </div>
                 </Fragment>
@@ -505,37 +598,65 @@ function ChatView({ username }: { username: string }) {
         className="dm-compose"
         onSubmit={(e) => {
           e.preventDefault();
-          send();
+          if (canSend) send();
         }}
       >
-        <textarea
-          ref={input}
-          rows={1}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKey}
-          placeholder="发消息…"
-          aria-label="消息"
-          maxLength={2000}
-          disabled={loading}
-        />
-        <button className={`dm-send ${draft.trim() ? 'ready' : ''}`} disabled={!draft.trim()} aria-label="发送" title="发送（Enter）">
-          <Send size={20} />
-        </button>
+        {files.length > 0 && (
+          <div className="dm-draft-images" aria-label="待发送图片">
+            {files.map((file, index) => (
+              <DmImage
+                key={index}
+                source={file}
+                number={index + 1}
+                onRemove={() => setFiles((list) => list.filter((_, i) => i !== index))}
+              />
+            ))}
+          </div>
+        )}
+        <div className="dm-compose-row">
+          <input ref={fileInput} type="file" accept={DM_IMAGE_TYPES.join(',')} multiple hidden onChange={chooseImages} />
+          <button
+            type="button"
+            className="icon-btn accent"
+            disabled={loading || files.length >= DM_IMAGE_LIMIT}
+            onClick={() => fileInput.current?.click()}
+            aria-label="添加图片"
+            title="添加图片"
+          >
+            <ImagePlus size={20} />
+          </button>
+          <EmojiPicker className="icon-btn accent" disabled={loading} onOpen={saveEmojiRange} onPick={insertEmoji} />
+          <textarea
+            ref={input}
+            rows={1}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={onKey}
+            placeholder="发消息…"
+            aria-label="消息"
+            maxLength={MESSAGE_MAX_LENGTH}
+            disabled={loading}
+          />
+          <button className={`dm-send ${canSend ? 'ready' : ''}`} disabled={!canSend} aria-label="发送" title="发送（Enter）">
+            <Send size={20} />
+          </button>
+        </div>
       </form>
 
-      {ctx && (
+      {ctx && contextMessage && (
         <div className="menu dm-ctx" style={{ left: ctx.x, top: ctx.y }} onPointerDown={(e) => e.stopPropagation()} role="menu">
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(ctx.m.content).then(() => toast('已复制'));
-              setCtx(null);
-            }}
-          >
-            <Copy size={17} /> 复制
-          </button>
-          {ctx.m.senderId === me.id && (
-            <button className="danger" onClick={() => recall(ctx.m)}>
+          {contextMessage.content && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(contextMessage.content).then(() => toast('已复制'));
+                setCtx(null);
+              }}
+            >
+              <Copy size={17} /> 复制
+            </button>
+          )}
+          {contextMessage.senderId === me.id && (
+            <button className="danger" onClick={() => recall(contextMessage)}>
               <Trash2 size={17} /> 撤回
             </button>
           )}

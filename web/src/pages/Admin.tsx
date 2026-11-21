@@ -374,7 +374,7 @@ function LogItem({ log, onDecided }: { log: ModLog; onDecided: () => void }) {
   const st = log.post.status;
   return (
     <div className="log-item">
-      <Avatar src={log.post.author.avatar} name={log.post.author.displayName} size={36} />
+      <Avatar src={log.post.author.avatar} name={log.post.author.displayName} size={36} decoration={log.post.author.avatarDecoration} />
       <div className="log-body">
         <div className="log-head">
           <span className="name">{log.post.author.displayName}</span>
@@ -627,7 +627,7 @@ function VerifyForm({ user, onDone }: { user: User; onDone: () => void }) {
   return (
     <div className="modal-body">
       <div className="verify-preview">
-        <Avatar src={user.avatar} name={user.displayName} size={48} />
+        <Avatar src={user.avatar} name={user.displayName} size={48} decoration={user.avatarDecoration} />
         <div>
           <div className="name">
             {user.displayName} <Verified user={{ verified: true, verifiedNote: note }} />
@@ -711,7 +711,7 @@ function Users() {
         <div className="admin-list">
           {list.map((u) => (
             <div key={u.id} className="table-row">
-              <Avatar src={u.avatar} name={u.displayName} size={40} />
+              <Avatar src={u.avatar} name={u.displayName} size={40} decoration={u.avatarDecoration} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="name">
                   <Link to={`/u/${u.username}`} className="ellipsis">
@@ -801,7 +801,7 @@ export function Admin() {
         <Link to="/" className="btn btn-outline sm admin-back">
           <ArrowLeft size={16} /> <span>返回校墙</span>
         </Link>
-        <Avatar src={me.avatar} name={me.displayName} size={32} />
+        <Avatar src={me.avatar} name={me.displayName} size={32} decoration={me.avatarDecoration} />
       </header>
       <div className="admin-body">
         <nav className="admin-nav" aria-label="管理后台">

@@ -17,6 +17,7 @@ const profileSchema = z.object({
   className: z.string().trim().max(20, '班级最多 20 字').optional(),
   gradYear: z.number().int().min(1950).max(2100).nullable().optional(),
   avatar: imagePath.optional(),
+  avatarDecoration: z.enum(['', 'halo', 'aurora', 'rose'], { error: '头像装扮无效' }).optional(),
   banner: imagePath.optional(),
 });
 
@@ -42,6 +43,7 @@ export async function userRoutes(app: FastifyInstance) {
       className: 'class_name',
       gradYear: 'grad_year',
       avatar: 'avatar',
+      avatarDecoration: 'avatar_decoration',
       banner: 'banner',
     };
     const sets: string[] = [];

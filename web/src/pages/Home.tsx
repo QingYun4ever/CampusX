@@ -44,7 +44,7 @@ function NewPostsPill({ tab }: { tab: Tab }) {
         <ArrowUp size={16} strokeWidth={2.6} />
         <span className="stack">
           {authors.map((a) => (
-            <Avatar key={a.id} src={a.avatar} name={a.displayName} size={22} />
+            <Avatar key={a.id} src={a.avatar} name={a.displayName} size={22} decoration={a.avatarDecoration} />
           ))}
         </span>
         {fresh.length >= 20 ? '有新帖子' : `${fresh.length} 条新帖子`}
@@ -78,7 +78,7 @@ export function Home() {
       <TopBar>
         <div className="topbar-row mobile-row">
           <button onClick={openAccount} aria-label="我的账号" className="topbar-avatar">
-            <Avatar src={me.avatar} name={me.displayName} size={32} />
+            <Avatar src={me.avatar} name={me.displayName} size={32} decoration={me.avatarDecoration} />
           </button>
           <span className="topbar-logo">
             <Logo size={26} />

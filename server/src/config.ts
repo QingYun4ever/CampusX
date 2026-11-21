@@ -7,6 +7,26 @@ function list(v: string | undefined, fallback: string[]): string[] {
   return v.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
+function smtpConfig() {
+  const host = process.env.SMTP_HOST?.trim();
+  const from = process.env.MAIL_FROM?.trim();
+  if (!host || !from) return null;
+  const secureSetting = process.env.SMTP_SECURE?.toLowerCase();
+  const implicitTls = secureSetting === '1' || secureSetting === 'true';
+  const port = Number(process.env.SMTP_PORT ?? (implicitTls ? 465 : 587));
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('SMTP_PORT 无效');
+  const secure = implicitTls || (secureSetting === undefined && port === 465);
+  if (secureSetting !== undefined && !['0', '1', 'false', 'true'].includes(secureSetting)) {
+    throw new Error('SMTP_SECURE 无效');
+  }
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (Boolean(user) !== Boolean(pass)) throw new Error('SMTP_USER 和 SMTP_PASS 必须一起设置');
+  const plaintext = (secureSetting === '0' || secureSetting === 'false')
+    && process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1', '::1'].includes(host.toLowerCase());
+  return { from, host, port, secure, requireTLS: !secure && !plaintext, auth: user && pass ? { user, pass } : undefined };
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   host: process.env.HOST ?? '0.0.0.0',
@@ -24,6 +44,8 @@ export const config = {
   sessionDays: 60,
   maxUploadBytes: 8 * 1024 * 1024,
   maxPostLength: 2000,
+  smtp: smtpConfig(),
 };
 
 export const uploadsDir = path.join(config.dataDir, 'uploads');
+export const accountSecurityKeyPath = path.join(config.dataDir, 'account-security.key');

@@ -1,0 +1,68 @@
+[data-admin] {
+  color: color-mix(in srgb, var(--text) 75%, var(--accent));
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.avatar[data-avatar-decoration='halo'] {
+  --avatar-ring: var(--accent);
+  --avatar-glow: var(--accent);
+}
+.avatar[data-avatar-decoration='aurora'] {
+  --avatar-ring: var(--repost);
+  --avatar-glow: var(--accent);
+}
+.avatar[data-avatar-decoration='rose'] {
+  --avatar-ring: var(--like);
+  --avatar-glow: var(--like);
+}
+.avatar[data-avatar-decoration],
+.new-pill .stack .avatar[data-avatar-decoration],
+.face-stack .avatar[data-avatar-decoration] {
+  box-shadow: 0 0 0 2px var(--avatar-ring),
+    0 0 9px 2px color-mix(in srgb, var(--avatar-glow) 55%, transparent);
+}
+.tab-me.active .avatar[data-avatar-decoration] {
+  box-shadow: 0 0 0 2px var(--avatar-ring), 0 0 0 3px var(--bg), 0 0 0 4px var(--text),
+    0 0 9px 2px color-mix(in srgb, var(--avatar-glow) 55%, transparent);
+}
+.profile-avatar:has(> .avatar[data-avatar-decoration]) {
+  overflow: visible;
+}
+
+.avatar-decoration-picker {
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+.avatar-decoration-picker legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.avatar-decoration-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.avatar-decoration-option {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.avatar-decoration-option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-10);
+}
+.avatar-decoration-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.avatar-decoration-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}

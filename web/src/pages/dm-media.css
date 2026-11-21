@@ -1,0 +1,108 @@
+.dm-chat .dm-compose {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.dm-compose-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.dm-chat .dm-compose textarea {
+  min-width: 0;
+  max-height: clamp(46px, calc(var(--dm-viewport-height, var(--viewport-height)) - 96px - var(--dm-drafts-height, 0px) - var(--safe-top) - var(--safe-bottom)), 160px);
+}
+
+.dm-compose:has(.dm-draft-images) {
+  --dm-drafts-height: 64px;
+}
+
+.dm-compose-row .icon-btn {
+  margin-bottom: 5px;
+}
+
+.dm-draft-images {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 68px));
+  gap: 6px;
+}
+
+.dm-draft-images .dm-image-tile {
+  height: 56px;
+}
+
+.bubble:has(.dm-image-grid) {
+  width: 308px;
+}
+
+.dm-image-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.dm-image-grid[data-single] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.dm-image-grid[data-single] .dm-image-tile {
+  aspect-ratio: 3 / 2;
+}
+
+.dm-image {
+  position: relative;
+}
+
+.dm-image-tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  background: var(--bg-2);
+}
+
+.dm-image-tile img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.dm-image-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--bg-2);
+}
+
+.dm-image-remove:hover {
+  color: var(--warn);
+}
+
+.dm-image-recall {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: -7px 0;
+  border-radius: 50%;
+  color: inherit;
+}
+
+.dm-image-recall:hover {
+  background: color-mix(in srgb, var(--on-accent) 20%, transparent);
+}

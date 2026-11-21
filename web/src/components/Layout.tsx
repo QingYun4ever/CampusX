@@ -70,7 +70,7 @@ function AccountMenuItems({ onDone }: { onDone: () => void }) {
   return (
     <>
       <Link to={`/u/${me.username}`} className="account-head" onClick={onDone}>
-        <Avatar src={me.avatar} name={me.displayName} size={44} />
+        <Avatar src={me.avatar} name={me.displayName} size={44} decoration={me.avatarDecoration} />
         <div style={{ minWidth: 0 }}>
           <div className="name">
             <span className="ellipsis">{me.displayName}</span>
@@ -225,7 +225,7 @@ function Nav({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void
           aria-haspopup="menu"
           aria-label="账号菜单"
         >
-          <Avatar src={me.avatar} name={me.displayName} size={40} />
+          <Avatar src={me.avatar} name={me.displayName} size={40} decoration={me.avatarDecoration} />
           <div className="meta">
             <div className="name">
               <span className="ellipsis">{me.displayName}</span>
@@ -263,7 +263,7 @@ function SiteCard() {
         <div className="online-faces">
           {s.onlineUsers.map((u) => (
             <Link key={u.id} to={`/u/${u.username}`} title={u.displayName} className="online-face">
-              <Avatar src={u.avatar} name={u.displayName} size={32} />
+              <Avatar src={u.avatar} name={u.displayName} size={32} decoration={u.avatarDecoration} />
             </Link>
           ))}
           {s.online > s.onlineUsers.length && <span className="muted small">+{s.online - s.onlineUsers.length}</span>}
@@ -363,7 +363,7 @@ function Side() {
           {suggested.data.map((u) => (
             <div key={u.id} className="card-row">
               <Link to={`/u/${u.username}`}>
-                <Avatar src={u.avatar} name={u.displayName} size={40} />
+                <Avatar src={u.avatar} name={u.displayName} size={40} decoration={u.avatarDecoration} />
               </Link>
               <Link to={`/u/${u.username}`} style={{ flex: 1, minWidth: 0 }}>
                 <div className="name">
@@ -421,7 +421,7 @@ function TabBar() {
         </NavLink>
       ))}
       <button className={`tab-me ${mine ? 'active' : ''}`} onClick={openAccount} aria-label="我的账号">
-        <Avatar src={me.avatar} name={me.displayName} size={28} />
+        <Avatar src={me.avatar} name={me.displayName} size={28} decoration={me.avatarDecoration} />
       </button>
     </nav>
   );

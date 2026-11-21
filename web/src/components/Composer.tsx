@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronDown, Eye, Hash, ImagePlus, PenLine, Smile, X } from 'lucide-react';
+import { Check, ChevronDown, Eye, Hash, ImagePlus, PenLine, X } from 'lucide-react';
 import { api, media, uploadImage, type Board, type Post } from '../lib/api';
 import { useMe } from '../lib/auth';
+import { EmojiPicker } from './EmojiPicker';
 import { RichText } from './PostCard';
 import { Avatar, BoardMark, Spinner, toast, usePopover } from './ui';
 
@@ -56,7 +57,6 @@ function TagInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) 
     </div>
   );
 }
-const EMOJIS = ['😀', '😂', '🥹', '😭', '😎', '🤔', '👍', '🙏', '🎉', '❤️', '🔥', '👀', '📸', '🎓', '🏫', '📚', '⚽', '🍜'];
 
 /** 字数圈：接近上限时显示剩余字数 */
 function CharRing({ len }: { len: number }) {
@@ -140,14 +140,46 @@ export function Composer({
   const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
   const [board, setBoard] = useState(boardSlug ?? '');
-  const emoji = usePopover(true);
   const ta = useRef<HTMLTextAreaElement>(null);
+  const selection = useRef<[number, number]>([0, 0]);
+  const pendingSelection = useRef<[number, number] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [showTags, setShowTags] = useState(false);
   const [preview, setPreview] = useState(false);
 
   useEffect(() => setBoard(boardSlug ?? ''), [boardSlug]);
+
+  const rememberSelection = () => {
+    const el = ta.current;
+    if (el) selection.current = [el.selectionStart, el.selectionEnd];
+  };
+
+  useLayoutEffect(() => {
+    const range = pendingSelection.current;
+    if (!range || !ta.current) return;
+    pendingSelection.current = null;
+    ta.current.setSelectionRange(...range);
+  }, [text, preview]);
+
+  const insertEmoji = (emoji: string) => {
+    if (document.activeElement === ta.current) rememberSelection();
+    const [start, end] = selection.current;
+    if (text.length - (end - start) + emoji.length > MAX) {
+      toast(`正文最多 ${MAX} 字，无法插入这个表情`, 'error');
+      return;
+    }
+    const next = text.slice(0, start) + emoji + text.slice(end);
+    const caret = start + emoji.length;
+    selection.current = [caret, caret];
+    if (next === text && !preview) {
+      ta.current?.setSelectionRange(caret, caret);
+    } else {
+      pendingSelection.current = [caret, caret];
+      setText(next);
+      if (preview) setPreview(false);
+    }
+  };
 
   // 自动增高
   useEffect(() => {
@@ -182,7 +214,8 @@ export function Composer({
     }
   };
 
-  const len = [...text].length;
+  // 服务端和文本框选区都按 UTF-16 代码单元计数。
+  const len = text.length;
   const canPost = (text.trim() || images.length) && len <= MAX && !uploading && !busy;
   const target = replyTo?.repostOf ?? replyTo;
 
@@ -200,6 +233,8 @@ export function Composer({
         },
       });
       setText('');
+      selection.current = [0, 0];
+      pendingSelection.current = null;
       setImages([]);
       setTags([]);
       setShowTags(false);
@@ -221,7 +256,7 @@ export function Composer({
       {showReplyContext && target && (
         <div className="composer reply-context">
           <div className="post-left">
-            <Avatar src={target.author.avatar} name={target.author.displayName} size={40} />
+            <Avatar src={target.author.avatar} name={target.author.displayName} size={40} decoration={target.author.avatarDecoration} />
             <div className="thread-line" />
           </div>
           <div className="composer-body">
@@ -237,7 +272,7 @@ export function Composer({
         </div>
       )}
       <div className={`composer ${busy ? 'busy' : ''}`}>
-        <Avatar src={me.avatar} name={me.displayName} size={40} />
+        <Avatar src={me.avatar} name={me.displayName} size={40} decoration={me.avatarDecoration} />
         <div className="composer-body">
           {!target && !boardSlug && <BoardPicker value={board} onChange={setBoard} />}
           {preview ? (
@@ -250,6 +285,8 @@ export function Composer({
             value={text}
             autoFocus={autoFocus}
             onChange={(e) => setText(e.target.value)}
+            onSelect={rememberSelection}
+            onBlur={rememberSelection}
             onPaste={onPaste}
             onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && submit()}
             placeholder={placeholder ?? (target ? '发布你的回复' : '有什么新鲜事？')}
@@ -296,32 +333,7 @@ export function Composer({
             >
               <ImagePlus size={20} />
             </button>
-            <div className="popover-anchor" ref={emoji.ref}>
-              <button
-                className="icon-btn accent"
-                title="表情"
-                aria-label="表情"
-                aria-expanded={emoji.open}
-                onClick={() => emoji.setOpen((v) => !v)}
-              >
-                <Smile size={20} />
-              </button>
-              {emoji.open && (
-                <div className="menu emoji-menu" style={emoji.style}>
-                  {EMOJIS.map((e) => (
-                    <button
-                      key={e}
-                      onClick={() => {
-                        setText((t) => t + e);
-                        ta.current?.focus();
-                      }}
-                    >
-                      {e}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <EmojiPicker onPick={insertEmoji} onOpen={rememberSelection} disabled={busy} />
             <button
               className={`icon-btn accent ${showTags || tags.length ? 'on' : ''}`}
               title="标签"
@@ -336,7 +348,11 @@ export function Composer({
               title={preview ? '继续编辑' : '预览（支持 Markdown 和 $LaTeX$ 公式）'}
               aria-label={preview ? '继续编辑' : '预览'}
               aria-pressed={preview}
-              onClick={() => setPreview((v) => !v)}
+              onClick={() => {
+                if (preview) pendingSelection.current = selection.current;
+                else rememberSelection();
+                setPreview(!preview);
+              }}
             >
               {preview ? <PenLine size={20} /> : <Eye size={20} />}
             </button>

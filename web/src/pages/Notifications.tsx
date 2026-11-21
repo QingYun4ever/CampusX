@@ -36,7 +36,7 @@ function Item({ n }: { n: Notification }) {
       <div className="notif-icon">{m.icon ?? (n.extra ? <Emoji e={n.extra} size={26} /> : null)}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <Link to={`/u/${n.actor.username}`} onClick={(e) => e.stopPropagation()}>
-          <Avatar src={n.actor.avatar} name={n.actor.displayName} size={32} />
+          <Avatar src={n.actor.avatar} name={n.actor.displayName} size={32} decoration={n.actor.avatarDecoration} />
         </Link>
         <div style={{ marginTop: 8 }}>
           <Link to={`/u/${n.actor.username}`} className="name" onClick={(e) => e.stopPropagation()}>

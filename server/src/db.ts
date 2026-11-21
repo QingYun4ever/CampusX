@@ -168,6 +168,7 @@ function addColumn(table: string, col: string, def: string) {
 }
 addColumn('users', 'verified', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'verified_note', "TEXT NOT NULL DEFAULT ''");
+addColumn('users', 'avatar_decoration', "TEXT NOT NULL DEFAULT ''");
 // 审核状态：ok 公开；pending 审核中；rejected 未通过。后两种只有作者自己看得到
 addColumn('posts', 'status', "TEXT NOT NULL DEFAULT 'ok'");
 // 在线状态：最近一次请求的时间（每分钟最多写一次）
@@ -252,6 +253,12 @@ CREATE TABLE IF NOT EXISTS dm_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_dm_pair ON dm_messages(sender_id, recipient_id, id);
 CREATE INDEX IF NOT EXISTS idx_dm_pair2 ON dm_messages(recipient_id, sender_id, id);
+CREATE TABLE IF NOT EXISTS dm_message_images (
+  message_id INTEGER NOT NULL REFERENCES dm_messages(id) ON DELETE CASCADE,
+  position   INTEGER NOT NULL,
+  filename   TEXT NOT NULL UNIQUE,
+  PRIMARY KEY (message_id, position)
+);
 -- 私密吧：吧主指定的可见成员（吧主、吧务、站点管理员始终可见）
 CREATE TABLE IF NOT EXISTS board_viewers (
   board_id   INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
@@ -264,6 +271,49 @@ CREATE INDEX IF NOT EXISTS idx_dm_unread ON dm_messages(recipient_id, read_at) W
 `);
 addColumn('posts', 'view_count', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('boards', 'visibility', "TEXT NOT NULL DEFAULT 'public'");
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS account_security (
+  user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  email         TEXT,
+  totp_secret   TEXT,
+  last_totp_step INTEGER
+);
+CREATE TABLE IF NOT EXISTS account_recovery_codes (
+  user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL,
+  PRIMARY KEY (user_id, code_hash)
+);
+CREATE TABLE IF NOT EXISTS account_totp_setup (
+  user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  session_hash TEXT NOT NULL REFERENCES sessions(token_hash) ON DELETE CASCADE,
+  secret       TEXT NOT NULL,
+  expires_at   INTEGER NOT NULL,
+  attempts     INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS account_email_pending (
+  user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  session_hash TEXT NOT NULL REFERENCES sessions(token_hash) ON DELETE CASCADE,
+  email        TEXT NOT NULL,
+  code_hash    TEXT NOT NULL,
+  expires_at   INTEGER NOT NULL,
+  resend_at    INTEGER NOT NULL,
+  attempts     INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS account_login_challenges (
+  user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  challenge_hash TEXT NOT NULL UNIQUE,
+  expires_at    INTEGER NOT NULL,
+  attempts      INTEGER NOT NULL DEFAULT 0
+);
+CREATE TRIGGER IF NOT EXISTS account_password_changed AFTER UPDATE OF password_hash ON users
+WHEN OLD.password_hash <> NEW.password_hash
+BEGIN
+  DELETE FROM account_login_challenges WHERE user_id = NEW.id;
+  DELETE FROM account_totp_setup WHERE user_id = NEW.id;
+  DELETE FROM account_email_pending WHERE user_id = NEW.id;
+END;
+`);
 
 // 表情回应从 GitHub 式的 8 个英文 key 换成 Telegram 式的 emoji，并且每人每帖只保留一个
 {

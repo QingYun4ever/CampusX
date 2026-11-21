@@ -5,10 +5,18 @@ import { CalendarDays, Camera, GraduationCap, Mail, School, Settings } from 'luc
 import { Feed } from '../components/Feed';
 import { FollowButton } from '../components/FollowButton';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Tabs, toast, toneFor, TopBar, useModalClose, Verified } from '../components/ui';
-import { api, media, uploadImage, type Profile as ProfileT, type User } from '../lib/api';
+import { api, media, uploadImage, type AvatarDecoration, type Profile as ProfileT, type User } from '../lib/api';
 import { useAuth, useMe } from '../lib/auth';
+import { AccountSecurity } from './AccountSecurity';
 
 type Tab = 'posts' | 'replies' | 'likes';
+
+const AVATAR_DECORATIONS: readonly [AvatarDecoration, string][] = [
+  ['', '无装扮'],
+  ['halo', '蓝色光环'],
+  ['aurora', '极光'],
+  ['rose', '玫瑰光环'],
+];
 
 export function Profile() {
   const { username = '' } = useParams();
@@ -72,15 +80,15 @@ export function Profile() {
           )}
         </div>
         <div className="profile-avatar avatar" style={{ width: 'min(134px, 25vw)', height: 'min(134px, 25vw)' }}>
-          <Avatar src={u.avatar} name={u.displayName} size={134} />
+          <Avatar src={u.avatar} name={u.displayName} size={134} decoration={u.avatarDecoration} />
         </div>
         <div className="profile-name" ref={nameRef}>
-          {u.displayName}
+          <span data-admin={u.role === 'admin' || undefined}>{u.displayName}</span>
           <Verified user={u} size={22} />
           {u.role === 'admin' && <span className="tag">管理员</span>}
         </div>
         <div className="muted">
-          @{u.username}
+          <span data-admin={u.role === 'admin' || undefined}>@{u.username}</span>
           {u.followsYou && <span className="follows-you">关注了你</span>}
         </div>
         {u.bio && <div className="content" style={{ marginTop: 10 }}>{u.bio}</div>}
@@ -113,6 +121,7 @@ export function Profile() {
           </Link>
         </div>
       </div>
+      {isMe && <AccountSecurity />}
       <div style={{ borderBottom: '1px solid var(--line)' }}>
         <Tabs
           value={tab}
@@ -130,7 +139,7 @@ export function Profile() {
         path={`/users/${username}/posts?tab=${tab}`}
         empty={<Empty title={tab === 'likes' ? '还没有喜欢过帖子' : tab === 'replies' ? '还没有回复过' : '还没有发过帖子'} />}
       />
-      {editing && <EditProfile user={u} onClose={() => setEditing(false)} />}
+      {isMe && editing && <EditProfile user={u} onClose={() => setEditing(false)} />}
     </>
   );
 }
@@ -154,6 +163,7 @@ function EditProfile({ user, onClose }: { user: User; onClose: () => void }) {
     className: user.className,
     gradYear: user.gradYear ? String(user.gradYear) : '',
     avatar: user.avatar,
+    avatarDecoration: user.avatarDecoration,
     banner: user.banner,
   });
   const [busy, setBusy] = useState(false);
@@ -180,8 +190,14 @@ function EditProfile({ user, onClose }: { user: User; onClose: () => void }) {
         body: { ...f, gradYear: f.gradYear ? Number(f.gradYear) : null },
       });
       setUser(u);
-      qc.invalidateQueries({ queryKey: ['profile', user.username] });
-      qc.invalidateQueries({ queryKey: ['user-posts', user.username] });
+      qc.setQueryData<ProfileT>(['profile', user.username], (current) => current && { ...current, ...u });
+      if (u.avatarDecoration !== user.avatarDecoration) {
+        // 头像装扮同时出现在动态、回复、用户列表和私信等缓存中。
+        void qc.invalidateQueries();
+      } else {
+        void qc.invalidateQueries({ queryKey: ['profile', user.username] });
+        void qc.invalidateQueries({ queryKey: ['user-posts', user.username] });
+      }
       toast('已保存');
       close();
     } catch (e) {
@@ -217,7 +233,7 @@ function EditProfile({ user, onClose }: { user: User; onClose: () => void }) {
       </div>
       <div style={{ padding: '0 16px', marginTop: -44, position: 'relative', width: 'fit-content' }}>
         <div className="edit-avatar">
-          <Avatar src={f.avatar} name={f.displayName} size={96} />
+          <Avatar src={f.avatar} name={f.displayName} size={96} decoration={f.avatarDecoration} />
         </div>
         <button
           className="icon-btn"
@@ -231,6 +247,22 @@ function EditProfile({ user, onClose }: { user: User; onClose: () => void }) {
       <input ref={avatarRef} type="file" accept="image/*" hidden onChange={pick('avatar')} />
       <input ref={bannerRef} type="file" accept="image/*" hidden onChange={pick('banner')} />
       <div className="modal-body" style={{ paddingTop: 16 }}>
+        <fieldset className="avatar-decoration-picker">
+          <legend>头像装扮</legend>
+          <div className="avatar-decoration-options">
+            {AVATAR_DECORATIONS.map(([decoration, label]) => (
+              <label className="avatar-decoration-option" key={decoration}>
+                <input
+                  type="radio"
+                  name="avatar-decoration"
+                  checked={f.avatarDecoration === decoration}
+                  onChange={() => setF((current) => ({ ...current, avatarDecoration: decoration }))}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <Field label="昵称" value={f.displayName} maxLength={20} counter onChange={(v) => setF({ ...f, displayName: v })} />
         <Field label="简介" multiline value={f.bio} maxLength={160} counter onChange={(v) => setF({ ...f, bio: v })} />
         <div className="row">
@@ -287,7 +319,7 @@ export function FollowList() {
 export function UserRow({ user: u, showFollow = true }: { user: User; showFollow?: boolean }) {
   return (
     <Link to={`/u/${u.username}`} className="user-row">
-      <Avatar src={u.avatar} name={u.displayName} size={44} />
+      <Avatar src={u.avatar} name={u.displayName} size={44} decoration={u.avatarDecoration} />
       <div className="info">
         <div className="name">
           <span className="ellipsis">{u.displayName}</span>

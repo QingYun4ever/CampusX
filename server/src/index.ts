@@ -13,6 +13,7 @@ import { boardRoutes } from './routes/boards.ts';
 import { dmRoutes } from './routes/dm.ts';
 import { miscRoutes } from './routes/misc.ts';
 import { postRoutes } from './routes/posts.ts';
+import { securityRoutes } from './routes/security.ts';
 import { userRoutes } from './routes/users.ts';
 import { HttpError } from './util.ts';
 
@@ -30,14 +31,18 @@ const app = Fastify({
 
 await app.register(cors, {
   origin: (origin, cb) => cb(null, !origin || config.corsOrigins.includes(origin)),
-  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 });
 await app.register(rateLimit, { max: 600, timeWindow: '1 minute' });
 await app.register(multipart, { limits: { fileSize: config.maxUploadBytes, files: 1 } });
 
-app.addHook('onSend', async (_req, reply) => {
+app.addHook('onSend', async (req, reply) => {
   reply.header('X-Content-Type-Options', 'nosniff');
   reply.header('Referrer-Policy', 'same-origin');
+  const pathname = req.url.split('?', 1)[0];
+  if (/^\/api\/(?:auth\/login(?:\/2fa)?|me\/(?:security|password|email(?:\/start|\/confirm)?|2fa(?:\/setup|\/confirm)?))$/.test(pathname)) {
+    reply.header('Cache-Control', 'no-store');
+  }
 });
 
 app.decorateRequest('user', null);
@@ -51,6 +56,7 @@ app.addHook('onRequest', async (req) => {
 const PUBLIC_API = [
   '/api/captcha',
   '/api/auth/login',
+  '/api/auth/login/2fa',
   '/api/auth/register',
   '/api/auth/invite/check',
   '/api/auth/username/check',
@@ -80,6 +86,7 @@ await app.register(
   async (api) => {
     api.get('/health', async () => ({ ok: true, time: now() }));
     await api.register(authRoutes);
+    await api.register(securityRoutes);
     await api.register(postRoutes);
     await api.register(userRoutes);
     await api.register(boardRoutes);

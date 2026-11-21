@@ -370,7 +370,7 @@ function ReactorsModal({ postId, onClose }: { postId: number; onClose: () => voi
       ) : (
         rows.map((r) => (
           <Link key={r.user.id + r.emoji} to={`/u/${r.user.username}`} className="user-row" onClick={onClose}>
-            <Avatar src={r.user.avatar} name={r.user.displayName} size={40} />
+            <Avatar src={r.user.avatar} name={r.user.displayName} size={40} decoration={r.user.avatarDecoration} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="name">
                 <span className="ellipsis">{r.user.displayName}</span>
@@ -565,13 +565,13 @@ function Head({ post, opId }: { post: Post; opId?: number }) {
   const stop = (e: MouseEvent) => e.stopPropagation();
   return (
     <div className="post-head">
-      <Link to={`/u/${post.author.username}`} className="name" onClick={stop}>
+      <Link to={`/u/${post.author.username}`} className="name" onClick={stop} data-admin={post.author.role === 'admin' || undefined}>
         {post.author.displayName}
       </Link>
       <Verified user={post.author} size={17} />
       {opId === post.author.id && <span className="tag op">楼主</span>}
       <RoleTags author={post.author} />
-      <span className="muted handle">@{post.author.username}</span>
+      <span className="muted handle" data-admin={post.author.role === 'admin' || undefined}>@{post.author.username}</span>
       <span className="muted dot">·</span>
       <time className="muted" title={fullTime(post.createdAt)}>
         {timeAgo(post.createdAt)}
@@ -654,7 +654,7 @@ export function PostCard({
       )}
       <div className="post-left">
         <Link to={`/u/${post.author.username}`} onClick={(e) => e.stopPropagation()} className="avatar-link">
-          <Avatar src={post.author.avatar} name={post.author.displayName} size={40} />
+          <Avatar src={post.author.avatar} name={post.author.displayName} size={40} decoration={post.author.avatarDecoration} />
         </Link>
         {threadLine && <div className="thread-line" />}
       </div>
@@ -704,18 +704,18 @@ export function PostMain({ post, onDeleted }: { post: Post; onDeleted?: () => vo
     <div className="post-main">
       <div className="post-main-head">
         <Link to={`/u/${post.author.username}`} className="avatar-link">
-          <Avatar src={post.author.avatar} name={post.author.displayName} size={44} />
+          <Avatar src={post.author.avatar} name={post.author.displayName} size={44} decoration={post.author.avatarDecoration} />
         </Link>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Link to={`/u/${post.author.username}`} className="name">
+            <Link to={`/u/${post.author.username}`} className="name" data-admin={post.author.role === 'admin' || undefined}>
               {post.author.displayName}
             </Link>
             <Verified user={post.author} />
             <RoleTags author={post.author} />
           </div>
           <div className="muted ellipsis">
-            @{post.author.username}
+            <span data-admin={post.author.role === 'admin' || undefined}>@{post.author.username}</span>
             {post.author.className && ` · ${post.author.className}`}
           </div>
         </div>

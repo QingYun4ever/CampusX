@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { accountSecurity, completeLoginChallenge, newLoginChallenge } from '../account-security.ts';
 import {
   checkCaptcha,
   createSession,
@@ -7,6 +8,7 @@ import {
   hashPassword,
   newCaptcha,
   normalizeInvite,
+  sessionTokenHash,
   verifyPassword,
 } from '../auth.ts';
 import { get, now, run, tx } from '../db.ts';
@@ -126,7 +128,25 @@ export async function authRoutes(app: FastifyInstance) {
     if (!row || !(await verifyPassword(body.password, row.password_hash))) {
       throw new HttpError(400, '用户名或密码错误');
     }
-    return { token: createSession(row.id), user: userById(row.id) };
+    return tx(() => {
+      if (!get('SELECT 1 FROM users WHERE id = $id AND password_hash = $hash', { id: row.id, hash: row.password_hash })) {
+        throw new HttpError(400, '用户名或密码错误');
+      }
+      if (accountSecurity(row.id)?.totp_secret) {
+        return { twoFactorRequired: true, challenge: newLoginChallenge(row.id) };
+      }
+      return { token: createSession(row.id), user: userById(row.id) };
+    });
+  });
+
+  app.post('/auth/login/2fa', strict, async (req) => {
+    const { challenge, code } = parse(z.object({
+      challenge: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+      code: z.string().trim().min(1).max(64),
+    }), req.body);
+    const result = completeLoginChallenge(challenge, code, (uid) => ({ token: createSession(uid), user: userById(uid) }));
+    if (!result) throw new HttpError(400, '两步验证码或恢复码错误，或登录验证已过期，请重试');
+    return result;
   });
 
   app.post('/auth/logout', async (req) => {
@@ -149,10 +169,17 @@ export async function authRoutes(app: FastifyInstance) {
       throw new HttpError(400, '原密码不正确');
     }
     const h = await hashPassword(body.newPassword);
-    run('UPDATE users SET password_hash = $h WHERE id = $id', { h, id: user.id });
-    // 修改密码后，其他设备全部下线
-    const cur = req.headers.authorization?.slice(7) ?? '';
-    run('DELETE FROM sessions WHERE user_id = $id', { id: user.id });
-    return { ok: true, token: cur ? createSession(user.id) : null };
+    return tx(() => {
+      const id = user.id;
+      const sessionHash = sessionTokenHash(req.headers.authorization!.slice(7));
+      if (!get('SELECT 1 FROM sessions WHERE user_id = $id AND token_hash = $sessionHash AND expires_at > $time',
+        { id, sessionHash, time: now() })) throw new HttpError(401, '请先登录');
+      const changed = run('UPDATE users SET password_hash = $h WHERE id = $id AND password_hash = $old',
+        { h, id, old: row.password_hash });
+      if (!changed.changes) throw new HttpError(400, '原密码不正确');
+      // 修改密码后，其他设备全部下线，本设备重新签发会话。
+      run('DELETE FROM sessions WHERE user_id = $id', { id });
+      return { ok: true, token: createSession(id) };
+    });
   });
 }

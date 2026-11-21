@@ -117,11 +117,14 @@ export async function uploadImage(file: File): Promise<string> {
 
 /* ---------------- 类型 ---------------- */
 
+export type AvatarDecoration = '' | 'halo' | 'aurora' | 'rose';
+
 export interface UserLite {
   id: number;
   username: string;
   displayName: string;
   avatar: string | null;
+  avatarDecoration: AvatarDecoration;
   role: 'user' | 'admin' | string;
   className: string;
   verified?: boolean;
@@ -238,6 +241,7 @@ export interface DmMessage {
   id: number;
   senderId: number;
   content: string;
+  images: string[];
   deleted: boolean;
   createdAt: number;
   /** 前端发送中 / 发送失败 */
