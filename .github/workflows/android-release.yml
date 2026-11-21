@@ -14,23 +14,28 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: 验签并上传到 GitHub Releases
+      - name: 校验 APK 和标签摘要
         shell: bash
+        id: verify
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          trap 'echo "::error::APK 校验失败（脚本第 $LINENO 行）。"' ERR
+          api="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
+          auth=()
+          if [[ -n ${GH_TOKEN:-} ]]; then auth=(-H "Authorization: Bearer $GH_TOKEN"); fi
           tag=${GITHUB_REF_NAME#android-release/}
           version=${tag#v}
           [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           name="campusx-android-$version.apk"
-          oid=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object | select(.type == "tag") | .sha')
-          [[ $oid =~ ^[a-f0-9]{40}$ ]] || { echo '需要已推送的注释版本标签。'; exit 1; }
-          annotation=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$oid" --jq '.message | split("\n")[0]')
+          oid=$(curl -fsS "${auth[@]}" "$api/git/ref/tags/$tag" | jq -er '.object | select(.type == "tag") | .sha')
+          [[ $oid =~ ^[a-f0-9]{40}$ ]]
+          annotation=$(curl -fsS "${auth[@]}" "$api/git/tags/$oid" | jq -er '.message | split("\n")[0]')
           sha=${annotation#SHA256: }
           [[ $sha =~ ^[a-f0-9]{64}$ ]] || { echo '安装包 SHA-256 无效。'; exit 1; }
           # 临时分支只用来经 GitHub 交接 APK；主分支和版本标签不包含二进制。
-          gh api -H 'Accept: application/vnd.github.raw+json' \
-            "repos/$GITHUB_REPOSITORY/contents/$name?ref=android-apk/$tag" > "$name"
+          curl -fsSL "${auth[@]}" -H 'Accept: application/vnd.github.raw+json' \
+            "$api/contents/$name?ref=android-apk%2F$tag" -o "$name"
           printf '%s  %s\n' "$sha" "$name" | sha256sum --check
           tools="$ANDROID_HOME/build-tools/35.0.0"
           if [[ ! -x "$tools/apksigner" ]]; then sdkmanager 'build-tools;35.0.0'; fi
@@ -45,6 +50,16 @@ jobs:
             exit 1
           fi
           printf '%s  %s\n' "$sha" "$name" > "$name.sha256"
+          printf 'tag=%s\napk=%s\n' "$tag" "$name" >> "$GITHUB_OUTPUT"
+
+      - name: 上传 APK 到 GitHub Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          tag: ${{ steps.verify.outputs.tag }}
+          name: ${{ steps.verify.outputs.apk }}
+        run: |
+          trap 'echo "::error::GitHub 发布或清理交接失败（脚本第 $LINENO 行）。"' ERR
           gh release create "$tag" "$name" "$name.sha256" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "校墙 $tag" --notes '已签名的 Android 安装包，正式版仅支持 HTTPS。'
           gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/android-apk/$tag"
