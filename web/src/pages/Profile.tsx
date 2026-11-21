@@ -7,7 +7,6 @@ import { FollowButton } from '../components/FollowButton';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Tabs, toast, toneFor, TopBar, useModalClose, Verified } from '../components/ui';
 import { api, media, uploadImage, type AvatarDecoration, type Profile as ProfileT, type User } from '../lib/api';
 import { useAuth, useMe } from '../lib/auth';
-import { AccountSecurity } from './AccountSecurity';
 
 type Tab = 'posts' | 'replies' | 'likes';
 
@@ -121,7 +120,6 @@ export function Profile() {
           </Link>
         </div>
       </div>
-      {isMe && <AccountSecurity />}
       <div style={{ borderBottom: '1px solid var(--line)' }}>
         <Tabs
           value={tab}

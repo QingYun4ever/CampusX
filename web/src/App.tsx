@@ -1,5 +1,5 @@
 import { App as AndroidApp } from '@capacitor/app';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ComposeProvider } from './components/compose';
 import { Layout } from './components/Layout';
@@ -8,18 +8,21 @@ import { Empty, Overlays } from './components/ui';
 import { isAndroid } from './lib/android';
 import { useAuth } from './lib/auth';
 import { dismissTopOverlay } from './lib/escape';
-import { Admin } from './pages/Admin';
-import { Login, Register } from './pages/Auth';
-import { BoardPage, Boards } from './pages/Boards';
 import { Home } from './pages/Home';
-import { Notifications } from './pages/Notifications';
-import { PostDetail } from './pages/PostDetail';
-import { FollowList, Profile } from './pages/Profile';
-import { Search } from './pages/Search';
-import { Settings } from './pages/Settings';
-import { Changelog } from './pages/Changelog';
-import { Messages } from './pages/Messages';
-import { TagPage } from './pages/Tag';
+import { Login, Register } from './pages/Auth';
+
+const Admin = lazy(() => import('./pages/Admin').then(({ Admin }) => ({ default: Admin })));
+const Boards = lazy(() => import('./pages/Boards').then(({ Boards }) => ({ default: Boards })));
+const BoardPage = lazy(() => import('./pages/Boards').then(({ BoardPage }) => ({ default: BoardPage })));
+const Notifications = lazy(() => import('./pages/Notifications').then(({ Notifications }) => ({ default: Notifications })));
+const PostDetail = lazy(() => import('./pages/PostDetail').then(({ PostDetail }) => ({ default: PostDetail })));
+const Profile = lazy(() => import('./pages/Profile').then(({ Profile }) => ({ default: Profile })));
+const FollowList = lazy(() => import('./pages/Profile').then(({ FollowList }) => ({ default: FollowList })));
+const Search = lazy(() => import('./pages/Search').then(({ Search }) => ({ default: Search })));
+const Settings = lazy(() => import('./pages/Settings').then(({ Settings }) => ({ default: Settings })));
+const Changelog = lazy(() => import('./pages/Changelog').then(({ Changelog }) => ({ default: Changelog })));
+const Messages = lazy(() => import('./pages/Messages').then(({ Messages }) => ({ default: Messages })));
+const TagPage = lazy(() => import('./pages/Tag').then(({ TagPage }) => ({ default: TagPage })));
 
 /** BrowserRouter 在 history.state.idx 里记录应用内历史位置。 */
 function useAndroidBack() {
@@ -70,7 +73,7 @@ export function App() {
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/register" element={<Navigate to="/" replace />} />
         {/* 管理后台是独立页面，不套用主站的三栏布局 */}
-        <Route path="/admin/*" element={<Admin />} />
+        <Route path="/admin/*" element={<Suspense fallback={<div className="splash" aria-label="加载中"><Logo size={56} /></div>}><Admin /></Suspense>} />
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
           <Route path="/boards" element={<Boards />} />

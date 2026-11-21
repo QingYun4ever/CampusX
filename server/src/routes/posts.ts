@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, now, run, tx } from '../db.ts';
 import { enqueue, moderationOn } from '../moderation.ts';
-import { boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
+import { boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publicPost, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 
@@ -17,6 +17,7 @@ const createSchema = z.object({
     .default([]),
   boardSlug: z.string().nullish(),
   parentId: z.number().int().positive().nullish(),
+  quoteOfId: z.number().int().positive().optional(),
   tags: z.array(z.string().max(30)).max(5, '最多 5 个标签').default([]),
 });
 
@@ -65,6 +66,7 @@ export async function postRoutes(app: FastifyInstance) {
     const user = me(req);
     const body = parse(createSchema, req.body);
     const content = body.content.trim();
+    if (body.parentId && body.quoteOfId) throw new HttpError(400, '引用和回复不能同时使用');
     if (!content && !body.images.length) throw new HttpError(400, '写点什么吧');
 
     let boardId: number | null = null;
@@ -84,6 +86,12 @@ export async function postRoutes(app: FastifyInstance) {
     const status = moderationOn() ? 'pending' : 'ok';
     const tags = extractTags(content, body.tags);
     const id = tx(() => {
+      const quote = body.quoteOfId === undefined ? undefined : get<{ id: number }>(
+        `SELECT s.id FROM posts p JOIN posts s ON s.id = COALESCE(p.repost_of, p.id)
+         WHERE p.id = $id AND ${publicPost('p')} AND ${publicPost('s')} AND s.repost_of IS NULL`,
+        { id: body.quoteOfId },
+      );
+      if (body.quoteOfId !== undefined && !quote) throw new HttpError(404, '原帖不可引用');
       const { lastId } = run(
         `INSERT INTO posts (author_id, board_id, parent_id, root_id, content, images, status, last_activity_at, created_at)
          VALUES ($a, $b, $parent, $root, $c, $img, $status, $t, $t)`,
@@ -98,6 +106,9 @@ export async function postRoutes(app: FastifyInstance) {
           t,
         },
       );
+      if (quote) {
+        run('INSERT INTO post_quotes (post_id, quoted_id) VALUES ($p, $q)', { p: lastId, q: quote.id });
+      }
       for (const tag of tags) run('INSERT OR IGNORE INTO post_tags (post_id, tag) VALUES ($p, $tag)', { p: lastId, tag });
       if (status === 'ok') publishEffects(lastId);
       return lastId;

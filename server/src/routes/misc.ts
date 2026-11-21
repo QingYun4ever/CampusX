@@ -8,7 +8,7 @@ import { uploadsDir } from '../config.ts';
 import { all, get, now, run } from '../db.ts';
 import { readUploadedImage } from '../image-upload.ts';
 import { configSchema, describeError, getConfig, manualDecision, publicConfig, review, saveConfig, type ModConfig } from '../moderation.ts';
-import { postsByIds } from '../serialize.ts';
+import { postsByIds, visibleQuoteNotification } from '../serialize.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
 
@@ -31,7 +31,7 @@ export async function miscRoutes(app: FastifyInstance) {
     const rows = all(
       `SELECT n.id AS nid, n.type, n.post_id, n.read, n.extra, n.created_at AS n_created_at, ${USER_COLS}
        FROM notifications n JOIN users u ON u.id = n.actor_id
-       WHERE n.user_id = $me AND ($cursor IS NULL OR n.id < $cursor)
+       WHERE n.user_id = $me AND ${visibleQuoteNotification} AND ($cursor IS NULL OR n.id < $cursor)
        ORDER BY n.id DESC LIMIT 30`,
       { me: user.id, cursor: cursorNum(q.cursor) },
     );
@@ -76,14 +76,17 @@ export async function miscRoutes(app: FastifyInstance) {
   });
 
   app.get('/notifications/unread-count', async (req) => {
-    const r = get<{ c: number }>('SELECT COUNT(*) AS c FROM notifications WHERE user_id = $me AND read = 0', {
-      me: me(req).id,
-    });
+    const r = get<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM notifications n WHERE n.user_id = $me AND n.read = 0 AND ${visibleQuoteNotification}`,
+      { me: me(req).id },
+    );
     return { count: r?.c ?? 0 };
   });
 
   app.post('/notifications/read-all', async (req) => {
-    run('UPDATE notifications SET read = 1 WHERE user_id = $me AND read = 0', { me: me(req).id });
+    run(`UPDATE notifications AS n SET read = 1 WHERE n.user_id = $me AND n.read = 0 AND ${visibleQuoteNotification}`, {
+      me: me(req).id,
+    });
     return { ok: true };
   });
 

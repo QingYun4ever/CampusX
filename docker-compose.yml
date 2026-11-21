@@ -8,29 +8,12 @@ services:
       - path: .env
         required: false
     environment:
-      # 前面有 Caddy / Nginx 反向代理时为 1，限流才能拿到真实 IP
+      # 仅在可信 Nginx 反代后面启用，以便按访客 IP 限流
       TRUST_PROXY: ${TRUST_PROXY:-1}
     volumes:
       - data:/data
     ports:
-      # 只监听本机，由反向代理对外提供 HTTPS；想直接用 IP 访问就改成 "3000:3000"
+      # HTTPS 由宿主机的 Nginx 处理
       - "127.0.0.1:${APP_PORT:-3000}:3000"
-
-  # 可选：自带 Caddy，自动申请 HTTPS 证书。
-  # 在 .env 里设置 DOMAIN=forum.example.com，然后 docker compose --profile https up -d
-  caddy:
-    image: caddy:2-alpine
-    profiles: [https]
-    restart: unless-stopped
-    depends_on: [app]
-    command: caddy reverse-proxy --from ${DOMAIN:-localhost} --to app:3000
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - caddy_data:/data
-
 volumes:
   data:
-  caddy_data:

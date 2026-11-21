@@ -702,13 +702,3 @@ export function Messages() {
     </div>
   );
 }
-
-/** 未读私信数（导航栏角标） */
-export function useDmUnread() {
-  return useQuery({
-    queryKey: ['dm-unread'],
-    queryFn: () => api<{ count: number }>('/dm/unread-count'),
-    refetchInterval: 15_000,
-    select: (d) => d.count,
-  });
-}

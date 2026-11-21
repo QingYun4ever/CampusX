@@ -201,44 +201,43 @@ function TwoFactorSettings({ status, update, back }: { status: Security; update:
   );
 }
 
-function SecurityModal({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient();
-  const [view, setView] = useState<'summary' | 'email' | 'factor'>('summary');
-  const q = useQuery({ queryKey: securityKey, queryFn: () => api<Security>('/me/security'), refetchOnMount: 'always' });
-  const update = (status: Security) => qc.setQueryData(securityKey, status);
-  const back = () => setView('summary');
-  return (
-    <Modal title={view === 'email' ? '邮箱绑定' : view === 'factor' ? '两步验证' : '账户安全'} onClose={onClose}>
-      {q.isPending ? <div className="modal-body"><Spinner inline /></div> : q.isError ? (
-        <div className="modal-body">
-          <p role="alert">{q.error.message}</p>
-          <button type="button" className="btn btn-outline" onClick={() => q.refetch()}>重新加载</button>
-        </div>
-      ) : view === 'email' ? <EmailSettings status={q.data} update={update} back={back} />
-        : view === 'factor' ? <TwoFactorSettings status={q.data} update={update} back={back} /> : (
-          <>
-            <button type="button" className="list-link" onClick={() => setView('email')}>
-              <Mail size={18} /> <span>邮箱绑定</span>
-              <span className="muted small security-end">{q.data.email ? '已验证' : '未绑定'}</span><ChevronRight size={16} />
-            </button>
-            <button type="button" className="list-link" onClick={() => setView('factor')}>
-              <ShieldCheck size={18} /> <span>两步验证</span>
-              <span className="muted small security-end">{q.data.twoFactorEnabled ? '已开启' : '未开启'}</span><ChevronRight size={16} />
-            </button>
-          </>
-        )}
-    </Modal>
-  );
-}
-
 export function AccountSecurity() {
-  const [open, setOpen] = useState(false);
+  const qc = useQueryClient();
+  const [view, setView] = useState<'email' | 'factor' | null>(null);
+  const q = useQuery({ queryKey: securityKey, queryFn: () => api<Security>('/me/security') });
+  const status = q.data;
+  const update = (next: Security) => qc.setQueryData(securityKey, next);
+  const close = () => setView(null);
   return (
     <>
-      <button type="button" className="list-link" onClick={() => setOpen(true)}>
-        <ShieldCheck size={18} /> <span>账户安全</span><ChevronRight size={16} className="muted security-end" />
-      </button>
-      {open && <SecurityModal onClose={() => setOpen(false)} />}
+      <section className="section">
+        <h3>账户安全</h3>
+        <div>
+          <button type="button" className="list-link" onClick={() => setView('email')}>
+            <Mail size={18} /> <span>邮箱绑定</span>
+            <span className="muted small security-end">
+              {status ? status.email ? '已验证' : status.emailAvailable ? '未绑定' : '未配置' : ''}
+            </span>
+            <ChevronRight size={16} />
+          </button>
+          <button type="button" className="list-link" onClick={() => setView('factor')}>
+            <ShieldCheck size={18} /> <span>两步验证</span>
+            <span className="muted small security-end">{status ? status.twoFactorEnabled ? '已开启' : '未开启' : ''}</span>
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </section>
+      {view && (
+        <Modal title={view === 'email' ? '邮箱绑定' : '两步验证'} onClose={close}>
+          {q.isPending ? <div className="modal-body"><Spinner inline /></div> : q.isError ? (
+            <div className="modal-body">
+              <p role="alert">{q.error.message}</p>
+              <button type="button" className="btn btn-outline" onClick={() => q.refetch()}>重新加载</button>
+            </div>
+          ) : view === 'email' ? <EmailSettings status={q.data} update={update} back={close} />
+            : <TwoFactorSettings status={q.data} update={update} back={close} />}
+        </Modal>
+      )}
     </>
   );
 }

@@ -187,6 +187,14 @@ export interface SiteStats {
   boards: number;
 }
 
+export interface QuotePreview {
+  id: number;
+  content: string;
+  images: string[];
+  createdAt: number;
+  author: Pick<UserLite, 'id' | 'username' | 'displayName' | 'avatar' | 'avatarDecoration' | 'role' | 'verified' | 'verifiedNote'>;
+}
+
 export interface Post {
   id: number;
   author: UserLite;
@@ -210,6 +218,8 @@ export interface Post {
   /** 我是这条帖子所在吧的吧主 / 吧务 */
   canModerate: boolean;
   repostOf: Post | null;
+  canQuote: boolean;
+  quote: { post: QuotePreview | null } | null;
 }
 
 export interface Reaction {
@@ -268,7 +278,7 @@ export interface Page<T> {
 
 export interface Notification {
   id: number;
-  type: 'like' | 'reply' | 'repost' | 'follow' | 'mention' | 'reaction';
+  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction';
   read: boolean;
   /** reaction：用的哪个表情 */
   extra?: string;

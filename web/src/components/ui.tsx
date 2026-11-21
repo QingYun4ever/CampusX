@@ -64,6 +64,8 @@ export function Avatar({ src, name, size = 40, decoration }: {
         alt=""
         width={size}
         height={size}
+        loading="lazy"
+        decoding="async"
         style={{ width: size, height: size }}
         onError={() => setFailedUrl(url)}
       />

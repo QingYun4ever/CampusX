@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AtSign, Heart, MessageCircle, Repeat2, UserPlus } from 'lucide-react';
+import { AtSign, Heart, MessageCircle, Quote, Repeat2, UserPlus } from 'lucide-react';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { PostCard } from '../components/PostCard';
 import { Avatar, Emoji, Empty, TopBar } from '../components/ui';
@@ -11,6 +11,7 @@ import { timeAgo } from '../lib/format';
 const META = {
   like: { icon: <Heart size={24} fill="var(--like)" color="var(--like)" />, text: '喜欢了你的帖子' },
   repost: { icon: <Repeat2 size={24} color="var(--repost)" strokeWidth={2.4} />, text: '转发了你的帖子' },
+  quote: { icon: <Quote size={24} color="var(--accent)" />, text: '引用了你的帖子' },
   follow: { icon: <UserPlus size={24} color="var(--accent)" fill="var(--accent)" />, text: '关注了你' },
   reply: { icon: <MessageCircle size={24} color="var(--accent)" />, text: '回复了你' },
   mention: { icon: <AtSign size={24} color="var(--accent)" />, text: '提到了你' },
@@ -46,9 +47,15 @@ function Item({ n }: { n: Notification }) {
           <span className="faint"> · {timeAgo(n.createdAt)}</span>
         </div>
         {n.post && (
-          <div className="muted clamp" style={{ marginTop: 4 }}>
-            {n.post.content || (n.post.images.length ? '[图片]' : '')}
-          </div>
+          n.type === 'quote' ? (
+            <Link to={`/post/${n.post.id}`} className="muted clamp" style={{ marginTop: 4 }} onClick={(e) => e.stopPropagation()}>
+              {n.post.content || '[图片]'}
+            </Link>
+          ) : (
+            <div className="muted clamp" style={{ marginTop: 4 }}>
+              {n.post.content || (n.post.images.length ? '[图片]' : '')}
+            </div>
+          )
         )}
       </div>
     </div>
@@ -72,7 +79,7 @@ export function Notifications() {
       <TopBar title="通知" />
       <InfiniteList
         q={q}
-        empty={<Empty title="暂无通知">别人回复、点赞、回应、转发或关注你时会显示在这里。</Empty>}
+        empty={<Empty title="暂无通知">别人回复、点赞、回应、转发、引用或关注你时会显示在这里。</Empty>}
         getKey={(n) => n.id}
         render={(n) => <Item n={n} />}
       />

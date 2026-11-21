@@ -79,6 +79,12 @@ CREATE INDEX IF NOT EXISTS idx_posts_board    ON posts(board_id, last_activity_a
 CREATE INDEX IF NOT EXISTS idx_posts_parent   ON posts(parent_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_repost ON posts(repost_of, author_id) WHERE repost_of IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS post_quotes (
+  post_id   INTEGER PRIMARY KEY REFERENCES posts(id) ON DELETE CASCADE,
+  quoted_id INTEGER REFERENCES posts(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_post_quotes_source ON post_quotes(quoted_id);
+
 CREATE TABLE IF NOT EXISTS likes (
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
@@ -99,7 +105,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   id         INTEGER PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   actor_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  type       TEXT NOT NULL,            -- like | reply | repost | follow | mention
+  type       TEXT NOT NULL,            -- like | reply | repost | quote | follow | mention | reaction
   post_id    INTEGER REFERENCES posts(id) ON DELETE CASCADE,
   read       INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL

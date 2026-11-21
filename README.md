@@ -2,8 +2,8 @@
 
 给高中同学用的交流平台：贴吧式的「吧」+ 推特式的时间线。Web、Android、iOS 共用同一套代码。
 
-- **账号**：仅凭邀请码注册；个人页可选验证邮箱、开启验证器两步验证（含一次性恢复码）。邮箱不公开，不能用于找回密码
-- **时间线**：「全部 / 关注」两个 tab，发帖、回复（楼中楼）、点赞、转发、@提及、最多 4 张图片
+- **账号**：仅凭邀请码注册；「设置 → 账户安全」可选验证邮箱、开启验证器两步验证（含一次性恢复码）。邮箱不公开，不能用于找回密码
+- **时间线**：「全部 / 关注」两个 tab，发帖、回复（楼中楼）、点赞、普通转发、附评论的引用、@提及、最多 4 张图片
 - **Markdown + LaTeX**：标题、列表、任务清单、表格、代码块、引用；`$行内公式$`、`$$块级公式$$`（KaTeX）。发帖框可以预览。不渲染原始 HTML，外链图片只显示成链接
 - **标签**：正文里的 `#话题` 自动成为标签，也可以在发帖框里单独加（最多 5 个）；`/t/标签` 是标签页，侧栏有热门标签
 - **表情回应**：Telegram 式，52 个表情（Twemoji 图片，各平台一致），每人每帖一个，人少时显示头像，长按 / 右键看谁回应了
@@ -13,9 +13,9 @@
 - **蓝标认证**：管理员在后台手动给同学加蓝标，可以写认证说明
 - **AI 内容审核**：开启后每条新帖先只对作者本人可见，AI 审核文字和图片通过后才公开；没通过的帖子作者自己照常看得到，别人看不到，也不会产生通知。支持 Claude 或任何 OpenAI 兼容接口（通义千问、智谱、DeepSeek 等）
 - **吧**：按班级或兴趣分区，任何人都能建吧，建吧的人是吧主，可以任命最多 10 位吧务；吧公告、最多 3 条置顶；吧内支持「最新回复（顶帖）/ 最新发布」排序，回复带楼层号
-- **私密吧**：吧主可逐个或按班级添加可见成员；吧主、吧务和站点管理员始终可见，私密吧的帖子不能转发。吧主或站点管理员可删除吧，帖子和回复一并删除
+- **私密吧**：吧主可逐个或按班级添加可见成员；吧主、吧务和站点管理员始终可见，私密吧的帖子不能转发或引用。吧主或站点管理员可删除吧，帖子和回复一并删除
 - **个人主页**：头像、背景图、简介、班级、届别、关注 / 粉丝；可设置头像光环，管理员昵称和 ID 有辉光
-- **通知**：点赞、回复、转发、关注、@ 我、表情回应
+- **通知**：点赞、回复、转发、引用、关注、@ 我、表情回应
 - **更新日志**：`/changelog`，入口在左栏底部和设置页底部
 - **管理后台**（独立页面 `/admin`）：数据概览；审核模型配置、审核记录、人工通过 / 拦截；生成 / 删除邀请码；设置管理员、蓝标认证、重置密码；删除任何帖子
 - **界面**：类 X 布局，左侧栏可收起，个人主页 / 设置 / 管理后台都在左下角头像菜单里（手机端点底栏头像）；浅色 / 深色 / 跟随系统；背景可选预设渐变或自己调两种颜色和方向；强调色可选或自定义
@@ -74,34 +74,33 @@ npm run invite -- --uses 50 --note "高三(2)班" --days 30
 - 一台 Linux 服务器（1 核 1G 就够用），装好 Docker：`curl -fsSL https://get.docker.com | sh`（国内服务器可以用 `--mirror Aliyun`）
 - 一个域名，A 记录解析到服务器 IP；防火墙 / 安全组放行 80 和 443 端口
 - 在中国大陆的服务器上用域名对外提供服务需要先完成 ICP 备案
+- 私有仓库在 VPS 上需要 GitHub 读取权限，建议为此仓库添加专用的只读部署密钥，不要把自己的 GitHub 私钥拷到服务器
 
 **1. 拿到代码并配置**
 
 ```bash
-git clone https://github.com/QingYun4ever/CampusX.git xiaoqiang
+git clone git@github.com:QingYun4ever/CampusX.git xiaoqiang
 cd xiaoqiang
 cp .env.example .env
-nano .env            # 把 DOMAIN 改成你的域名
+nano .env            # 可选配置 SMTP 等，不需要设置域名
 ```
 
 **2. 构建并启动**
 
 ```bash
-docker compose --profile https up -d --build
+docker compose up -d --build
 ```
 
-这会启动两个容器：`app`（校墙本体）和 `caddy`（自动申请、续期 HTTPS 证书）。第一次构建大约需要几分钟。
-
-如果服务器上已经有 Nginx / Caddy / 宝塔，就不要加 `--profile https`，只运行 `docker compose up -d --build`，再把你的反向代理指向 `127.0.0.1:3000`。Nginx 示例：
+Compose 只启动校墙，默认开放 `127.0.0.1:3000` 给宿主机。用你自己的 Nginx 配置 HTTPS 并指向该地址；不要对外开放 3000。Nginx 示例：
 
 ```nginx
 server {
   server_name forum.example.com;
-  client_max_body_size 10m;          # 上传图片最大 8MB
+  client_max_body_size 36m;          # 私信每条最多 4 张图，每张不超过 8 MiB
   location / {
     proxy_pass http://127.0.0.1:3000;
     proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
   }
   # listen 443 ssl; 证书配置略（可以用 certbot --nginx 自动配置）
@@ -126,35 +125,46 @@ docker compose exec app node --disable-warning=ExperimentalWarning server/src/cl
 |---|---|
 | 看运行状态 | `docker compose ps`（`app` 显示 `healthy` 就是正常） |
 | 看日志 | `docker compose logs -f app` |
-| 更新到新版本 | `git pull && docker compose --profile https up -d --build` |
+| 更新到新版本 | 先备份，再 `git pull --ff-only && docker compose up -d --build` |
 | 重启 | `docker compose restart app` |
-| 停止 | `docker compose --profile https down`（数据保留在卷里，不会丢） |
+| 停止 | `docker compose down`（保留数据卷；不要加 `-v`） |
 
 **5. 备份**
 
-数据库和图片都在 Docker 卷 `data` 里（容器内的 `/data`）。备份命令不用停网站：
+数据库、2FA 密钥和图片都在 Docker 卷 `data` 里（容器内的 `/data`）。备份命令不用停网站：
 
 ```bash
 # 1. 在线备份数据库到 /data/backups（默认保留最近 14 份）
 docker compose exec app node --disable-warning=ExperimentalWarning server/src/cli/backup.ts
-# 2. 把数据库备份和图片拷到宿主机
-mkdir -p ~/xiaoqiang-backup
+# 2. 把数据库、同名密钥与私信图片的备份，以及普通图片拷到宿主机
+install -d -m 700 ~/xiaoqiang-backup
 docker compose cp app:/data/backups ~/xiaoqiang-backup/
 docker compose cp app:/data/uploads ~/xiaoqiang-backup/
 ```
 
-建议用 `crontab -e` 每天自动做一次，并把 `~/xiaoqiang-backup` 同步到别的机器或对象存储。
+建议每天备份一次，并在私有或加密的存储保留副本。`.db`、同名 `.key` 和 `.dm-uploads` 要一起保留，不能只还原数据库。
 
-恢复（会覆盖现在的数据，先停掉 app）：
+迁移或还原到空的数据卷：先构建 `docker compose build app`（先别启动），再选择备份文件名（不含 `.db` 后缀）：
 
 ```bash
-docker compose stop app
-docker compose run --rm --no-deps -v ~/xiaoqiang-backup:/backup --entrypoint sh app -c \
-  "cp /backup/backups/forum-XXXXXXXX-XXXXXX.db /data/forum.db && rm -f /data/forum.db-wal /data/forum.db-shm && cp -r /backup/uploads/. /data/uploads/"
-docker compose start app
+docker compose run --rm --no-deps --user root \
+  -e SNAPSHOT=forum-XXXXXXXX-XXXXXX-PID \
+  -v "$HOME/xiaoqiang-backup:/backup:ro" --entrypoint sh app -ec '
+    test -z "$(ls -A /data)" || { echo "请还原到空的数据卷" >&2; exit 1; }
+    src="/backup/backups/$SNAPSHOT"
+    cp "$src.db" /data/forum.db
+    if [ -f "$src.key" ]; then
+      cp "$src.key" /data/account-security.key
+      chmod 600 /data/account-security.key
+    fi
+    if [ -d "$src.dm-uploads" ]; then cp -r "$src.dm-uploads" /data/dm-uploads; fi
+    cp -r /backup/uploads /data/uploads
+    chown -R node:node /data
+  '
+docker compose up -d
 ```
 
-**换服务器**：在新服务器上按第 1、2 步部署，然后按上面的「恢复」步骤导入备份即可。
+**换服务器**：准备好代码和 `.env` 后，先还原备份，再启动服务。已有运行中的实例应保留原卷，确认新实例正常后再切换域名。
 
 ### 直接用 Node 运行
 
@@ -166,13 +176,7 @@ npm run build        # 构建前端到 web/dist
 npm start            # 后端同时托管前端页面，监听 3000
 ```
 
-建议放在 Nginx / Caddy 后面并开启 HTTPS，例如 Caddy：
-
-```
-forum.example.com {
-  reverse_proxy localhost:3000
-}
-```
+用上面的 Nginx 配置反代；直接运行 Node 时，可以设置 `HOST=127.0.0.1 TRUST_PROXY=1`，只接收本机反代请求。
 
 需要长期运行可以用 `pm2 start npm --name forum -- start` 或 systemd。备份用 `npm run backup`，并复制 `server/data/uploads/`。
 
@@ -185,7 +189,6 @@ forum.example.com {
 | `TRUST_PROXY=1` | 在反向代理后面时设置，限流才能拿到真实 IP（docker-compose 里默认开启） |
 | `CORS_ORIGINS` | 允许跨域的来源（逗号分隔），默认已包含 App 的 WebView 来源 |
 | `ANTHROPIC_API_KEY` | 可选，用 Claude 做 AI 审核时的密钥（也可以在后台填） |
-| `DOMAIN` | 只用于 docker-compose 自带的 Caddy，你的域名 |
 | `APP_PORT` | 只用于 docker-compose，app 映射到本机的端口，默认 `3000` |
 | `SMTP_HOST` / `MAIL_FROM` | 可选；同时配置后才允许邮箱验证 |
 | `SMTP_PORT` / `SMTP_SECURE` | 默认 587，要求 STARTTLS；465 默认隐式 TLS，也可显式设置 `SMTP_SECURE=1` |
@@ -238,14 +241,14 @@ APK 输出到 `app/build/outputs/apk/release/app-release.apk`。不要提交密�
 
 ### 发布到 GitHub Releases
 
-推送 `vX.Y.Z` 注释标签会触发 APK 发布。先将本地验签后的 APK 临时上传到 [tmpfiles.org](https://tmpfiles.org/api)，只传安装包，不传签名密钥、配置或数据。标签注释头两行填写分享页地址和文件 SHA-256：
+签名密钥留在本地。安装并登录 GitHub CLI 后，可以直接发 APK：
 
-```text
-APK: https://tmpfiles.org/a1b2c3/campusx-android-0.9.0.apk
-SHA256: 此处填写 64 位 SHA-256
+```bash
+gh release create v0.9.1 web/android/app/build/outputs/apk/release/app-release.apk \
+  --target main --title '校墙 v0.9.1' --notes 'Android 签名安装包'
 ```
 
-例如用 `git tag -a v0.9.0 -F release-tag.txt` 创建标签，再推送标签。Actions 核对摘要、现有发布证书、包名、版本和正式版清单后，把 APK 和摘要上传到 Releases；临时地址过期不影响已发布的 GitHub 附件。这个临时地址在有效期内，拿到链接的人都能下载。
+只有 Git SSH 权限时，可将命名为 `campusx-android-X.Y.Z.apk` 的签名包放到临时分支 `android-apk/vX.Y.Z`，再向 GitHub 推送该分支和注释为 `SHA256: <安装包 SHA-256>` 的版本标签。Actions 核对摘要、现有发布证书、包名、版本和正式版清单后，把 APK 和摘要上传到 Releases，成功后清理临时分支。APK 不进入 `main`，不经过第三方网盘。
 
 ## 安全说明
 

@@ -9,6 +9,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.9.1',
+    date: '2026-11-21',
+    title: '引用帖子与账户安全入口',
+    changes: [
+      ['new', '转发按钮可以选择普通转发或引用。引用时能加上自己的评论、图片，原帖会显示为卡片。'],
+      ['improve', '邮箱绑定和两步验证移到了「设置 → 账户安全」。'],
+      ['improve', '设置、私信和后台等页面在打开时才加载。'],
+    ],
+  },
+  {
     version: '0.9.0',
     date: '2026-11-21',
     title: '表情商场、头像装扮与账户安全',

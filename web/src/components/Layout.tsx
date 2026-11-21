@@ -1,4 +1,5 @@
 import {
+  Suspense,
   createContext,
   useContext,
   useEffect,
@@ -39,8 +40,16 @@ import { useCompose } from './compose';
 import { FollowButton } from './FollowButton';
 import { Logo } from './Logo';
 import { preloadMarkdown } from './PostCard';
-import { useDmUnread } from '../pages/Messages';
-import { Avatar, BoardMark, Modal, Rolling, useModalClose, Verified } from './ui';
+import { Avatar, BoardMark, Modal, PostSkeleton, Rolling, useModalClose, Verified } from './ui';
+
+function useDmUnread() {
+  return useQuery({
+    queryKey: ['dm-unread'],
+    queryFn: () => api<{ count: number }>('/dm/unread-count'),
+    refetchInterval: 15_000,
+    select: (data) => data.count,
+  });
+}
 
 function useUnread() {
   return useQuery({
@@ -564,7 +573,7 @@ export function Layout() {
         </div>
         <main className="main-col">
           <div className="page" key={isDm ? '/messages' : loc.pathname.replace(/\/(followers|following)$/, '')}>
-            <Outlet />
+            <Suspense fallback={<PostSkeleton n={3} />}><Outlet /></Suspense>
           </div>
         </main>
         <div className="side-col">

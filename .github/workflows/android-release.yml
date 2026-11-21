@@ -19,28 +19,22 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: 下载并校验已签名的 APK
+      - name: 校验已签名的 APK
         shell: bash
+        id: apk
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           version=${GITHUB_REF_NAME#v}
           [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           name="campusx-android-$version.apk"
-          mapfile -t metadata < <(git for-each-ref --format='%(contents)' "$GITHUB_REF")
-          url=${metadata[0]:-}
-          sha=${metadata[1]:-}
-          url=${url#APK: }
-          sha=${sha#SHA256: }
-          [[ $url =~ ^https://tmpfiles\.org/[A-Za-z0-9]+/[A-Za-z0-9._-]+\.apk$ && $sha =~ ^[a-f0-9]{64}$ ]] || {
-            echo '标签需要 APK 下载地址和 SHA256。请见 README。'
-            exit 1
-          }
-          page=$(curl --fail --silent --show-error --proto '=https' --max-time 20 --max-filesize 1048576 -- "$url")
-          link_pattern='https://tmpfiles\.org/dl/[0-9]+\.[a-f0-9]+/[A-Za-z0-9]+/[A-Za-z0-9._-]+\.apk'
-          [[ $page =~ $link_pattern ]]
-          direct=${BASH_REMATCH[0]}
-          [[ $direct == "https://tmpfiles.org/dl/"*"/${url#https://tmpfiles.org/}" ]]
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
-            --max-time 120 --referer "$url" --output "$name" -- "$direct"
+          annotation=$(git for-each-ref --format='%(contents:subject)' "$GITHUB_REF")
+          sha=${annotation#SHA256: }
+          if [[ $annotation != 'SHA256: '* ]]; then exit 0; fi
+          [[ $sha =~ ^[a-f0-9]{64}$ ]] || { echo '安装包 SHA-256 无效。'; exit 1; }
+          # 临时分支只用来经 GitHub 交接 APK；主分支和版本标签不包含二进制。
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/$name?ref=android-apk/$GITHUB_REF_NAME" > "$name"
           printf '%s  %s\n' "$sha" "$name" | sha256sum --check
           tools="$ANDROID_HOME/build-tools/35.0.0"
           if [[ ! -x "$tools/apksigner" ]]; then sdkmanager 'build-tools;35.0.0'; fi
@@ -55,11 +49,15 @@ jobs:
             exit 1
           fi
           printf '%s  %s\n' "$sha" "$name" > "$name.sha256"
+          printf 'filename=%s\n' "$name" >> "$GITHUB_OUTPUT"
 
       - name: 上传到 GitHub Releases
+        if: steps.apk.outputs.filename != ''
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          APK_FILE: ${{ steps.apk.outputs.filename }}
         run: |
-          name="campusx-android-${GITHUB_REF_NAME#v}.apk"
-          gh release create "$GITHUB_REF_NAME" "$name" "$name.sha256" --verify-tag \
+          gh release create "$GITHUB_REF_NAME" "$APK_FILE" "$APK_FILE.sha256" --verify-tag \
             --title "校墙 $GITHUB_REF_NAME" --notes '已签名的 Android 安装包，正式版仅支持 HTTPS。'
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/android-apk/$GITHUB_REF_NAME"

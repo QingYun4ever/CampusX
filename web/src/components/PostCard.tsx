@@ -1,13 +1,14 @@
 import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart2, ChevronDown, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Repeat2, SmilePlus, Trash2 } from 'lucide-react';
+import { BarChart2, ChevronDown, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Quote, Repeat2, SmilePlus, Trash2 } from 'lucide-react';
 import { api, media, QUICK_REACTIONS, REACTIONS, WEB_ORIGIN, type Post, type Reaction, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
 import { markViewed, useViewTracking } from '../lib/views';
 import { useCompose } from './compose';
 import { ContentLink } from './ContentLink';
+import { QuoteCard } from './QuoteCard';
 import { Avatar, Emoji, emojiUrl, Empty, Modal, openLightbox, Rolling, Spinner, toast, toneFor, usePopover, Verified } from './ui';
 
 /* ---------- 正文 ---------- */
@@ -87,6 +88,7 @@ function usePostActions(post: Post) {
   const [likes, setLikes] = useState(post.likeCount);
   const [reposted, setReposted] = useState(post.reposted);
   const [reposts, setReposts] = useState(post.repostCount);
+  const [repostPending, setRepostPending] = useState(false);
   // 只在用户亲手点的时候播放动画（key 变化会让动画元素重新挂载）
   const [fx, setFx] = useState<{ kind: 'like' | 'repost'; key: number } | null>(null);
   const qc = useQueryClient();
@@ -96,7 +98,7 @@ function usePostActions(post: Post) {
     setLikes(post.likeCount);
     setReposted(post.reposted);
     setReposts(post.repostCount);
-  }, [post.liked, post.likeCount, post.reposted, post.repostCount]);
+  }, [post.id, post.liked, post.likeCount, post.reposted, post.repostCount]);
 
   const toggleLike = async () => {
     const next = !liked;
@@ -112,6 +114,8 @@ function usePostActions(post: Post) {
     }
   };
   const toggleRepost = async () => {
+    if (repostPending) return;
+    setRepostPending(true);
     const next = !reposted;
     setReposted(next);
     setReposts((n) => n + (next ? 1 : -1));
@@ -119,11 +123,15 @@ function usePostActions(post: Post) {
     try {
       await api(`/posts/${post.id}/repost`, { method: next ? 'POST' : 'DELETE' });
       toast(next ? '已转发' : '已取消转发');
-      qc.invalidateQueries({ queryKey: ['feed'] });
+      for (const key of ['feed', 'post', 'user-posts', 'board-posts', 'board-pinned', 'replies', 'tag-posts', 'search-posts', 'notifications']) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
     } catch (e) {
       setReposted(!next);
       setReposts((n) => n + (next ? -1 : 1));
       toast((e as Error).message, 'error');
+    } finally {
+      setRepostPending(false);
     }
   };
   const share = async () => {
@@ -135,7 +143,7 @@ function usePostActions(post: Post) {
       toast(url);
     }
   };
-  return { liked, likes, reposted, reposts, fx, toggleLike, toggleRepost, share };
+  return { liked, likes, reposted, reposts, repostPending, fx, toggleLike, toggleRepost, share };
 }
 
 /* ---------- 表情回应（Telegram 式） ---------- */
@@ -411,9 +419,12 @@ export function TagList({ tags }: { tags: string[] }) {
   );
 }
 
-function ActionBar({ post, big, rx }: { post: Post; big?: boolean; rx: Rx }) {
+function ActionBar({ post: item, big, rx }: { post: Post; big?: boolean; rx: Rx }) {
+  const post = item.repostOf ?? item;
+  const canQuote = item.canQuote && post.canQuote;
   const a = usePostActions(post);
   const compose = useCompose();
+  const repostMenu = usePopover(true, 200);
   const size = big ? 22 : 18;
   const stop = (fn: () => void) => (e: MouseEvent) => {
     e.stopPropagation();
@@ -450,17 +461,38 @@ function ActionBar({ post, big, rx }: { post: Post; big?: boolean; rx: Rx }) {
           </span>
           {!big && <Rolling value={post.replyCount} />}
         </button>
-        <button
-          className={`act repost ${a.reposted ? 'on' : ''}`}
-          onClick={stop(a.toggleRepost)}
-          aria-label="转发"
-          aria-pressed={a.reposted}
-        >
-          <span className="ico">
-            <Repeat2 size={size} key={a.fx?.kind === 'repost' ? a.fx.key : 0} className={a.fx?.kind === 'repost' ? 'spin-once' : ''} />
-          </span>
-          {!big && <Rolling value={a.reposts} />}
-        </button>
+        <div className="popover-anchor" ref={repostMenu.ref} onClick={(e) => e.stopPropagation()}>
+          <button
+            className={`act repost ${a.reposted ? 'on' : ''}`}
+            onClick={() => repostMenu.setOpen((open) => !open)}
+            aria-label="转发与引用"
+            aria-expanded={repostMenu.open}
+            title="转发与引用"
+          >
+            <span className="ico">
+              <Repeat2 size={size} key={a.fx?.kind === 'repost' ? a.fx.key : 0} className={a.fx?.kind === 'repost' ? 'spin-once' : ''} />
+            </span>
+            {!big && <Rolling value={a.reposts} />}
+          </button>
+          {repostMenu.open && (
+            <div className="menu repost-menu" style={repostMenu.style} role="group" aria-label="转发与引用">
+              <button disabled={a.repostPending} onClick={() => {
+                repostMenu.setOpen(false);
+                repostMenu.ref.current?.querySelector('button')?.focus();
+                void a.toggleRepost();
+              }}>
+                <Repeat2 size={18} /> {a.reposted ? '撤销转发' : '转发'}
+              </button>
+              <button disabled={!canQuote} title={canQuote ? undefined : '这条帖子不能引用'} onClick={() => {
+                if (!canQuote) return;
+                repostMenu.setOpen(false);
+                compose({ quoteOf: post });
+              }}>
+                <Quote size={18} /> 引用
+              </button>
+            </div>
+          )}
+        </div>
         <button
           className={`act like ${a.liked ? 'on' : ''}`}
           onClick={stop(a.toggleLike)}
@@ -676,9 +708,10 @@ export function PostCard({
         {!post.parentId && <BoardChip board={post.board} />}
         {post.content && <RichText text={post.content} />}
         <MediaGrid images={post.images} />
+        {post.quote && <QuoteCard post={post.quote.post} />}
         <TagList tags={post.tags} />
         <ReactionPills rx={rx} />
-        <ActionBar post={post} rx={rx} />
+        <ActionBar post={item} rx={rx} />
         <Reactors rx={rx} />
       </div>
     </article>
@@ -686,7 +719,8 @@ export function PostCard({
 }
 
 /* ---------- 详情页主帖（大字号） ---------- */
-export function PostMain({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
+export function PostMain({ post: item, onDeleted }: { post: Post; onDeleted?: () => void }) {
+  const post = item.repostOf ?? item;
   const rx = useReactions(post);
   useEffect(() => {
     if (!post.deleted) markViewed(post.id);
@@ -702,6 +736,12 @@ export function PostMain({ post, onDeleted }: { post: Post; onDeleted?: () => vo
   }
   return (
     <div className="post-main">
+      {item.repostOf && (
+        <div className="post-context">
+          <Repeat2 size={14} />
+          <Link to={`/u/${item.author.username}`}>{item.author.displayName} 转发了</Link>
+        </div>
+      )}
       <div className="post-main-head">
         <Link to={`/u/${post.author.username}`} className="avatar-link">
           <Avatar src={post.author.avatar} name={post.author.displayName} size={44} decoration={post.author.avatarDecoration} />
@@ -719,7 +759,7 @@ export function PostMain({ post, onDeleted }: { post: Post; onDeleted?: () => vo
             {post.author.className && ` · ${post.author.className}`}
           </div>
         </div>
-        <PostMenu post={post} onDeleted={onDeleted} />
+        <PostMenu post={item} onDeleted={onDeleted} />
       </div>
       {post.parentUsername && (
         <div className="reply-to" style={{ marginTop: 10 }}>
@@ -733,10 +773,11 @@ export function PostMain({ post, onDeleted }: { post: Post; onDeleted?: () => vo
       )}
       {post.content && <RichText text={post.content} />}
       <MediaGrid images={post.images} />
+      {post.quote && <QuoteCard post={post.quote.post} />}
       <TagList tags={post.tags} />
       <ReactionPills rx={rx} />
       <div className="time">{fullTime(post.createdAt)}</div>
-      <ActionBar post={post} big rx={rx} />
+      <ActionBar key={item.id} post={item} big rx={rx} />
       <Reactors rx={rx} />
     </div>
   );

@@ -20,6 +20,7 @@ import {
   type Bg,
   type Mode,
 } from '../lib/theme';
+import { AccountSecurity } from './AccountSecurity';
 
 const MODES: { id: Mode; name: string }[] = [
   { id: 'light', name: '浅色' },
@@ -206,6 +207,7 @@ export function Settings() {
   return (
     <>
       <TopBar back title="设置" />
+      <AccountSecurity />
       <Appearance />
 
       <section className="section">

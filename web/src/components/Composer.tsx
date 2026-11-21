@@ -3,8 +3,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronDown, Eye, Hash, ImagePlus, PenLine, X } from 'lucide-react';
 import { api, media, uploadImage, type Board, type Post } from '../lib/api';
 import { useMe } from '../lib/auth';
+import type { ComposeOpts } from './compose';
 import { EmojiPicker } from './EmojiPicker';
 import { RichText } from './PostCard';
+import { QuoteCard } from './QuoteCard';
 import { Avatar, BoardMark, Spinner, toast, usePopover } from './ui';
 
 const MAX = 2000;
@@ -120,14 +122,13 @@ function BoardPicker({ value, onChange }: { value: string; onChange: (v: string)
 
 export function Composer({
   replyTo,
+  quoteOf,
   boardSlug,
   autoFocus,
   onPosted,
   showReplyContext,
   placeholder,
-}: {
-  replyTo?: Post;
-  boardSlug?: string;
+}: ComposeOpts & {
   autoFocus?: boolean;
   onPosted?: (p: Post) => void;
   showReplyContext?: boolean;
@@ -228,6 +229,7 @@ export function Composer({
           content: text,
           images,
           parentId: target?.id ?? null,
+          quoteOfId: quoteOf?.id,
           boardSlug: target ? null : board || null,
           tags,
         },
@@ -239,8 +241,8 @@ export function Composer({
       setTags([]);
       setShowTags(false);
       setPreview(false);
-      toast(target ? '已回复' : '已发布');
-      for (const k of ['feed', 'board-posts', 'replies', 'post', 'user-posts', 'boards']) {
+      toast(target ? '已回复' : quoteOf ? '已发布引用' : '已发布');
+      for (const k of ['feed', 'board-posts', 'replies', 'post', 'user-posts', 'boards', 'tag-posts', 'search-posts']) {
         qc.invalidateQueries({ queryKey: [k] });
       }
       onPosted?.(post);
@@ -289,7 +291,7 @@ export function Composer({
             onBlur={rememberSelection}
             onPaste={onPaste}
             onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && submit()}
-            placeholder={placeholder ?? (target ? '发布你的回复' : '有什么新鲜事？')}
+            placeholder={placeholder ?? (target ? '发布你的回复' : quoteOf ? '说说你对原帖的看法' : '有什么新鲜事？')}
             aria-label="帖子内容"
             rows={2}
           />
@@ -312,6 +314,7 @@ export function Composer({
               ))}
             </div>
           )}
+          {quoteOf && <QuoteCard post={quoteOf} preview />}
           <div className="composer-tools">
             <input
               ref={fileRef}

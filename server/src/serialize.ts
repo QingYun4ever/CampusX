@@ -21,6 +21,18 @@ export const HIDDEN_BOARDS = `(SELECT hb.id FROM boards hb WHERE hb.visibility =
 /** 帖子对 $me 可见（不在看不到的私密吧里）。alias 是表别名前缀，如 'p.' */
 export const visibleTo = (alias = '') => `(${alias}board_id IS NULL OR ${alias}board_id NOT IN ${HIDDEN_BOARDS})`;
 
+/** 引用源和引用通知都必须对所有人公开，而不仅对当前用户可见。 */
+export const publicPost = (alias: string) => `(${alias}.status = 'ok' AND ${alias}.deleted = 0
+  AND (${alias}.board_id IS NULL OR EXISTS(
+    SELECT 1 FROM boards qb WHERE qb.id = ${alias}.board_id AND qb.visibility = 'public'
+  )))`;
+
+/** 通知列表和未读数都要随着两端帖子当前的可见性更新。 */
+export const visibleQuoteNotification = `(n.type <> 'quote' OR EXISTS (
+  SELECT 1 FROM post_quotes nq JOIN posts np ON np.id = nq.post_id JOIN posts ns ON ns.id = nq.quoted_id
+  WHERE nq.post_id = n.post_id AND ${publicPost('np')} AND ${publicPost('ns')}
+))`;
+
 /**
  * 帖子查询的公共 SELECT。$me 为当前用户 id，用于计算 liked / reposted。
  * 审核中、未通过的帖子只对作者本人可见（作者看起来和正常发出一样）。
@@ -45,6 +57,8 @@ SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.con
      FROM reactions r WHERE r.post_id = p.id GROUP BY r.emoji ORDER BY n DESC, first
   )) AS reactions,
   p.pinned_at,
+  q.post_id AS quote_post_id, q.quoted_id,
+  ${publicPost('p')} AS can_quote,
   CASE WHEN p.board_id IS NULL THEN NULL
        WHEN b.owner_id = p.author_id THEN 'owner'
        WHEN EXISTS(SELECT 1 FROM board_mods bm WHERE bm.board_id = p.board_id AND bm.user_id = p.author_id) THEN 'mod'
@@ -55,6 +69,7 @@ SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.con
 FROM (SELECT * FROM posts WHERE (status = 'ok' OR author_id = $me) AND ${visibleTo()}) p
 JOIN users u ON u.id = p.author_id
 LEFT JOIN boards b ON b.id = p.board_id
+LEFT JOIN post_quotes q ON q.post_id = p.id
 LEFT JOIN posts pp ON pp.id = p.parent_id
 LEFT JOIN users pu ON pu.id = pp.author_id`;
 }
@@ -95,6 +110,16 @@ export interface PostDTO {
   /** 当前用户是这条帖子所在吧的吧主 / 吧务（可以置顶、删除） */
   canModerate: boolean;
   repostOf: PostDTO | null;
+  canQuote: boolean;
+  quote: { post: QuotePreview | null } | null;
+}
+
+interface QuotePreview {
+  id: number;
+  content: string;
+  images: string[];
+  createdAt: number;
+  author: Pick<PostDTO['author'], 'id' | 'username' | 'displayName' | 'avatar' | 'avatarDecoration' | 'role' | 'verified' | 'verifiedNote'>;
 }
 
 export interface Reaction {
@@ -105,7 +130,7 @@ export interface Reaction {
   users: { username: string; displayName: string; avatar: string | null }[];
 }
 
-function serializeRow(r: Row): PostDTO {
+function serializeRow(r: Row, quotes: Map<number, QuotePreview>): PostDTO {
   const deleted = !!r.deleted;
   return {
     id: r.id,
@@ -147,36 +172,74 @@ function serializeRow(r: Row): PostDTO {
     pinned: !!r.pinned_at,
     canModerate: !!r.board_manager,
     repostOf: null,
+    canQuote: !!r.can_quote,
+    quote: r.quote_post_id != null ? { post: deleted ? null : (quotes.get(r.quoted_id) ?? null) } : null,
   };
 }
 
-/** 把查询结果转成 DTO；转发行会嵌入原帖。 */
+/** 原帖和引用预览各按一批读取；引用预览不再展开其引用。 */
 export function hydrate(rows: Row[], me: number): PostDTO[] {
   const repostIds = [...new Set(rows.filter((r) => r.repost_of).map((r) => r.repost_of as number))];
+  const originalRows = loadPostRows(repostIds, me);
+  const quoteIds = new Set<number>();
+  for (const batch of [rows, originalRows]) {
+    for (const r of batch) if (!r.deleted && r.quoted_id != null) quoteIds.add(r.quoted_id);
+  }
+  const quotes = new Map<number, QuotePreview>();
+  if (quoteIds.size) {
+    for (const r of all(
+      `SELECT s.id, s.content, s.images, s.created_at, s.author_id,
+         u.username, u.display_name, u.avatar, u.avatar_decoration, u.role, u.verified, u.verified_note
+       FROM posts s JOIN users u ON u.id = s.author_id
+       WHERE s.id IN (SELECT value FROM json_each($ids)) AND s.repost_of IS NULL AND ${publicPost('s')}`,
+      { ids: JSON.stringify([...quoteIds]) },
+    )) {
+      quotes.set(r.id, {
+        id: r.id,
+        content: r.content,
+        images: JSON.parse(r.images) as string[],
+        createdAt: r.created_at,
+        author: {
+          id: r.author_id,
+          username: r.username,
+          displayName: r.display_name,
+          avatar: r.avatar ?? null,
+          avatarDecoration: r.avatar_decoration,
+          role: r.role,
+          verified: !!r.verified,
+          verifiedNote: r.verified_note ?? '',
+        },
+      });
+    }
+  }
   const originals = new Map<number, PostDTO>();
-  if (repostIds.length) {
-    for (const o of postsByIds(repostIds, me)) originals.set(o.id, o);
+  for (const r of originalRows) {
+    if (!r.deleted && !r.repost_of) originals.set(r.id, serializeRow(r, quotes));
   }
   const out: PostDTO[] = [];
   for (const r of rows) {
-    const p = serializeRow(r);
+    const p = serializeRow(r, quotes);
     if (r.repost_of) {
       const o = originals.get(r.repost_of);
-      if (!o || o.deleted) continue;
+      if (!o) continue;
       p.repostOf = o;
+      p.canQuote &&= o.canQuote;
     }
     out.push(p);
   }
   return out;
 }
 
-export function postsByIds(ids: number[], me: number): PostDTO[] {
+function loadPostRows(ids: number[], me: number): Row[] {
   if (!ids.length) return [];
-  const rows = all(`${postSelect()} WHERE p.id IN (SELECT value FROM json_each($ids))`, {
+  return all(`${postSelect()} WHERE p.id IN (SELECT value FROM json_each($ids))`, {
     ids: JSON.stringify(ids),
     me,
   });
-  return hydrate(rows, me);
+}
+
+export function postsByIds(ids: number[], me: number): PostDTO[] {
+  return hydrate(loadPostRows(ids, me), me);
 }
 
 export function postById(id: number, me: number): PostDTO | undefined {
@@ -240,8 +303,14 @@ export function extractTags(content: string, extra: string[] = []) {
  * 审核中的帖子不会触发这些，所以别人不会提前收到通知。
  */
 export function publishEffects(postId: number) {
-  const p = get<{ author_id: number; parent_id: number | null; content: string; created_at: number }>(
-    'SELECT author_id, parent_id, content, created_at FROM posts WHERE id = $id',
+  const p = get<{
+    author_id: number; parent_id: number | null; content: string;
+    quote_author_id: number | null; can_notify_quote: number | null;
+  }>(
+    `SELECT p.author_id, p.parent_id, p.content, s.author_id AS quote_author_id,
+       (${publicPost('p')} AND ${publicPost('s')}) AS can_notify_quote
+     FROM posts p LEFT JOIN post_quotes q ON q.post_id = p.id LEFT JOIN posts s ON s.id = q.quoted_id
+     WHERE p.id = $id`,
     { id: postId },
   );
   if (!p) return;
@@ -259,7 +328,12 @@ export function publishEffects(postId: number) {
       notify(parent.author_id, p.author_id, 'reply', postId);
     }
   }
-  notifyMentions(p.content, p.author_id, postId, new Set([p.author_id, parentAuthor]));
+  const skip = new Set([p.author_id, parentAuthor]);
+  if (p.quote_author_id !== null) {
+    skip.add(p.quote_author_id);
+    if (p.can_notify_quote) notify(p.quote_author_id, p.author_id, 'quote', postId);
+  }
+  notifyMentions(p.content, p.author_id, postId, skip);
 }
 
 /** 撤回已发布的效果（管理员把通过的帖子改判为不通过时） */
@@ -268,7 +342,7 @@ export function unpublishEffects(postId: number) {
   if (p?.parent_id) {
     run('UPDATE posts SET reply_count = MAX(reply_count - 1, 0) WHERE id = $id', { id: p.parent_id });
   }
-  run("DELETE FROM notifications WHERE post_id = $id AND type IN ('reply', 'mention')", { id: postId });
+  run("DELETE FROM notifications WHERE post_id = $id AND type IN ('reply', 'mention', 'quote')", { id: postId });
 }
 
 /* ---------------- 吧务权限 ---------------- */
