@@ -1,0 +1,353 @@
+import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, ChevronDown, Eye, Hash, ImagePlus, PenLine, Smile, X } from 'lucide-react';
+import { api, media, uploadImage, type Board, type Post } from '../lib/api';
+import { useMe } from '../lib/auth';
+import { RichText } from './PostCard';
+import { Avatar, BoardMark, Spinner, toast, usePopover } from './ui';
+
+const MAX = 2000;
+const MAX_IMAGES = 4;
+const MAX_TAGS = 5;
+const cleanTag = (t: string) => t.trim().replace(/^#+/, '').replace(/[\s#@，,]/g, '').toLowerCase().slice(0, 20);
+
+/** 标签输入：回车、空格或逗号确认，退格删除最后一个 */
+function TagInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
+  const [draft, setDraft] = useState('');
+  const add = (raw: string) => {
+    const t = cleanTag(raw);
+    setDraft('');
+    if (!t || tags.includes(t)) return;
+    if (tags.length >= MAX_TAGS) return toast(`最多 ${MAX_TAGS} 个标签`, 'error');
+    onChange([...tags, t]);
+  };
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === 'Enter' || e.key === ' ' || e.key === ',' || e.key === '，') {
+      e.preventDefault();
+      add(draft);
+    } else if (e.key === 'Backspace' && !draft && tags.length) {
+      onChange(tags.slice(0, -1));
+    }
+  };
+  return (
+    <div className="tag-input">
+      <Hash size={16} className="muted" />
+      {tags.map((t) => (
+        <span key={t} className="tag-chip editable">
+          {t}
+          <button onClick={() => onChange(tags.filter((x) => x !== t))} aria-label={`移除标签 ${t}`}>
+            <X size={12} strokeWidth={3} />
+          </button>
+        </span>
+      ))}
+      {tags.length < MAX_TAGS && (
+        <input
+          value={draft}
+          autoFocus
+          onChange={(e) => (/[,，\s]$/.test(e.target.value) ? add(e.target.value) : setDraft(e.target.value))}
+          onKeyDown={onKey}
+          onBlur={() => draft && add(draft)}
+          placeholder={tags.length ? '' : '添加标签，回车确认'}
+          aria-label="输入标签"
+          maxLength={20}
+        />
+      )}
+    </div>
+  );
+}
+const EMOJIS = ['😀', '😂', '🥹', '😭', '😎', '🤔', '👍', '🙏', '🎉', '❤️', '🔥', '👀', '📸', '🎓', '🏫', '📚', '⚽', '🍜'];
+
+/** 字数圈：接近上限时显示剩余字数 */
+function CharRing({ len }: { len: number }) {
+  if (!len) return null;
+  const left = MAX - len;
+  const warn = left <= 200;
+  const r = warn ? 12 : 9;
+  const c = 2 * Math.PI * r;
+  const p = Math.min(len / MAX, 1);
+  return (
+    <span className={`ring ${warn ? 'warn' : ''} ${left < 0 ? 'over' : ''}`} aria-label={`还可以输入 ${left} 字`}>
+      <svg viewBox="0 0 30 30" width={30} height={30}>
+        <circle cx="15" cy="15" r={r} className="ring-bg" />
+        <circle cx="15" cy="15" r={r} className="ring-fg" strokeDasharray={c} strokeDashoffset={c * (1 - p)} />
+      </svg>
+      {warn && <b>{left}</b>}
+    </span>
+  );
+}
+
+function BoardPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { open, setOpen, ref, style } = usePopover(true);
+  const boards = useQuery({ queryKey: ['boards'], queryFn: () => api<Board[]>('/boards'), staleTime: 60_000 });
+  const cur = boards.data?.find((b) => b.slug === value);
+  const pick = (v: string) => {
+    onChange(v);
+    setOpen(false);
+  };
+  return (
+    <div className="board-picker" ref={ref}>
+      <button type="button" className="board-pick" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        {cur ? `${cur.name}吧` : '动态'}
+        <ChevronDown size={14} className={open ? 'flip' : ''} />
+      </button>
+      {open && (
+        <div className="menu board-menu" role="listbox" style={style}>
+          <div className="menu-title">发到哪里</div>
+          <button type="button" onClick={() => pick('')} role="option" aria-selected={!value}>
+            <span className="board-mark plain">#</span>
+            <span className="grow">
+              <span className="name">动态</span>
+              <span className="muted">只出现在时间线和你的主页</span>
+            </span>
+            {!value && <Check size={18} className="accent" />}
+          </button>
+          {boards.data?.map((b) => (
+            <button type="button" key={b.slug} onClick={() => pick(b.slug)} role="option" aria-selected={value === b.slug}>
+              <BoardMark name={b.name} slug={b.slug} size={32} />
+              <span className="grow">
+                <span className="name">{b.name}吧</span>
+                <span className="muted ellipsis">{b.description || `${b.memberCount} 人关注`}</span>
+              </span>
+              {value === b.slug && <Check size={18} className="accent" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function Composer({
+  replyTo,
+  boardSlug,
+  autoFocus,
+  onPosted,
+  showReplyContext,
+  placeholder,
+}: {
+  replyTo?: Post;
+  boardSlug?: string;
+  autoFocus?: boolean;
+  onPosted?: (p: Post) => void;
+  showReplyContext?: boolean;
+  placeholder?: string;
+}) {
+  const me = useMe();
+  const qc = useQueryClient();
+  const [text, setText] = useState('');
+  const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [board, setBoard] = useState(boardSlug ?? '');
+  const emoji = usePopover(true);
+  const ta = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [showTags, setShowTags] = useState(false);
+  const [preview, setPreview] = useState(false);
+
+  useEffect(() => setBoard(boardSlug ?? ''), [boardSlug]);
+
+  // 自动增高
+  useEffect(() => {
+    const el = ta.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 480)}px`;
+  }, [text, preview]);
+
+  const addFiles = async (files: File[]) => {
+    const room = MAX_IMAGES - images.length - uploading;
+    const list = files.filter((f) => f.type.startsWith('image/')).slice(0, Math.max(room, 0));
+    if (files.length > list.length) toast(`最多 ${MAX_IMAGES} 张图片`, 'error');
+    for (const f of list) {
+      setUploading((n) => n + 1);
+      try {
+        const url = await uploadImage(f);
+        setImages((arr) => [...arr, url]);
+      } catch (e) {
+        toast((e as Error).message, 'error');
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
+  };
+
+  const onPaste = (e: ClipboardEvent) => {
+    const files = [...e.clipboardData.files];
+    if (files.length) {
+      e.preventDefault();
+      addFiles(files);
+    }
+  };
+
+  const len = [...text].length;
+  const canPost = (text.trim() || images.length) && len <= MAX && !uploading && !busy;
+  const target = replyTo?.repostOf ?? replyTo;
+
+  const submit = async () => {
+    if (!canPost) return;
+    setBusy(true);
+    try {
+      const post = await api<Post>('/posts', {
+        body: {
+          content: text,
+          images,
+          parentId: target?.id ?? null,
+          boardSlug: target ? null : board || null,
+          tags,
+        },
+      });
+      setText('');
+      setImages([]);
+      setTags([]);
+      setShowTags(false);
+      setPreview(false);
+      toast(target ? '已回复' : '已发布');
+      for (const k of ['feed', 'board-posts', 'replies', 'post', 'user-posts', 'boards']) {
+        qc.invalidateQueries({ queryKey: [k] });
+      }
+      onPosted?.(post);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      {showReplyContext && target && (
+        <div className="composer reply-context">
+          <div className="post-left">
+            <Avatar src={target.author.avatar} name={target.author.displayName} size={40} />
+            <div className="thread-line" />
+          </div>
+          <div className="composer-body">
+            <div className="post-head">
+              <span className="name">{target.author.displayName}</span>
+              <span className="muted handle">@{target.author.username}</span>
+            </div>
+            <div className="content clamp">{target.content || (target.images.length ? '[图片]' : '')}</div>
+            <div className="reply-to" style={{ marginTop: 8 }}>
+              回复 <a>@{target.author.username}</a>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className={`composer ${busy ? 'busy' : ''}`}>
+        <Avatar src={me.avatar} name={me.displayName} size={40} />
+        <div className="composer-body">
+          {!target && !boardSlug && <BoardPicker value={board} onChange={setBoard} />}
+          {preview ? (
+            <div className="composer-preview">
+              {text.trim() ? <RichText text={text} /> : <span className="muted">没有内容可以预览</span>}
+            </div>
+          ) : (
+          <textarea
+            ref={ta}
+            value={text}
+            autoFocus={autoFocus}
+            onChange={(e) => setText(e.target.value)}
+            onPaste={onPaste}
+            onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && submit()}
+            placeholder={placeholder ?? (target ? '发布你的回复' : '有什么新鲜事？')}
+            aria-label="帖子内容"
+            rows={2}
+          />
+          )}
+          {(showTags || tags.length > 0) && <TagInput tags={tags} onChange={setTags} />}
+          {(images.length > 0 || uploading > 0) && (
+            <div className={`thumbs n${Math.min(images.length + uploading, 4)}`}>
+              {images.map((src) => (
+                <div className="thumb" key={src}>
+                  <img src={media(src)} alt="" />
+                  <button onClick={() => setImages((a) => a.filter((x) => x !== src))} aria-label="移除图片">
+                    <X size={15} />
+                  </button>
+                </div>
+              ))}
+              {Array.from({ length: uploading }, (_, i) => (
+                <div className="thumb loading" key={`u${i}`}>
+                  <Spinner size={22} />
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="composer-tools">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              multiple
+              hidden
+              onChange={(e) => {
+                addFiles([...(e.target.files ?? [])]);
+                e.target.value = '';
+              }}
+            />
+            <button
+              className="icon-btn accent"
+              title="图片"
+              aria-label="添加图片"
+              disabled={images.length + uploading >= MAX_IMAGES}
+              onClick={() => fileRef.current?.click()}
+            >
+              <ImagePlus size={20} />
+            </button>
+            <div className="popover-anchor" ref={emoji.ref}>
+              <button
+                className="icon-btn accent"
+                title="表情"
+                aria-label="表情"
+                aria-expanded={emoji.open}
+                onClick={() => emoji.setOpen((v) => !v)}
+              >
+                <Smile size={20} />
+              </button>
+              {emoji.open && (
+                <div className="menu emoji-menu" style={emoji.style}>
+                  {EMOJIS.map((e) => (
+                    <button
+                      key={e}
+                      onClick={() => {
+                        setText((t) => t + e);
+                        ta.current?.focus();
+                      }}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              className={`icon-btn accent ${showTags || tags.length ? 'on' : ''}`}
+              title="标签"
+              aria-label="标签"
+              aria-pressed={showTags || tags.length > 0}
+              onClick={() => setShowTags((v) => !v)}
+            >
+              <Hash size={20} />
+            </button>
+            <button
+              className={`icon-btn accent ${preview ? 'on' : ''}`}
+              title={preview ? '继续编辑' : '预览（支持 Markdown 和 $LaTeX$ 公式）'}
+              aria-label={preview ? '继续编辑' : '预览'}
+              aria-pressed={preview}
+              onClick={() => setPreview((v) => !v)}
+            >
+              {preview ? <PenLine size={20} /> : <Eye size={20} />}
+            </button>
+            <span className="spacer" />
+            <CharRing len={len} />
+            <button className="btn btn-primary" disabled={!canPost} onClick={submit}>
+              {busy ? <Spinner size={18} inline /> : target ? '回复' : '发布'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
