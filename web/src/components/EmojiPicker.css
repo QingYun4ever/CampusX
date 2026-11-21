@@ -219,3 +219,9 @@
     transition: none;
   }
 }
+
+.emoji-picker-link {
+  margin-left: 4px;
+  color: var(--accent);
+  font-weight: 600;
+}

@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { Package, Smile, Store, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { REACTIONS } from '../lib/api';
 import { BUNDLED_EMOJI, EMOJI_PACKS, setEmojiPackInstalled, useInstalledEmojiPacks } from '../lib/emojiPacks';
 import { useEscape } from '../lib/escape';
@@ -12,7 +13,7 @@ const MODES = [
   { id: 'manage', label: '管理', icon: Package },
 ] as const;
 
-function EmojiGlyph({ emoji }: { emoji: string }) {
+export function EmojiGlyph({ emoji }: { emoji: string }) {
   return (
     <span className="emoji-picker-glyph" aria-hidden="true">
       {BUNDLED_EMOJI.has(emoji) ? <Emoji e={emoji} size={24} /> : emoji}
@@ -79,7 +80,9 @@ function EmojiPanel({ id, style, onPick, onClose }: {
         {mode === 'catalog' && (
           <>
             <h3>发现表情包</h3>
-            <p className="emoji-picker-hint">免费使用，安装后会出现在你的表情面板。</p>
+            <p className="emoji-picker-hint">
+              免费使用，安装后会出现在你的表情面板。<Link to="/market" className="emoji-picker-link" onClick={onClose}>在商场里看全部</Link>
+            </p>
             {EMOJI_PACKS.map((pack) => {
               const expanded = previewId === pack.id;
               const installed = installedIds.includes(pack.id);

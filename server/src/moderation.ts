@@ -1,8 +1,10 @@
 /**
  * AI 内容审核
  *
- * 流程：发帖时帖子先以 pending 状态入库，作者自己看起来已经发出去了；
- * 后台队列调用模型审核文字和图片，通过后改为 ok 并发通知，不通过改为 rejected（只有作者自己看得到）。
+ * 流程：发帖时先同步审核（有时间上限）：
+ *  - 通过：直接公开
+ *  - 不通过：不发布，帖子以 rejected 存档只给管理员复核；作者收到错误提示、站内通知和一次警告
+ *  - 审核接口超时或出错：先存为 pending（只有作者看得到），交给后台队列继续审核，结果同上
  * 管理员可以在后台配置模型、查看记录、人工改判。
  *
  * 支持两种接口：
@@ -314,6 +316,50 @@ export function setStatus(postId: number, status: 'ok' | 'rejected') {
   });
 }
 
+/** 审核上下文：发在哪个吧、回复的是什么 */
+export function reviewContext(board: string | null, parentText: string | null) {
+  return [
+    board ? `发在「${board}吧」。` : '',
+    parentText !== null ? `这是一条回复，被回复的内容是：\n<parent>\n${parentText.slice(0, 500)}\n</parent>` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** 发帖时的同步审核：限时，超时或出错返回 null，交给后台队列 */
+export async function screen(text: string, images: string[], context: string, budgetMs = 25_000): Promise<ReviewResult | null> {
+  const c = getConfig();
+  try {
+    return await Promise.race([
+      review(text, images, context, c),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
+export { log as logReview };
+
+/**
+ * 没通过审核：给作者发通知并记一次警告。
+ * 帖子本身已经是 rejected（谁都看不到），所以通知里带上内容摘要和理由。
+ */
+export function warnAuthor(postId: number, reason: string) {
+  const p = get<{ author_id: number; content: string; images: string }>('SELECT author_id, content, images FROM posts WHERE id = $id', { id: postId });
+  if (!p) return 0;
+  run('UPDATE users SET mod_warnings = mod_warnings + 1 WHERE id = $u', { u: p.author_id });
+  const warnings = get<{ n: number }>('SELECT mod_warnings AS n FROM users WHERE id = $u', { u: p.author_id })!.n;
+  const images = (JSON.parse(p.images) as string[]).length;
+  const excerpt = p.content.slice(0, 80) || (images ? '[图片]' : '');
+  run(
+    `INSERT INTO notifications (user_id, actor_id, type, post_id, extra, created_at)
+     VALUES ($u, $u, 'moderation', NULL, $extra, $t)`,
+    { u: p.author_id, extra: JSON.stringify({ reason, excerpt, warnings }), t: now() },
+  );
+  return warnings;
+}
+
 const queue: number[] = [];
 const queued = new Set<number>();
 let running = 0;
@@ -352,16 +398,10 @@ async function handle(postId: number) {
   const c = getConfig();
   if (!c.enabled) return; // 审核被关掉了：留给管理员处理
 
-  let parentText = '';
-  if (post.parent_id) {
-    parentText = get<{ content: string }>('SELECT content FROM posts WHERE id = $id', { id: post.parent_id })?.content ?? '';
-  }
-  const context = [
-    post.board ? `发在「${post.board}吧」。` : '',
-    post.parent_id ? `这是一条回复，被回复的内容是：\n<parent>\n${parentText.slice(0, 500)}\n</parent>` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const parentText = post.parent_id
+    ? (get<{ content: string }>('SELECT content FROM posts WHERE id = $id', { id: post.parent_id })?.content ?? '')
+    : null;
+  const context = reviewContext(post.board, parentText);
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -369,6 +409,7 @@ async function handle(postId: number) {
       const r = await review(post.content, JSON.parse(post.images), context, c);
       log(postId, c, r.verdict, r);
       setStatus(postId, r.verdict === 'pass' ? 'ok' : 'rejected');
+      if (r.verdict === 'block') warnAuthor(postId, r.reason);
       return;
     } catch (e) {
       lastErr = e;
@@ -381,7 +422,9 @@ async function handle(postId: number) {
 
 /** 管理员人工改判 */
 export function manualDecision(postId: number, action: 'approve' | 'reject', actorId: number, note = '') {
+  const before = get<{ status: string }>('SELECT status FROM posts WHERE id = $id', { id: postId })?.status;
   setStatus(postId, action === 'approve' ? 'ok' : 'rejected');
+  if (action === 'reject' && before !== 'rejected') warnAuthor(postId, note || '管理员判定这条内容不适合发布');
   log(postId, getConfig(), action === 'approve' ? 'manual_pass' : 'manual_block', { actorId, reason: note });
 }
 

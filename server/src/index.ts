@@ -71,7 +71,7 @@ app.addHook('preHandler', async (req) => {
 });
 
 app.setErrorHandler((err: FastifyError | HttpError, req, reply) => {
-  if (err instanceof HttpError) return reply.status(err.status).send({ error: err.message });
+  if (err instanceof HttpError) return reply.status(err.status).send({ ...err.data, error: err.message });
   const status = err.statusCode ?? 500;
   if (status === 429) return reply.status(429).send({ error: '操作太频繁，请稍后再试' });
   if (status === 413 || err.code === 'FST_REQ_FILE_TOO_LARGE') {

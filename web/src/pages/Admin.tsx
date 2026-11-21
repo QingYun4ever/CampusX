@@ -83,7 +83,7 @@ const CATEGORY: Record<string, string> = {
   self_harm: '自残',
   other: '其他',
 };
-const STATUS: Record<string, string> = { ok: '已公开', pending: '审核中', rejected: '仅作者可见', deleted: '已删除' };
+const STATUS: Record<string, string> = { ok: '已公开', pending: '审核中', rejected: '未通过，未发布', deleted: '已删除' };
 
 function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (

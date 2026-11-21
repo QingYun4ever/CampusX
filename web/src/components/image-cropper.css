@@ -1,0 +1,74 @@
+.cropper {
+  padding: 4px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cropper-stage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--r);
+  background: #0f1419;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  display: grid;
+  place-items: center;
+}
+.cropper-stage:active {
+  cursor: grabbing;
+}
+.cropper-stage.round {
+  width: min(100%, 360px);
+  align-self: center;
+}
+.cropper-stage img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  transform-origin: 0 0;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+/* 取景框：圆形头像把四角压暗；背景图画一圈细边框和三等分辅助线 */
+.cropper-mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+  border-radius: inherit;
+}
+.cropper-stage.round .cropper-mask {
+  inset: 0;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 9999px rgba(15, 20, 25, 0.55),
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.8);
+}
+.cropper-stage:not(.round) .cropper-mask {
+  background:
+    linear-gradient(90deg, transparent calc(33.333% - 0.5px), rgba(255, 255, 255, 0.28) calc(33.333% - 0.5px), rgba(255, 255, 255, 0.28) calc(33.333% + 0.5px), transparent calc(33.333% + 0.5px)),
+    linear-gradient(90deg, transparent calc(66.666% - 0.5px), rgba(255, 255, 255, 0.28) calc(66.666% - 0.5px), rgba(255, 255, 255, 0.28) calc(66.666% + 0.5px), transparent calc(66.666% + 0.5px));
+}
+.cropper-zoom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+}
+.cropper-zoom input {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.cropper-hint {
+  margin: -6px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.cropper-original {
+  align-self: center;
+  margin: -6px 0 0;
+}

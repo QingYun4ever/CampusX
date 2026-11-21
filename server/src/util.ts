@@ -3,9 +3,12 @@ import type { z } from 'zod';
 
 export class HttpError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** 一起返回给前端的附加字段（例如审核结果） */
+  data?: Record<string, unknown>;
+  constructor(status: number, message: string, data?: Record<string, unknown>) {
     super(message);
     this.status = status;
+    this.data = data;
   }
 }
 

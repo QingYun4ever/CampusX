@@ -90,9 +90,12 @@ export function setAppServerAddress(value: string) {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** 服务端随错误返回的其他字段 */
+  data: Record<string, unknown>;
+  constructor(message: string, status: number, data: Record<string, unknown> = {}) {
     super(message);
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -128,7 +131,7 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
       setToken(null);
       window.dispatchEvent(new Event('auth:expired'));
     }
-    throw new ApiError(data?.error ?? `请求失败 (${res.status})`, res.status);
+    throw new ApiError(data?.error ?? `请求失败 (${res.status})`, res.status, data ?? {});
   }
   return data as T;
 }
@@ -308,9 +311,9 @@ export interface Page<T> {
 
 export interface Notification {
   id: number;
-  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction';
+  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation';
   read: boolean;
-  /** reaction：用的哪个表情 */
+  /** reaction：用的哪个表情；moderation：JSON { reason, excerpt, warnings } */
   extra?: string;
   createdAt: number;
   actor: User;

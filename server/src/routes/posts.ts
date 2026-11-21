@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, now, run, tx } from '../db.ts';
-import { enqueue, moderationOn } from '../moderation.ts';
+import { enqueue, getConfig, logReview, moderationOn, reviewContext, screen, warnAuthor } from '../moderation.ts';
 import { boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publicPost, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
@@ -29,7 +29,7 @@ function page<T extends { id: number }>(items: T[], cursorOf: (x: T) => string =
 function resolveTarget(id: number, meId: number) {
   const p = get<{ id: number; author_id: number; repost_of: number | null; deleted: number; board_id: number | null }>(
     `SELECT id, author_id, repost_of, deleted, board_id FROM posts
-     WHERE id = $id AND (status = 'ok' OR author_id = $me) AND ${visibleTo()}`,
+     WHERE id = $id AND (status = 'ok' OR (status = 'pending' AND author_id = $me)) AND ${visibleTo()}`,
     { id, me: meId },
   );
   if (!p) throw new HttpError(404, '帖子不存在');
@@ -81,9 +81,17 @@ export async function postRoutes(app: FastifyInstance) {
       boardId = b.id;
     }
 
+    // 开启审核时先审再发：通过才公开；不通过就不发布，并警告作者。审核接口太慢或出错时先存为 pending 交给后台
+    let status: 'ok' | 'pending' | 'rejected' = 'ok';
+    let verdict: Awaited<ReturnType<typeof screen>> = null;
+    if (moderationOn()) {
+      const board = boardId ? (get<{ name: string }>('SELECT name FROM boards WHERE id = $id', { id: boardId })?.name ?? null) : null;
+      const parentText = parent ? (get<{ content: string }>('SELECT content FROM posts WHERE id = $id', { id: parent.id })?.content ?? '') : null;
+      verdict = await screen(content, body.images, reviewContext(board, parentText));
+      status = !verdict ? 'pending' : verdict.verdict === 'pass' ? 'ok' : 'rejected';
+    }
+
     const t = now();
-    // 开启审核时先存为 pending：作者自己能看到，别人要等审核通过
-    const status = moderationOn() ? 'pending' : 'ok';
     const tags = extractTags(content, body.tags);
     const id = tx(() => {
       const quote = body.quoteOfId === undefined ? undefined : get<{ id: number }>(
@@ -113,7 +121,12 @@ export async function postRoutes(app: FastifyInstance) {
       if (status === 'ok') publishEffects(lastId);
       return lastId;
     });
+    if (verdict) logReview(id, getConfig(), verdict.verdict, verdict);
     if (status === 'pending') enqueue(id);
+    if (status === 'rejected') {
+      const warnings = warnAuthor(id, verdict!.reason);
+      throw new HttpError(422, `没有发出去：${verdict!.reason}`, { moderation: { reason: verdict!.reason, warnings } });
+    }
     return postById(id, user.id);
   });
 

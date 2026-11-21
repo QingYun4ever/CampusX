@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronDown, Eye, Hash, ImagePlus, PenLine, X } from 'lucide-react';
-import { api, media, uploadImage, type Board, type Post } from '../lib/api';
+import { Check, ChevronDown, Eye, Hash, ImagePlus, PenLine, ShieldAlert, X } from 'lucide-react';
+import { api, ApiError, media, uploadImage, type Board, type Post } from '../lib/api';
 import { useMe } from '../lib/auth';
 import type { ComposeOpts } from './compose';
 import { EmojiPicker } from './EmojiPicker';
 import { RichText } from './PostCard';
 import { QuoteCard } from './QuoteCard';
-import { Avatar, BoardMark, Spinner, toast, usePopover } from './ui';
+import { Avatar, BoardMark, Modal, Spinner, toast, usePopover } from './ui';
 
 const MAX = 2000;
 const MAX_IMAGES = 4;
@@ -220,6 +220,7 @@ export function Composer({
   const canPost = (text.trim() || images.length) && len <= MAX && !uploading && !busy;
   const target = replyTo?.repostOf ?? replyTo;
 
+  const [blocked, setBlocked] = useState<Blocked | null>(null);
   const submit = async () => {
     if (!canPost) return;
     setBusy(true);
@@ -247,7 +248,10 @@ export function Composer({
       }
       onPosted?.(post);
     } catch (e) {
-      toast((e as Error).message, 'error');
+      const mod = e instanceof ApiError ? (e.data.moderation as Blocked | undefined) : undefined;
+      // 没通过审核：草稿留着，弹窗说明原因和警告次数
+      if (mod) setBlocked(mod);
+      else toast((e as Error).message, 'error');
     } finally {
       setBusy(false);
     }
@@ -255,6 +259,7 @@ export function Composer({
 
   return (
     <>
+      {blocked && <BlockedNotice {...blocked} onClose={() => setBlocked(null)} />}
       {showReplyContext && target && (
         <div className="composer reply-context">
           <div className="post-left">
@@ -368,5 +373,28 @@ export function Composer({
         </div>
       </div>
     </>
+  );
+}
+
+type Blocked = { reason: string; warnings: number };
+
+/** 内容没通过审核时的说明 */
+function BlockedNotice({ reason, warnings, onClose }: Blocked & { onClose: () => void }) {
+  return (
+    <Modal title="没有发出去" onClose={onClose} className="blocked-modal">
+      <div className="modal-body blocked">
+        <div className="blocked-head">
+          <span className="blocked-icon"><ShieldAlert size={22} /></span>
+          <p>这条内容没有通过审核，所以没有发布。草稿还在，修改后可以重新发。</p>
+        </div>
+        <blockquote className="blocked-reason">{reason}</blockquote>
+        <p className="blocked-warn">
+          这是你第 <b>{warnings}</b> 次收到内容警告。多次违规，管理员可能会限制你的账号。
+        </p>
+        <div className="blocked-actions">
+          <button className="btn btn-primary" onClick={onClose}>回去修改</button>
+        </div>
+      </div>
+    </Modal>
   );
 }

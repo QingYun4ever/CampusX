@@ -20,6 +20,7 @@ const Profile = lazy(() => import('./pages/Profile').then(({ Profile }) => ({ de
 const FollowList = lazy(() => import('./pages/Profile').then(({ FollowList }) => ({ default: FollowList })));
 const Search = lazy(() => import('./pages/Search').then(({ Search }) => ({ default: Search })));
 const Settings = lazy(() => import('./pages/Settings').then(({ Settings }) => ({ default: Settings })));
+const Market = lazy(() => import('./pages/Market').then(({ Market }) => ({ default: Market })));
 const Changelog = lazy(() => import('./pages/Changelog').then(({ Changelog }) => ({ default: Changelog })));
 const Messages = lazy(() => import('./pages/Messages').then(({ Messages }) => ({ default: Messages })));
 const TagPage = lazy(() => import('./pages/Tag').then(({ TagPage }) => ({ default: TagPage })));
@@ -85,6 +86,7 @@ export function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/t/:tag" element={<TagPage />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/market" element={<Market />} />
           <Route path="/changelog" element={<Changelog />} />
           <Route path="/messages" element={<Messages />} />
           <Route path="/messages/:username" element={<Messages />} />

@@ -175,7 +175,9 @@ function addColumn(table: string, col: string, def: string) {
 addColumn('users', 'verified', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'verified_note', "TEXT NOT NULL DEFAULT ''");
 addColumn('users', 'avatar_decoration', "TEXT NOT NULL DEFAULT ''");
-// 审核状态：ok 公开；pending 审核中；rejected 未通过。后两种只有作者自己看得到
+// 内容没通过审核的次数，每次都会给本人发警告通知
+addColumn('users', 'mod_warnings', 'INTEGER NOT NULL DEFAULT 0');
+// 审核状态：ok 公开；pending 审核中（只有作者看得到）；rejected 未通过（不发布，只留给管理员复核）
 addColumn('posts', 'status', "TEXT NOT NULL DEFAULT 'ok'");
 // 在线状态：最近一次请求的时间（每分钟最多写一次）
 addColumn('users', 'last_seen_at', 'INTEGER');

@@ -78,7 +78,7 @@ export async function userRoutes(app: FastifyInstance) {
       `SELECT
         (SELECT COUNT(*) FROM follows WHERE followee_id = $id) AS followers,
         (SELECT COUNT(*) FROM follows WHERE follower_id = $id) AS following,
-        (SELECT COUNT(*) FROM posts WHERE author_id = $id AND deleted = 0 AND repost_of IS NULL AND (status = 'ok' OR author_id = $me)
+        (SELECT COUNT(*) FROM posts WHERE author_id = $id AND deleted = 0 AND repost_of IS NULL AND (status = 'ok' OR (status = 'pending' AND author_id = $me))
            AND ${visibleTo()}) AS posts,
         EXISTS(SELECT 1 FROM follows WHERE follower_id = $id AND followee_id = $me) AS follows_you,
         EXISTS(SELECT 1 FROM follows WHERE follower_id = $me AND followee_id = $id) AS is_following`,

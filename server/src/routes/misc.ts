@@ -48,7 +48,7 @@ export async function miscRoutes(app: FastifyInstance) {
         actor: userPublic(r),
         post: r.post_id ? (posts.get(r.post_id) ?? null) : null,
       }))
-      .filter((n) => !n.post?.deleted && (n.type === 'follow' || n.post));
+      .filter((n) => !n.post?.deleted && (n.type === 'follow' || n.type === 'moderation' || n.post));
     return { items, nextCursor: rows.length >= 30 ? String(rows[rows.length - 1].nid) : null };
   });
 

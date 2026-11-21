@@ -1,19 +1,20 @@
+/* 身份标识的颜色是固定的，不跟随看的人自己选的强调色 */
 [data-admin] {
-  color: color-mix(in srgb, var(--text) 75%, var(--accent));
-  text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 45%, transparent);
+  color: color-mix(in srgb, var(--text) 75%, #1d9bf0);
+  text-shadow: 0 0 8px color-mix(in srgb, #1d9bf0 45%, transparent);
 }
 
 .avatar[data-avatar-decoration='halo'] {
-  --avatar-ring: var(--accent);
-  --avatar-glow: var(--accent);
+  --avatar-ring: #1d9bf0;
+  --avatar-glow: #1d9bf0;
 }
 .avatar[data-avatar-decoration='aurora'] {
-  --avatar-ring: var(--repost);
-  --avatar-glow: var(--accent);
+  --avatar-ring: #00ba7c;
+  --avatar-glow: #7856ff;
 }
 .avatar[data-avatar-decoration='rose'] {
-  --avatar-ring: var(--like);
-  --avatar-glow: var(--like);
+  --avatar-ring: #f91880;
+  --avatar-glow: #f91880;
 }
 .avatar[data-avatar-decoration],
 .new-pill .stack .avatar[data-avatar-decoration],
@@ -65,4 +66,12 @@
 .avatar-decoration-option input {
   margin: 0;
   accent-color: var(--accent);
+}
+
+.avatar-decoration-more {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
 }

@@ -66,7 +66,7 @@ SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.con
   (p.board_id IS NOT NULL AND (b.owner_id = $me
      OR EXISTS(SELECT 1 FROM board_mods bm WHERE bm.board_id = p.board_id AND bm.user_id = $me))) AS board_manager
   ${extraCols}
-FROM (SELECT * FROM posts WHERE (status = 'ok' OR author_id = $me) AND ${visibleTo()}) p
+FROM (SELECT * FROM posts WHERE (status = 'ok' OR (status = 'pending' AND author_id = $me)) AND ${visibleTo()}) p
 JOIN users u ON u.id = p.author_id
 LEFT JOIN boards b ON b.id = p.board_id
 LEFT JOIN post_quotes q ON q.post_id = p.id

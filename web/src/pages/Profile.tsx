@@ -3,19 +3,15 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Camera, GraduationCap, Mail, School, Settings } from 'lucide-react';
 import { Feed } from '../components/Feed';
+import { ImageCropper } from '../components/ImageCropper';
 import { FollowButton } from '../components/FollowButton';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Tabs, toast, toneFor, TopBar, useModalClose, Verified } from '../components/ui';
-import { api, media, uploadImage, type AvatarDecoration, type Profile as ProfileT, type User } from '../lib/api';
+import { api, media, uploadImage, type Profile as ProfileT, type User } from '../lib/api';
+import { DECORATIONS } from '../lib/decorations';
 import { useAuth, useMe } from '../lib/auth';
 
 type Tab = 'posts' | 'replies' | 'likes';
 
-const AVATAR_DECORATIONS: readonly [AvatarDecoration, string][] = [
-  ['', '无装扮'],
-  ['halo', '蓝色光环'],
-  ['aurora', '极光'],
-  ['rose', '玫瑰光环'],
-];
 
 export function Profile() {
   const { username = '' } = useParams();
@@ -168,13 +164,20 @@ function EditProfile({ user, onClose }: { user: User; onClose: () => void }) {
   const avatarRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLInputElement>(null);
 
-  const pick = (k: 'avatar' | 'banner') => async (e: ChangeEvent<HTMLInputElement>) => {
+  // 选好图片先裁剪，裁完再上传
+  const [crop, setCrop] = useState<{ kind: 'avatar' | 'banner'; file: File } | null>(null);
+  const pick = (k: 'avatar' | 'banner') => (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    if (!file.type.startsWith('image/')) return toast('请选择图片文件', 'error');
+    setCrop({ kind: k, file });
+  };
+  const upload = async (k: 'avatar' | 'banner', file: File) => {
     try {
       const url = await uploadImage(file);
       setF((x) => ({ ...x, [k]: url }));
+      setCrop(null);
     } catch (err) {
       toast((err as Error).message, 'error');
     }
@@ -242,24 +245,36 @@ function EditProfile({ user, onClose }: { user: User; onClose: () => void }) {
           <Camera size={20} />
         </button>
       </div>
+      {crop && (
+        <ImageCropper
+          file={crop.file}
+          title={crop.kind === 'avatar' ? '裁剪头像' : '裁剪背景图'}
+          aspect={crop.kind === 'avatar' ? 1 : 3}
+          round={crop.kind === 'avatar'}
+          output={crop.kind === 'avatar' ? { width: 512, height: 512 } : { width: 1500, height: 500 }}
+          onCancel={() => setCrop(null)}
+          onDone={(file) => upload(crop.kind, file)}
+        />
+      )}
       <input ref={avatarRef} type="file" accept="image/*" hidden onChange={pick('avatar')} />
       <input ref={bannerRef} type="file" accept="image/*" hidden onChange={pick('banner')} />
       <div className="modal-body" style={{ paddingTop: 16 }}>
         <fieldset className="avatar-decoration-picker">
           <legend>头像装扮</legend>
           <div className="avatar-decoration-options">
-            {AVATAR_DECORATIONS.map(([decoration, label]) => (
-              <label className="avatar-decoration-option" key={decoration}>
+            {DECORATIONS.map(({ id, name }) => (
+              <label className="avatar-decoration-option" key={id}>
                 <input
                   type="radio"
                   name="avatar-decoration"
-                  checked={f.avatarDecoration === decoration}
-                  onChange={() => setF((current) => ({ ...current, avatarDecoration: decoration }))}
+                  checked={f.avatarDecoration === id}
+                  onChange={() => setF((current) => ({ ...current, avatarDecoration: id }))}
                 />
-                {label}
+                {name}
               </label>
             ))}
           </div>
+          <Link to="/market?tab=halo" className="avatar-decoration-more" onClick={close}>去商场看看效果</Link>
         </fieldset>
         <Field label="昵称" value={f.displayName} maxLength={20} counter onChange={(v) => setF({ ...f, displayName: v })} />
         <Field label="简介" multiline value={f.bio} maxLength={160} counter onChange={(v) => setF({ ...f, bio: v })} />

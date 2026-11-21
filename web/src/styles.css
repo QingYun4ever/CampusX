@@ -1664,9 +1664,22 @@ a.card-row:hover {
 .media img:hover {
   filter: brightness(0.92);
 }
+/* 单张图按原始比例显示（像 X）：竖图不再被拉满宽度再裁掉，小图也不会被放大糊掉。
+   极端比例（超长图、全景）用最小宽高兜住，再用 cover 裁中间 */
+.media.n1 {
+  width: fit-content;
+  max-width: 100%;
+  max-height: none;
+}
 .media.n1 img {
-  max-height: 510px;
+  display: block;
+  width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 510px;
+  /* 父级是 fit-content，这里的百分比会被当成 0，所以用固定值（手机屏幕也放得下） */
+  min-width: 220px;
+  min-height: 150px;
 }
 .media.n2 {
   grid-template-columns: 1fr 1fr;
@@ -5183,4 +5196,56 @@ img.emoji {
 }
 .dm-item.active .verified path + path {
   stroke: var(--accent);
+}
+
+/* ---------- 审核未通过 ---------- */
+.blocked-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.blocked-head p {
+  margin: 0;
+  line-height: 1.5;
+}
+.blocked-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.blocked-reason {
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--danger);
+  border-radius: 0 var(--r) var(--r) 0;
+  background: var(--bg-2);
+  font-size: 15px;
+}
+.blocked-warn {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.blocked-warn b {
+  color: var(--danger);
+}
+.blocked-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.notif-system {
+  cursor: default;
+}
+.notif-excerpt {
+  margin-top: 6px;
+}
+.notif-reason {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--danger);
 }
