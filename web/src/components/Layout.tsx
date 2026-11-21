@@ -1,4 +1,16 @@
-import { createContext, useContext, useEffect, useState, type FormEvent } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -19,12 +31,12 @@ import {
 } from 'lucide-react';
 import { api, type Board, type User } from '../lib/api';
 import { useAuth, useMe } from '../lib/auth';
-import { getNavCollapsed, setNavCollapsed } from '../lib/theme';
+import { getNavCollapsed, getNavWidth, NAV_W, setNavCollapsed, setNavWidth } from '../lib/theme';
 import { useCompose } from './compose';
 import { FollowButton } from './FollowButton';
 import { Logo } from './Logo';
 import { preloadMarkdown } from './PostCard';
-import { Avatar, BoardMark, Modal, useModalClose, usePopover, Verified } from './ui';
+import { Avatar, BoardMark, Modal, useModalClose, Verified } from './ui';
 
 function useUnread() {
   return useQuery({
@@ -100,11 +112,51 @@ const AccountSheetCtx = createContext<() => void>(() => {});
 /** 手机端打开账号菜单（顶栏头像、底栏「我」都用它） */
 export const useAccountSheet = () => useContext(AccountSheetCtx);
 
+/**
+ * 左下角的账号菜单。渲染到 body 上（portal），不受左栏滚动区域的裁切，
+ * 也不会被中间栏盖住。
+ */
+function useAccountMenu() {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<CSSProperties>({});
+  const anchor = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!open || !anchor.current) return;
+    const r = anchor.current.getBoundingClientRect();
+    setPos({
+      left: Math.max(8, Math.min(r.left, window.innerWidth - 308)),
+      bottom: window.innerHeight - r.top + 8,
+    });
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const inside = (t: EventTarget | null) =>
+      !!t && (anchor.current?.contains(t as Node) || panel.current?.contains(t as Node));
+    const down = (e: Event) => !inside(e.target) && setOpen(false);
+    const esc = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      anchor.current?.focus();
+    };
+    const away = () => setOpen(false);
+    document.addEventListener('pointerdown', down);
+    document.addEventListener('keydown', esc);
+    window.addEventListener('resize', away);
+    return () => {
+      document.removeEventListener('pointerdown', down);
+      document.removeEventListener('keydown', esc);
+      window.removeEventListener('resize', away);
+    };
+  }, [open]);
+  return { open, setOpen, anchor, panel, pos };
+}
+
 function Nav({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const me = useMe();
   const compose = useCompose();
   const unread = useUnread().data;
-  const menu = usePopover();
+  const menu = useAccountMenu();
   const items: [string, string, typeof Home, number?][] = [
     ['/', '首页', Home],
     ['/boards', '吧', LayoutGrid],
@@ -154,13 +206,16 @@ function Nav({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void
         <Feather size={22} className="mobile-icon" />
         <span className="label">发帖</span>
       </button>
-      <div className="nav-user-wrap" ref={menu.ref}>
-        {menu.open && (
-          <div className="menu up account-menu" role="menu">
-            <AccountMenuItems onDone={() => menu.setOpen(false)} />
-          </div>
-        )}
+      <div className="nav-user-wrap">
+        {menu.open &&
+          createPortal(
+            <div className="menu account-menu floating" role="menu" ref={menu.panel} style={menu.pos}>
+              <AccountMenuItems onDone={() => menu.setOpen(false)} />
+            </div>,
+            document.body,
+          )}
         <button
+          ref={menu.anchor}
           className={`nav-user ${menu.open ? 'open' : ''}`}
           onClick={() => menu.setOpen((m) => !m)}
           aria-expanded={menu.open}
@@ -338,6 +393,9 @@ export function Layout() {
   const compose = useCompose();
   const loc = useLocation();
   const [collapsed, setCollapsed] = useState(getNavCollapsed);
+  const [navW, setNavW] = useState(getNavWidth);
+  const [resizing, setResizing] = useState(false);
+  const navCol = useRef<HTMLDivElement>(null);
   const [sheet, setSheet] = useState(false);
   useScrollDirection();
   useEffect(() => {
@@ -355,11 +413,92 @@ export function Layout() {
       return !c;
     });
   };
+  const applyCollapsed = (c: boolean) => {
+    setCollapsed(c);
+    setNavCollapsed(c);
+  };
+
+  /*
+   * 拖动左栏右边缘调整宽度；拖得足够窄就收成只有图标，再往外拖又会展开。
+   * 三栏是居中的，改宽度时边缘只移动一半，所以每次移动后量一下实际位置再修正几次，让边缘始终跟手。
+   */
+  const startResize = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || !navCol.current) return;
+    e.preventDefault();
+    const el = navCol.current;
+    const shell = el.parentElement!;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setResizing(true);
+    let w = collapsed ? NAV_W.min : navW;
+    let isCollapsed = collapsed;
+    const move = (ev: globalThis.PointerEvent) => {
+      const left = el.getBoundingClientRect().left;
+      const want = ev.clientX - left;
+      const nextCollapsed = isCollapsed ? want < NAV_W.min - 40 : want < NAV_W.snap;
+      if (nextCollapsed !== isCollapsed) {
+        isCollapsed = nextCollapsed;
+        shell.classList.toggle('nav-collapsed', isCollapsed);
+      }
+      if (isCollapsed) return;
+      for (let i = 0; i < 5; i++) {
+        const r = el.getBoundingClientRect();
+        w = Math.min(NAV_W.max, Math.max(NAV_W.min, w + (ev.clientX - r.right)));
+        shell.style.setProperty('--nav-w', `${w}px`);
+      }
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      setResizing(false);
+      applyCollapsed(isCollapsed);
+      if (!isCollapsed) {
+        setNavW(w);
+        setNavWidth(w);
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+  const resizeKey = (e: KeyboardEvent) => {
+    const d = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0;
+    if (!d) return;
+    e.preventDefault();
+    if (collapsed) return d > 0 && applyCollapsed(false);
+    const n = navW + d;
+    if (n < NAV_W.min) return applyCollapsed(true);
+    const c = Math.min(NAV_W.max, n);
+    setNavW(c);
+    setNavWidth(c);
+  };
+  const resetWidth = () => {
+    applyCollapsed(false);
+    setNavW(NAV_W.def);
+    setNavWidth(NAV_W.def);
+  };
   return (
     <AccountSheetCtx.Provider value={() => setSheet(true)}>
-      <div className={`shell ${collapsed ? 'nav-collapsed' : ''}`}>
-        <div className="nav-col">
+      <div
+        className={`shell ${collapsed ? 'nav-collapsed' : ''} ${resizing ? 'resizing' : ''}`}
+        style={{ '--nav-w': `${navW}px` } as CSSProperties}
+      >
+        <div className="nav-col" ref={navCol}>
           <Nav collapsed={collapsed} onToggle={toggle} />
+          <div
+            className="nav-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="拖动调整侧边栏宽度，双击恢复默认"
+            title="拖动调整宽度，双击恢复默认"
+            tabIndex={0}
+            aria-valuemin={NAV_W.min}
+            aria-valuemax={NAV_W.max}
+            aria-valuenow={collapsed ? 88 : navW}
+            onPointerDown={startResize}
+            onDoubleClick={resetWidth}
+            onKeyDown={resizeKey}
+          />
         </div>
         <main className="main-col">
           <div className="page" key={loc.pathname.replace(/\/(followers|following)$/, '')}>

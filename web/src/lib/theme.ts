@@ -180,5 +180,12 @@ export function setAccent(a: string, animate = true) {
 const NAV_KEY = 'txq_nav_collapsed';
 export const getNavCollapsed = () => read(NAV_KEY) === '1';
 export const setNavCollapsed = (v: boolean) => write(NAV_KEY, v ? '1' : '0');
+/** 展开时的宽度，可以拖动侧栏边缘调整 */
+export const NAV_W = { min: 220, max: 380, def: 275, snap: 150 };
+export const getNavWidth = () => {
+  const n = Number(read('txq_nav_w'));
+  return n >= NAV_W.min && n <= NAV_W.max ? n : NAV_W.def;
+};
+export const setNavWidth = (n: number) => write('txq_nav_w', String(Math.round(n)));
 
 mq.addEventListener('change', () => applyTheme());

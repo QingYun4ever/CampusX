@@ -264,7 +264,8 @@ textarea:focus-visible {
   min-height: 100vh;
 }
 .nav-col {
-  width: 275px;
+  position: relative;
+  width: var(--nav-w, 275px);
   flex-shrink: 0;
   padding: 0 12px;
 }
@@ -2639,6 +2640,60 @@ a.card-row:hover {
   width: 88px;
   padding: 0 8px;
 }
+/* 拖动边缘调整宽度 */
+.nav-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -5px;
+  width: 10px;
+  z-index: 15;
+  cursor: col-resize;
+  touch-action: none;
+}
+.nav-resizer::after {
+  content: '';
+  position: sticky;
+  top: 0;
+  display: block;
+  margin: 0 auto;
+  width: 2px;
+  height: 100vh;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.2s 0.1s;
+}
+.nav-resizer:hover::after,
+.nav-resizer:focus-visible::after,
+.shell.resizing .nav-resizer::after {
+  opacity: 1;
+}
+.nav-resizer:focus-visible {
+  outline: none;
+}
+.shell.resizing,
+.shell.resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+.shell.resizing .nav-col {
+  transition: none;
+}
+/* 账号菜单浮在最上层 */
+.menu.account-menu.floating {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 60;
+  transform-origin: bottom left;
+  animation: menu-up 0.22s var(--ease) backwards;
+}
+@keyframes menu-up {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(6px);
+  }
+}
 .shell.nav-collapsed .nav {
   align-items: center;
 }
@@ -3780,7 +3835,8 @@ a.tag-chip:active {
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 1280px) {
-  .nav-toggle {
+  .nav-toggle,
+  .nav-resizer {
     display: none;
   }
   .nav-top {
