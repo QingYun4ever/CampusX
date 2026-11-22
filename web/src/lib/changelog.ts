@@ -9,6 +9,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.12.10',
+    date: '2026-11-22',
+    title: '逐条测速与新下载线路',
+    changes: [
+      ['improve', '下载线路逐条测速，每条测完立即显示速度或「不可用」，无需等全部完成。'],
+      ['improve', '新增 v4、axisnow 和 v6 加速线路，默认先测 v4；保留原线路和 GitHub 直连。'],
+    ],
+  },
+  {
     version: '0.12.9',
     date: '2026-11-22',
     title: '头像缩略图与图片缓存',
