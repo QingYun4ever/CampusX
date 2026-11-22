@@ -1,7 +1,8 @@
 import { useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, ChevronRight, Download, FileText, LogOut, Plus, Shield, Trash2 } from 'lucide-react';
-import { TopBar } from '../components/ui';
+import { Switch, TopBar } from '../components/ui';
+import { isAndroid } from '../lib/android';
 import { useAuth, useMe } from '../lib/auth';
 import { CURRENT } from '../lib/changelog';
 import {
@@ -13,6 +14,7 @@ import {
   getBg,
   getCustomBgs,
   getMode,
+  getNavPinned,
   isCustomBg,
   MAX_CUSTOM_BGS,
   resolvedMode,
@@ -20,6 +22,7 @@ import {
   setAccent,
   setBg,
   setMode,
+  setNavPinned,
   type Bg,
   type Mode,
 } from '../lib/theme';
@@ -43,6 +46,7 @@ function Appearance() {
   const [bg, setB] = useState<Bg>(getBg());
   const [accent, setA] = useState(getAccent());
   const [customs, setCustoms] = useState<Bg[]>(getCustomBgs);
+  const [navPinned, setPinned] = useState(getNavPinned);
   const custom = isCustomBg(bg);
   const [diy, setDiy] = useState(false);
   const look = resolvedMode(mode);
@@ -230,6 +234,24 @@ function Appearance() {
           </label>
         </div>
       </section>
+
+      <section className="section">
+        <h3>自定义</h3>
+        <div className="setting-row">
+          <span className="grow">
+            导航栏常驻
+            <span className="muted small">在手机上滚动时，保持顶部栏和底部导航栏可见</span>
+          </span>
+          <Switch
+            on={navPinned}
+            onChange={(pinned) => {
+              setPinned(pinned);
+              setNavPinned(pinned);
+            }}
+            label="导航栏常驻"
+          />
+        </div>
+      </section>
     </>
   );
 }
@@ -266,11 +288,13 @@ export function Settings() {
         <span className="grow">隐私政策</span>
         <ChevronRight size={18} className="muted" />
       </Link>
-      <Link to="/install" className="list-link">
-        <Download size={20} />
-        <span className="grow">安装校墙</span>
-        <ChevronRight size={18} className="muted" />
-      </Link>
+      {!isAndroid && (
+        <Link to="/install" className="list-link">
+          <Download size={20} />
+          <span className="grow">安装校墙</span>
+          <ChevronRight size={18} className="muted" />
+        </Link>
+      )}
 
       <button className="list-link danger" onClick={signOut}>
         <LogOut size={20} />

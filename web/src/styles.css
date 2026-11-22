@@ -4590,10 +4590,10 @@ img.emoji {
     border: 0;
     padding-bottom: calc(72px + var(--safe-bottom));
   }
-  :root[data-scroll='down'] .topbar {
+  :root[data-scroll='down']:not([data-nav-pinned]) .topbar {
     transform: translateY(-100%);
   }
-  :root[data-scroll='down'] .tabbar,
+  :root[data-scroll='down']:not([data-nav-pinned]) .tabbar,
   :root[data-scroll='down'] .fab {
     opacity: 0.35;
   }

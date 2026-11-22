@@ -9,6 +9,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.12.8',
+    date: '2026-11-22',
+    title: '手机布局与导航设置',
+    changes: [
+      ['fix', '修复窄屏首页横向溢出，让手机登录页保持紧凑单栏。'],
+      ['new', '「设置 → 自定义」新增导航栏常驻，滚动时顶部栏和底部导航栏不再隐藏或淡化。'],
+      ['improve', 'Android App 设置页不再显示「安装校墙」，网页端保留。'],
+    ],
+  },
+  {
     version: '0.12.7',
     date: '2026-11-22',
     title: 'Android 新图标',

@@ -151,11 +151,21 @@ export function bgColors(bg: Bg, mode = resolvedMode()) {
 /* ---------- 应用 ---------- */
 let nativeMode: 'light' | 'dark' | undefined;
 let nativeBackdrop: string | undefined;
+const NAV_PINNED_KEY = 'txq_nav_pinned';
+let navPinned = read(NAV_PINNED_KEY) === '1';
+
+export const getNavPinned = () => navPinned;
+export function setNavPinned(pinned: boolean) {
+  navPinned = pinned;
+  write(NAV_PINNED_KEY, pinned ? '1' : '0');
+  document.documentElement.toggleAttribute('data-nav-pinned', pinned);
+}
 
 export function applyTheme() {
   const mode = resolvedMode();
   const root = document.documentElement;
   root.dataset.theme = mode;
+  root.toggleAttribute('data-nav-pinned', navPinned);
   const bg = getBg();
   const cols = bgColors(bg, mode);
   if (cols) {
