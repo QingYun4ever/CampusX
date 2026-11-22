@@ -9,6 +9,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.12.7',
+    date: '2026-11-22',
+    title: 'Android 新图标',
+    changes: [
+      ['improve', 'Android 桌面图标改为纯黑底，原来的白色校墙标志居中并略微缩小。'],
+    ],
+  },
+  {
     version: '0.12.6',
     date: '2026-11-22',
     title: '吧头像与公开页面',
