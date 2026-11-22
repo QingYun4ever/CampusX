@@ -57,28 +57,21 @@ export function releaseNotes(notes: string) {
     .map((l) => l.replace(/^[-*•]\s*/, ''));
 }
 
-/** 一条下载线路的测速结果：undefined = 正在测，-1 = 不可用，其他是字节/秒 */
-export type LineSpeed = number | undefined;
-
-/**
- * 在手机上测每条线路的真实速度（同一个镜像在不同地区、不同运营商下差别很大，服务器上测的不算数）。
- * 老版本原生壳没有测速方法时，退回到「谁先连上」：能连上记 0，连不上记 -1。
- */
-export async function probeLines(urls: string[]): Promise<Record<string, number>> {
+/** 测一条真实下载线路；旧版原生壳不支持测速时，只检查能否连通。 */
+export async function probeLine(url: string, signal: AbortSignal): Promise<number> {
   try {
-    const { results } = await AndroidUpdates.probeMirrors({ urls, bytes: 256 * 1024, timeoutMs: 8000 });
-    return Object.fromEntries(results.map((r) => [r.url, r.speed]));
+    const { results } = await AndroidUpdates.probeMirrors({ urls: [url], bytes: 256 * 1024, timeoutMs: 8000 });
+    return results[0]?.speed ?? -1;
   } catch {
-    const out: Record<string, number> = {};
-    await Promise.all(
-      urls.map((url) =>
-        fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(6000) }).then(
-          () => (out[url] = 0),
-          () => (out[url] = -1),
-        ),
-      ),
-    );
-    return out;
+    if (signal.aborted) return -1;
+    try {
+      const res = await fetch(url, {
+        method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: AbortSignal.any([signal, AbortSignal.timeout(6000)]),
+      });
+      return res.ok || res.type === 'opaque' ? 0 : -1;
+    } catch {
+      return -1;
+    }
   }
 }
 

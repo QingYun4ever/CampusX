@@ -4,7 +4,7 @@ import { Check, Download, RefreshCw } from 'lucide-react';
 import { AndroidShell, AndroidUpdates, isAndroid, type UpdateInfo } from '../lib/android';
 import { API_BASE, getToken } from '../lib/api';
 import { syncPush } from '../lib/push';
-import { checkUpdate, formatSpeed, probeLines, releaseNotes, remindLater, shouldPrompt, skipVersion } from '../lib/update';
+import { checkUpdate, formatSpeed, probeLine, releaseNotes, remindLater, shouldPrompt, skipVersion } from '../lib/update';
 import { Modal, toast } from './ui';
 import './app-services.css';
 
@@ -67,30 +67,48 @@ export function UpdateModal({ info, onClose, auto = false }: { info: UpdateInfo;
   // 服务器拿不到 SHA-256 时没法在 App 里校验，只能交给浏览器下载
   const verifiable = !!latest.sha256 && !!latest.size;
 
-  // 线路测速：自动选最快的，也可以手动点别的
-  const [speeds, setSpeeds] = useState<Record<string, number> | null>(null);
+  const [{ speeds, activeUrl, testing }, setProbe] = useState<{
+    speeds: Record<string, number>;
+    activeUrl?: string;
+    testing: boolean;
+  }>({ speeds: {}, testing: true });
   const [picked, setPicked] = useState<string | null>(null);
   const [probeRound, setProbeRound] = useState(0);
+  const probeController = useRef<AbortController | null>(null);
   useEffect(() => {
-    let live = true;
-    setSpeeds(null);
-    void probeLines(latest.downloads.map((d) => d.url)).then((r) => {
-      if (!live) return;
-      setSpeeds(r);
-      setPicked((cur) => (cur && r[cur] >= 0 ? cur : null));
+    const controller = new AbortController();
+    probeController.current = controller;
+    const { signal } = controller;
+    // 让清理有机会先取消已关闭的弹窗，不向原生层提交多余的测速。
+    queueMicrotask(async () => {
+      let results: Record<string, number> = {};
+      for (const { url } of latest.downloads) {
+        if (signal.aborted) return;
+        setProbe({ speeds: results, activeUrl: url, testing: true });
+        const speed = await probeLine(url, signal);
+        if (signal.aborted) return;
+        results = { ...results, [url]: speed };
+        if (speed < 0) setPicked((cur) => (cur === url ? null : cur));
+      }
+      if (!signal.aborted) setProbe({ speeds: results, testing: false });
     });
-    return () => {
-      live = false;
-    };
+    return () => controller.abort();
   }, [latest.downloads, probeRound]);
-  // 速度从快到慢；不可用的放最后，保持服务器给的先后
-  const ranked = [...latest.downloads].sort((a, b) => (speeds?.[b.url] ?? -1) - (speeds?.[a.url] ?? -1));
-  const fastest = speeds ? ranked.find((d) => speeds[d.url] >= 0) : undefined;
-  const chosen = latest.downloads.find((d) => d.url === picked) ?? fastest ?? latest.downloads[0];
+
+  // 列表保持原顺序；下载优先使用已测通的线路，未测线路排在不可用线路前。
+  const ranked = [...latest.downloads].sort((a, b) => (speeds[b.url] ?? -0.5) - (speeds[a.url] ?? -0.5));
+  const fastest = ranked.find((d) => (speeds[d.url] ?? -1) >= 0);
+  const chosen = latest.downloads.find((d) => d.url === picked) ?? fastest ?? ranked[0];
   const order = [chosen, ...ranked.filter((d) => d !== chosen)].map((d) => d.url);
-  const allDown = !!speeds && !fastest;
+  const allDown = !testing && latest.downloads.every((d) => speeds[d.url] === -1);
+
+  const stopTesting = () => {
+    probeController.current?.abort();
+    setProbe((prev) => prev.testing ? { speeds: prev.speeds, testing: false } : prev);
+  };
 
   const browser = async () => {
+    stopTesting();
     try {
       await AndroidShell.openBrowser({ url: chosen.url });
       toast('已在浏览器里开始下载，下载完点开安装即可');
@@ -100,6 +118,7 @@ export function UpdateModal({ info, onClose, auto = false }: { info: UpdateInfo;
   };
   const download = async () => {
     if (!verifiable) return browser();
+    stopTesting();
     setBusy(true);
     try {
       const { installed } = await AndroidUpdates.installUpdate({
@@ -155,12 +174,12 @@ export function UpdateModal({ info, onClose, auto = false }: { info: UpdateInfo;
         <div className="update-lines" role="radiogroup" aria-label="下载线路">
           <div className="update-lines-head">
             <span>下载线路</span>
-            <button className="btn btn-text" onClick={() => setProbeRound((n) => n + 1)} disabled={!speeds || busy}>
-              <RefreshCw size={14} className={speeds ? '' : 'spin'} /> {speeds ? '重新测速' : '测速中'}
+            <button className="btn btn-text" onClick={() => setProbeRound((n) => n + 1)} disabled={testing || busy}>
+              <RefreshCw size={14} className={testing ? 'spin' : ''} /> {testing ? '测速中' : '重新测速'}
             </button>
           </div>
-          {ranked.map((d) => {
-            const sp = speeds?.[d.url];
+          {latest.downloads.map((d) => {
+            const sp = speeds[d.url];
             const on = d === chosen;
             return (
               <button
@@ -173,8 +192,8 @@ export function UpdateModal({ info, onClose, auto = false }: { info: UpdateInfo;
               >
                 <span className="update-line-name">{d.label}</span>
                 <span className="update-line-speed">
-                  {sp === undefined ? '测速中…' : sp === -1 ? '不可用' : formatSpeed(sp)}
-                  {on && sp !== undefined && sp >= 0 && fastest === d && !picked && <em>最快</em>}
+                  {sp === undefined ? (activeUrl === d.url ? '测速中…' : testing ? '等待测速' : '未测速') : sp < 0 ? '不可用' : formatSpeed(sp)}
+                  {on && fastest === d && !picked && <em>{testing ? '目前最快' : '最快'}</em>}
                 </span>
                 {on && <Check size={16} strokeWidth={2.5} />}
               </button>

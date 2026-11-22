@@ -52,7 +52,12 @@ export const config = {
   downloadMirrors:
     process.env.APP_DOWNLOAD_MIRRORS?.trim() === 'none'
       ? []
-      : list(process.env.APP_DOWNLOAD_MIRRORS, ['https://gh-proxy.org/']),
+      : list(process.env.APP_DOWNLOAD_MIRRORS, [
+          'https://v4.gh-proxy.org/',
+          'https://axisnow.gh-proxy.org/',
+          'https://v6.gh-proxy.org/',
+          'https://gh-proxy.org/',
+        ]),
   maxPostLength: 2000,
   smtp: smtpConfig(),
 };
