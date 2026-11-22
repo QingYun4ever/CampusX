@@ -9,6 +9,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.12.11',
+    date: '2026-11-22',
+    title: '单行帖子操作与审核规则',
+    changes: [
+      ['fix', '帖子下方的操作按钮在窄屏也保持一行。'],
+      ['new', '管理后台可以编辑或恢复 AI 审核的主规则，补充规则仍独立保留。'],
+    ],
+  },
+  {
     version: '0.12.10',
     date: '2026-11-22',
     title: '逐条测速与新下载线路',

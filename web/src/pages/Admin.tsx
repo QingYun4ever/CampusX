@@ -46,6 +46,8 @@ interface ModConfig {
   baseUrl: string;
   reviewImages: boolean;
   failPolicy: 'pass' | 'hold';
+  mainRules?: string | null;
+  defaultMainRules?: string;
   rules: string;
   keyHint: string;
   hasKey: boolean;
@@ -170,10 +172,12 @@ function ModSettings() {
     baseUrl: f.baseUrl,
     reviewImages: f.reviewImages,
     failPolicy: f.failPolicy,
+    mainRules: f.mainRules,
     rules: f.rules,
   });
   const keyChanged = !!key.trim();
   const providerChanged = q.data && f.provider !== q.data.provider;
+  const mainRulesBlank = typeof f.mainRules === 'string' && !f.mainRules.trim();
 
   const save = async () => {
     if (f.enabled && !f.hasKey && !keyChanged && f.provider === 'openai') return toast('请先填写 API 密钥', 'error');
@@ -296,8 +300,34 @@ function ModSettings() {
       </div>
 
       <div className="admin-card">
+        <div className="name">主审核规则</div>
+        {f.defaultMainRules === undefined ? (
+          <p className="muted small">此站点的服务器版本尚不支持编辑主审核规则。</p>
+        ) : (
+          <>
+            <p className="muted small">可以直接修改默认的判定标准。保存后，新审核会使用这里的主规则，再应用下方的补充规则。</p>
+            <Field
+              label="主审核规则"
+              multiline
+              value={f.mainRules ?? f.defaultMainRules}
+              onChange={(v) => set({ mainRules: v === f.defaultMainRules ? null : v })}
+              maxLength={6000}
+              counter
+              error={mainRulesBlank ? '请填写主审核规则，或恢复默认规则' : undefined}
+              style={{ minHeight: '14em', resize: 'vertical' }}
+            />
+            <div>
+              <button className="btn btn-outline sm" disabled={busy || f.mainRules == null} onClick={() => set({ mainRules: null })}>
+                恢复默认主规则
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="admin-card">
         <div className="name">补充规则（选填）</div>
-        <p className="muted small">内置规则已经覆盖色情、暴力、歧视、辱骂、隐私、违法、广告等。这里写本社区额外的要求。</p>
+        <p className="muted small">写本社区额外的要求。恢复默认主规则不会清除这里的内容。</p>
         <Field
           label="补充规则"
           multiline
@@ -310,7 +340,7 @@ function ModSettings() {
       </div>
 
       <div className="admin-actions">
-        <button className="btn btn-primary" onClick={save} disabled={busy}>
+        <button className="btn btn-primary" onClick={save} disabled={busy || mainRulesBlank}>
           {busy ? <Spinner size={18} inline /> : '保存设置'}
         </button>
       </div>
@@ -322,7 +352,7 @@ function ModSettings() {
         <p className="muted small">用上面的设置（包括还没保存的改动）审核一段文字，不会影响任何帖子。会产生少量费用。</p>
         <Field label="测试内容" multiline value={testText} onChange={setTestText} placeholder="留空会用一句普通的问候" />
         <div>
-          <button className="btn btn-outline" onClick={test} disabled={testing}>
+          <button className="btn btn-outline" onClick={test} disabled={testing || mainRulesBlank}>
             {testing ? <Spinner size={18} inline /> : '发送测试'}
           </button>
         </div>
