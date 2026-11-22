@@ -9,6 +9,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.12.6',
+    date: '2026-11-22',
+    title: '吧头像与公开页面',
+    changes: [
+      ['new', '建吧时可上传头像；吧主和站点管理员可更换头像或恢复默认字标。'],
+      ['new', '新增无需登录的隐私政策和安装页，提供 Android APK 下载和网页版安装指引。'],
+    ],
+  },
+  {
     version: '0.12.5',
     date: '2026-11-22',
     title: '更新页测速',
