@@ -5,15 +5,19 @@
     android:viewportWidth="48"
     android:viewportHeight="48">
     <!-- 与网页 Logo 的圆环及气泡尾部共用几何，并留出自适应图标的裁剪空间。 -->
-    <group android:translateX="7.5" android:translateY="8">
+    <group
+        android:scaleX="0.84"
+        android:scaleY="0.84"
+        android:translateX="10.1"
+        android:translateY="10.6">
         <path
             android:pathData="M26.5,15 A10,10 0,1 1,6.5 15 A10,10 0,1 1,26.5 15 Z"
-            android:strokeColor="#000000"
+            android:strokeColor="#FFFFFF"
             android:strokeWidth="3" />
         <path
-            android:fillColor="#000000"
+            android:fillColor="#FFFFFF"
             android:pathData="M9.4,21.5 L6,27.6 L13.1,24.5 Z"
-            android:strokeColor="#000000"
+            android:strokeColor="#FFFFFF"
             android:strokeLineJoin="round"
             android:strokeWidth="1.6" />
     </group>
