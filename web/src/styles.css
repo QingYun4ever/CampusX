@@ -1707,6 +1707,8 @@ a.card-row:hover {
   display: flex;
   justify-content: space-between;
   max-width: 425px;
+  flex-wrap: wrap;
+  row-gap: 2px;
   margin: 4px 0 -6px -8px;
   color: var(--text-2);
 }
@@ -2299,7 +2301,7 @@ a.card-row:hover {
 }
 .auth-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 48px;
   min-height: 300px;
 }
@@ -2359,6 +2361,7 @@ a.card-row:hover {
 }
 .auth-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
@@ -2381,6 +2384,7 @@ a.card-row:hover {
   width: 100%;
   max-width: 1040px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
@@ -2592,11 +2596,12 @@ a.card-row:hover {
 }
 .captcha {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: flex-start;
 }
 .captcha .tf {
-  flex: 1;
+  flex: 1 1 8rem;
 }
 .captcha-img {
   position: relative;
@@ -2979,6 +2984,13 @@ a.card-row:hover {
 .md .katex {
   font-size: 1.08em;
 }
+/* 超宽行内公式只在公式内部横滑，不撑开整页。 */
+.md :not(.katex-display) > .katex {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  vertical-align: middle;
+}
 .md .katex-display {
   margin: 0.5em 0 0.8em;
   overflow-x: auto;
@@ -3012,6 +3024,12 @@ a.card-row:hover {
   transition:
     background-color 0.2s,
     transform 0.15s var(--ease);
+}
+.tag-list > a.tag-chip {
+  min-width: 0;
+  height: auto;
+  min-height: 26px;
+  overflow-wrap: anywhere;
 }
 a.tag-chip:hover {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
@@ -4539,9 +4557,9 @@ img.emoji {
     display: none;
   }
 }
-@media (max-width: 840px) {
+@media (max-width: 840px), (max-width: 1040px) and (pointer: coarse) {
   .auth-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     min-height: 0;
   }
   .auth-intro h1 {
@@ -4662,6 +4680,18 @@ img.emoji {
   }
   .auth-foot {
     padding: 8px 16px 12px;
+  }
+}
+
+@media (max-width: 340px) {
+  .post-head .handle,
+  .post-head .dot {
+    display: none;
+  }
+  .post-head time {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
