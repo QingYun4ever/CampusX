@@ -45,11 +45,14 @@ export const config = {
   maxUploadBytes: 8 * 1024 * 1024,
   /** App 更新：从这个 GitHub 仓库的 Releases 找最新安装包 */
   releaseRepo: process.env.APP_RELEASE_REPO?.trim() || 'QingYun4ever/CampusX',
-  /** 下载加速镜像，按顺序尝试；格式是「前缀 + GitHub 原始下载地址」。设为 none 只用 GitHub 直连 */
+  /**
+   * 下载加速镜像；格式是「前缀 + GitHub 原始下载地址」。设为 none 只用 GitHub 直连。
+   * 哪条快因地区和网络而异（服务器上测的不算数），App 会在手机上逐条测速再选
+   */
   downloadMirrors:
     process.env.APP_DOWNLOAD_MIRRORS?.trim() === 'none'
       ? []
-      : list(process.env.APP_DOWNLOAD_MIRRORS, ['https://ghfast.top/', 'https://gh-proxy.org/', 'https://ghproxy.net/']),
+      : list(process.env.APP_DOWNLOAD_MIRRORS, ['https://gh-proxy.com/', 'https://gh-proxy.org/', 'https://ghproxy.net/', 'https://ghfast.top/']),
   maxPostLength: 2000,
   smtp: smtpConfig(),
 };

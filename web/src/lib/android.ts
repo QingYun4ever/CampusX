@@ -41,6 +41,8 @@ export interface UpdateInfo {
 }
 
 export const AndroidUpdates = registerPlugin<{
+  /** 在手机上给每条线路测速：下载安装包开头一段。speed 是字节/秒，-1 表示不可用 */
+  probeMirrors(options: { urls: string[]; bytes?: number; timeoutMs?: number }): Promise<{ results: { url: string; speed: number }[] }>;
   /** 按 urls 的顺序下载，核对 SHA-256 和官方签名后交给系统安装器 */
   installUpdate(options: { version: string; size: number; sha256: string; urls: string[] }): Promise<{ installed: boolean }>;
 }>('AndroidUpdates');

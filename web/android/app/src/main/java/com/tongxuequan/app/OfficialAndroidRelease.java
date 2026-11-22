@@ -80,7 +80,7 @@ final class OfficialAndroidRelease {
 
     private void downloadFrom(URI uri, File destination) throws IOException {
         MessageDigest sha = sha256();
-        HttpURLConnection conn = connect(uri);
+        HttpURLConnection conn = connect(uri, 10000, 20000, null);
         long total = 0;
         try (InputStream in = conn.getInputStream(); FileOutputStream out = new FileOutputStream(destination)) {
             byte[] chunk = new byte[32 * 1024];
@@ -99,8 +99,44 @@ final class OfficialAndroidRelease {
         }
     }
 
-    /** 只走 https，最多跟随 5 次跳转（镜像和 GitHub 都会跳到 CDN） */
-    private static HttpURLConnection connect(URI uri) throws IOException {
+    /**
+     * 测速：下载安装包开头的 bytes 个字节，返回每秒字节数；不通、超时、返回的不是安装包（比如镜像的错误页）都返回 -1。
+     * 开头两个字节必须是 APK（zip）的 "PK"。
+     */
+    static long probe(String url, int bytes, int timeoutMs) {
+        long start = System.nanoTime();
+        long deadline = start + timeoutMs * 1_000_000L;
+        HttpURLConnection conn = null;
+        try {
+            conn = connect(URI.create(url), timeoutMs, timeoutMs, "bytes=0-" + (bytes - 1));
+            String type = conn.getContentType();
+            if (type != null && type.toLowerCase().startsWith("text/")) return -1;
+            try (InputStream in = conn.getInputStream()) {
+                byte[] buf = new byte[16 * 1024];
+                long total = 0;
+                int n;
+                boolean checked = false;
+                while (total < bytes && (n = in.read(buf)) != -1) {
+                    if (!checked && n >= 2) {
+                        if (buf[0] != 'P' || buf[1] != 'K') return -1;
+                        checked = true;
+                    }
+                    total += n;
+                    if (System.nanoTime() > deadline) break;
+                }
+                if (!checked || total <= 0) return -1;
+                double seconds = Math.max(0.001, (System.nanoTime() - start) / 1e9);
+                return (long) (total / seconds);
+            }
+        } catch (Exception e) {
+            return -1;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    /** 只走 https，最多跟随 5 次跳转（镜像和 GitHub 都会跳到 CDN）；range 不为空时也接受 206 */
+    private static HttpURLConnection connect(URI uri, int connectTimeout, int readTimeout, String range) throws IOException {
         for (int hops = 0; ; hops++) {
             if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getRawUserInfo() != null) {
                 throw new IOException("only https");
@@ -108,13 +144,14 @@ final class OfficialAndroidRelease {
             HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
             conn.setInstanceFollowRedirects(false);
             conn.setUseCaches(false);
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(20000);
+            conn.setConnectTimeout(connectTimeout);
+            conn.setReadTimeout(readTimeout);
             conn.setRequestProperty("User-Agent", "CampusX-Android");
+            if (range != null) conn.setRequestProperty("Range", range);
             boolean keep = false;
             try {
                 int status = conn.getResponseCode();
-                if (status == 200) {
+                if (status == 200 || (range != null && status == 206)) {
                     keep = true;
                     return conn;
                 }

@@ -9,6 +9,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.12.5',
+    date: '2026-11-22',
+    title: '更新页测速',
+    changes: [
+      ['improve', '更新页重新显示每条下载线路的速度：在你自己的网络下实测，自动选最快的一条，也可以手动换；连不上的标成「不可用」。'],
+      ['improve', '加速线路改为 gh-proxy.com、gh-proxy.org、ghproxy.net、ghfast.top，并直接显示域名。'],
+    ],
+  },
+  {
     version: '0.12.4',
     date: '2026-11-21',
     title: '默认服务器',

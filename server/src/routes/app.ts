@@ -76,7 +76,7 @@ async function fetchLatest(): Promise<Latest | null> {
     size,
     sha256,
     downloads: [
-      ...config.downloadMirrors.map((m, i) => ({ label: `加速线路 ${i + 1}`, url: m.replace(/\/?$/, '/') + apk })),
+      ...config.downloadMirrors.map((m) => ({ label: new URL(m).host, url: m.replace(/\/?$/, '/') + apk })),
       { label: 'GitHub 直连', url: apk },
     ],
     page: `https://github.com/${repo}/releases/tag/v${version}`,

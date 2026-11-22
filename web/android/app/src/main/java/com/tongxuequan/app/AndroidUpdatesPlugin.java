@@ -25,6 +25,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -35,6 +38,50 @@ public class AndroidUpdatesPlugin extends Plugin {
     // Only the UI thread owns the file once it has been passed to the installer.
     private File installerFile;
     private Uri installerUri;
+
+    /** 同时给每条线路测速，返回 [{url, speed}]，speed 是字节/秒，-1 表示不可用 */
+    @PluginMethod
+    public void probeMirrors(PluginCall call) {
+        JSArray list = call.getArray("urls");
+        int bytes = Math.max(16 * 1024, Math.min(1024 * 1024, call.getData().optInt("bytes", 256 * 1024)));
+        int timeout = Math.max(2000, Math.min(20000, call.getData().optInt("timeoutMs", 8000)));
+        List<String> urls = new ArrayList<>();
+        if (list != null) {
+            for (int i = 0; i < list.length(); i++) {
+                String url = list.optString(i, "");
+                if (url.startsWith("https://")) urls.add(url);
+            }
+        }
+        if (urls.isEmpty()) {
+            call.reject("没有可测速的线路");
+            return;
+        }
+        new Thread(() -> {
+            ExecutorService pool = Executors.newFixedThreadPool(Math.min(urls.size(), 6));
+            try {
+                List<Future<Long>> jobs = new ArrayList<>();
+                for (String url : urls) jobs.add(pool.submit(() -> OfficialAndroidRelease.probe(url, bytes, timeout)));
+                JSArray results = new JSArray();
+                for (int i = 0; i < urls.size(); i++) {
+                    long speed;
+                    try {
+                        speed = jobs.get(i).get(timeout + 3000L, TimeUnit.MILLISECONDS);
+                    } catch (Exception e) {
+                        speed = -1;
+                    }
+                    JSObject r = new JSObject();
+                    r.put("url", urls.get(i));
+                    r.put("speed", speed);
+                    results.put(r);
+                }
+                JSObject out = new JSObject();
+                out.put("results", results);
+                call.resolve(out);
+            } finally {
+                pool.shutdownNow();
+            }
+        }, "campusx-mirror-probe").start();
+    }
 
     @PluginMethod
     public void installUpdate(PluginCall call) {

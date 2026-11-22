@@ -49,7 +49,85 @@
   height: 44px;
   font-size: 16px;
 }
+.update-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.update-lines-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.update-lines-head .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  margin: 0 -12px 0 0;
+  font-size: 13px;
+}
+.update-lines-head .spin {
+  animation: spin 0.9s linear infinite;
+}
+.update-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  text-align: left;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+.update-line.on {
+  border-color: var(--accent);
+  background: var(--accent-10);
+}
+.update-line.on svg {
+  color: var(--accent);
+}
+.update-line.down {
+  opacity: 0.5;
+}
+.update-line-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.update-line-speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.update-line-speed em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--accent);
+}
+.update-lines-note {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
 .update-more {
+  margin-left: 0;
   align-self: center;
   margin-top: -6px;
   font-size: 14px;
@@ -60,11 +138,9 @@
   border-top: 1px solid var(--line);
   padding-top: 8px;
 }
-.update-foot .btn:first-child {
-  padding-left: 0;
-}
+/* .btn-text 自带 margin-left: -12px，文字和上面的内容对齐；右边那个对称地往右收 */
 .update-foot .btn:last-child {
-  padding-right: 0;
+  margin: 0 -12px 0 0;
 }
 .update-foot .btn {
   color: var(--text-2);
