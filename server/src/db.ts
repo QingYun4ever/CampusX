@@ -41,6 +41,15 @@ CREATE TABLE IF NOT EXISTS invites (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS bootstrap_admin_invite (
+  id         INTEGER PRIMARY KEY CHECK (id = 1),
+  code_hash  TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+-- Retire unused legacy bootstrap invites that were printed in server logs.
+DELETE FROM invites WHERE created_by IS NULL AND note = '初始管理员' AND max_uses = 1 AND used_count = 0;
+
 CREATE TABLE IF NOT EXISTS boards (
   id          INTEGER PRIMARY KEY,
   slug        TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -369,3 +378,58 @@ if (!get('SELECT 1 FROM boards LIMIT 1')) {
     );
   }
 }
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS site_uploads (
+  name       TEXT PRIMARY KEY,
+  owner_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  size       INTEGER NOT NULL,
+  charge     INTEGER GENERATED ALWAYS AS (max(4096, 2 * size)) STORED,
+  created_at INTEGER NOT NULL,
+  hold_until INTEGER NOT NULL DEFAULT 0,
+  used       INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_site_uploads_owner ON site_uploads(owner_id);
+
+CREATE TABLE IF NOT EXISTS site_upload_usage (
+  id    INTEGER PRIMARY KEY CHECK (id = 1),
+  bytes INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO site_upload_usage (id, bytes) VALUES (1, 0);
+CREATE TRIGGER IF NOT EXISTS site_upload_charge_insert AFTER INSERT ON site_uploads BEGIN
+  UPDATE site_upload_usage SET bytes = bytes + NEW.charge WHERE id = 1;
+END;
+CREATE TRIGGER IF NOT EXISTS site_upload_charge_update AFTER UPDATE OF size ON site_uploads BEGIN
+  UPDATE site_upload_usage SET bytes = bytes + NEW.charge - OLD.charge WHERE id = 1;
+END;
+CREATE TRIGGER IF NOT EXISTS site_upload_charge_delete AFTER DELETE ON site_uploads BEGIN
+  UPDATE site_upload_usage SET bytes = bytes - OLD.charge WHERE id = 1;
+END;
+
+CREATE INDEX IF NOT EXISTS idx_users_avatar ON users(avatar) WHERE avatar IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_banner ON users(banner) WHERE banner IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS post_upload_refs (
+  post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  url     TEXT NOT NULL,
+  PRIMARY KEY (post_id, url)
+);
+CREATE INDEX IF NOT EXISTS idx_post_upload_refs_url ON post_upload_refs(url);
+CREATE TRIGGER IF NOT EXISTS post_upload_refs_insert AFTER INSERT ON posts BEGIN
+  INSERT OR IGNORE INTO post_upload_refs (post_id, url)
+    SELECT NEW.id, j.value FROM json_each(NEW.images) j WHERE j.type = 'text' AND j.value LIKE '/uploads/%';
+END;
+CREATE TRIGGER IF NOT EXISTS post_upload_refs_update AFTER UPDATE OF images ON posts BEGIN
+  DELETE FROM post_upload_refs WHERE post_id = NEW.id;
+  INSERT OR IGNORE INTO post_upload_refs (post_id, url)
+    SELECT NEW.id, j.value FROM json_each(NEW.images) j WHERE j.type = 'text' AND j.value LIKE '/uploads/%';
+END;
+`);
+
+tx(() => {
+  if (get("SELECT 1 FROM settings WHERE key = 'post_upload_refs_indexed'")) return;
+  run(`INSERT OR IGNORE INTO post_upload_refs (post_id, url)
+       SELECT p.id, j.value FROM posts p, json_each(CASE WHEN json_valid(p.images) THEN p.images ELSE '[]' END) j
+       WHERE j.type = 'text' AND j.value LIKE '/uploads/%'`);
+  run("INSERT INTO settings (key, value) VALUES ('post_upload_refs_indexed', '1')");
+});

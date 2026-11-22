@@ -296,10 +296,16 @@ public class AndroidShellPlugin extends Plugin {
         call.resolve();
     }
 
-    /** 点了通知：让网页跳到对应页面。网页还没加载好时事件会先留着 */
-    public void openPath(String path) {
-        JSObject d = new JSObject();
-        d.put("path", path);
-        notifyListeners("openPath", d, true);
+    void signalNotificationOpened() {
+        // Capacitor registers listeners on the bridge's plugin thread.
+        getBridge().execute(() -> notifyListeners("notificationOpened", new JSObject()));
+    }
+
+    @PluginMethod
+    public void takeNotificationPath(PluginCall call) {
+        String path = NotificationOpenActivity.takePath(call.getString("apiBase"), call.getString("token"));
+        JSObject data = new JSObject();
+        if (path != null) data.put("path", path);
+        call.resolve(data);
     }
 }

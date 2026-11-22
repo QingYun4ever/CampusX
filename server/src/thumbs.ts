@@ -1,20 +1,22 @@
-import fs from 'node:fs';
-import fsp from 'node:fs/promises';
-import path from 'node:path';
-import { uploadsDir } from './config.ts';
+import { HttpError } from './util.ts';
 
-/**
- * 时间线上用的缩略图：长边 1280、WebP。点开大图时才加载原图。
- * 第一次被请求（或刚上传完）时生成，存到 uploads/.thumbs，之后直接读文件。
- * 旧图片不用迁移，访问时自动补上。
- */
-export const THUMB_EDGE = 1280;
-const thumbsDir = path.join(uploadsDir, '.thumbs');
-fs.mkdirSync(thumbsDir, { recursive: true });
+const thumbEdge = 1280;
+const maxInputPixels = 24_000_000;
+const maxConcurrentImages = 2;
+const sharpOptions = { failOn: 'warning', limitInputPixels: maxInputPixels } as const;
 
-const NAME = /^[\w-]+\.(jpg|png|webp)$/;
+export class ImageInputError extends HttpError {
+  constructor() {
+    super(400, '图片无法解码或像素过多，请重新上传');
+  }
+}
 
-// sharp 是原生模块；万一在某个平台上装不上，服务照常运行，只是不出缩略图、不在服务器上压缩
+export class ImageProcessingUnavailable extends HttpError {
+  constructor() {
+    super(503, '暂时无法处理图片，请稍后重试');
+  }
+}
+// sharp 是原生模块，按需加载；不可用时仍可以读取已存的原图。
 type Sharp = typeof import('sharp');
 let sharpLib: Promise<Sharp | null> | undefined;
 function loadSharp() {
@@ -27,56 +29,61 @@ function loadSharp() {
   );
   return sharpLib;
 }
-const pending = new Map<string, Promise<string | null>>();
 
-/** 返回缩略图路径；原图本身就够小（或不是可处理的格式）时返回 null，直接用原图 */
-export function thumbFor(name: string): Promise<string | null> {
-  if (!NAME.test(name)) return Promise.resolve(null);
-  const out = path.join(thumbsDir, name.replace(/\.\w+$/, '.webp'));
-  const marker = out + '.orig'; // 缩略图不比原图小时留个标记，不用每次重算
-  if (fs.existsSync(out)) return Promise.resolve(out);
-  if (fs.existsSync(marker)) return Promise.resolve(null);
-  let job = pending.get(name);
-  if (!job) {
-    job = (async () => {
-      const src = path.join(uploadsDir, name);
-      const stat = await fsp.stat(src).catch(() => null);
-      const sharp = await loadSharp();
-      if (!stat || !sharp) return null;
-      const buf = await sharp(src, { failOn: 'none' })
-        .rotate()
-        .resize({ width: THUMB_EDGE, height: THUMB_EDGE, fit: 'inside', withoutEnlargement: true })
-        .webp({ quality: 80, effort: 4 })
-        .toBuffer();
-      if (buf.length >= stat.size * 0.9) {
-        await fsp.writeFile(marker, '');
-        return null;
-      }
-      const tmp = `${out}.${process.pid}.tmp`;
-      await fsp.writeFile(tmp, buf);
-      await fsp.rename(tmp, out);
-      return out;
-    })()
-      .catch(() => null)
-      .finally(() => pending.delete(name));
-    pending.set(name, job);
+let activeImages = 0;
+
+async function useSharp<T>(work: (sharp: Sharp) => Promise<T>): Promise<T> {
+  if (activeImages >= maxConcurrentImages) throw new ImageProcessingUnavailable();
+  activeImages++;
+  try {
+    const sharp = await loadSharp();
+    if (!sharp) throw new ImageProcessingUnavailable();
+    return await work(sharp);
+  } finally {
+    activeImages--;
   }
-  return job;
 }
 
-/** 太大的原图（老版本 App、第三方客户端没在本地压缩）在服务器上压一遍：长边 2560 */
-export async function shrinkOriginal(buffer: Buffer, ext: string): Promise<{ buffer: Buffer; ext: string }> {
-  if (ext === 'gif' || buffer.length <= 1_500_000) return { buffer, ext };
-  const sharp = await loadSharp();
-  if (!sharp) return { buffer, ext };
+async function processImage(sharp: Sharp, buffer: Buffer, ext: string, shrink: boolean) {
   try {
-    const img = sharp(buffer, { failOn: 'none' }).rotate();
-    const out = await img
-      .resize({ width: 2560, height: 2560, fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 86 })
-      .toBuffer();
-    return out.length < buffer.length ? { buffer: out, ext: 'webp' } : { buffer, ext };
-  } catch {
+    const image = sharp(buffer, { ...sharpOptions, animated: ext === 'gif' || ext === 'webp' })
+      .timeout({ seconds: 10 });
+    const { format, width, height, pageHeight, pages = 1 } = await image.metadata();
+    if (format !== (ext === 'jpg' ? 'jpeg' : ext) || !width || !height ||
+        width * (pageHeight ?? height) * pages > maxInputPixels) throw new ImageInputError();
+    if (shrink && ext !== 'gif' && pages === 1 && buffer.length > 1_500_000) {
+      const out = await image.rotate()
+        .resize({ width: 2560, height: 2560, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 86 })
+        .toBuffer();
+      if (out.length < buffer.length) return { buffer: out, ext: 'webp' };
+    } else {
+      // 读取元数据只会解析文件头；实际解码也必须成功。
+      await image.stats();
+    }
     return { buffer, ext };
+  } catch {
+    throw new ImageInputError();
   }
+}
+
+/** 太大的普通原图（旧客户端没在本地压缩）在服务器上压一遍：长边 2560。 */
+export function prepareUploadImage(buffer: Buffer, ext: string) {
+  return useSharp((sharp) => processImage(sharp, buffer, ext, true));
+}
+
+export function validateReviewImage<T extends { buffer: Buffer; ext: string }>(read: () => Promise<T>) {
+  return useSharp(async (sharp) => {
+    const image = await read();
+    await processImage(sharp, image.buffer, image.ext, false);
+    return image;
+  });
+}
+
+export function makeThumb(read: () => Promise<Buffer>) {
+  return useSharp(async (sharp) => sharp(await read(), sharpOptions).timeout({ seconds: 10 })
+    .rotate()
+    .resize({ width: thumbEdge, height: thumbEdge, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 80, effort: 4 })
+    .toBuffer());
 }

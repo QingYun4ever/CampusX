@@ -1,31 +1,25 @@
 import { randomBytes } from 'node:crypto';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { createInvite, formatInvite, hashPassword, normalizeInvite } from '../auth.ts';
-import { uploadsDir } from '../config.ts';
 import { all, get, now, run } from '../db.ts';
 import { readUploadedImage } from '../image-upload.ts';
-import { shrinkOriginal, thumbFor } from '../thumbs.ts';
+import { storeSiteUpload } from '../site-uploads.ts';
+import { prepareUploadImage } from '../thumbs.ts';
 import { configSchema, describeError, getConfig, manualDecision, publicConfig, review, saveConfig, type ModConfig } from '../moderation.ts';
-import { postsByIds, visibleQuoteNotification } from '../serialize.ts';
+import { postsByIds, visibleNotification } from '../serialize.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
 
 export async function miscRoutes(app: FastifyInstance) {
   /* ---------- 图片上传 ---------- */
   app.post('/upload', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
-    me(req);
+    const user = me(req);
     const file = await req.file();
     if (!file) throw new HttpError(400, '没有收到文件');
     const raw = await readUploadedImage(file);
-    const { buffer, ext } = await shrinkOriginal(raw.buffer, raw.ext);
-    const name = `${randomBytes(12).toString('base64url')}.${ext}`;
-    await fs.writeFile(path.join(uploadsDir, name), buffer);
-    // 顺手把缩略图生成好，发出去以后别人刷到时不用等
-    void thumbFor(name);
-    return { url: `/uploads/${name}` };
+    const { buffer, ext } = await prepareUploadImage(raw.buffer, raw.ext);
+    return { url: storeSiteUpload(user.id, buffer, ext) };
   });
 
   /* ---------- 通知 ---------- */
@@ -35,7 +29,7 @@ export async function miscRoutes(app: FastifyInstance) {
     const rows = all(
       `SELECT n.id AS nid, n.type, n.post_id, n.read, n.extra, n.created_at AS n_created_at, ${USER_COLS}
        FROM notifications n JOIN users u ON u.id = n.actor_id
-       WHERE n.user_id = $me AND ${visibleQuoteNotification} AND ($cursor IS NULL OR n.id < $cursor)
+       WHERE n.user_id = $me AND ${visibleNotification} AND ($cursor IS NULL OR n.id < $cursor)
        ORDER BY n.id DESC LIMIT 30`,
       { me: user.id, cursor: cursorNum(q.cursor) },
     );
@@ -81,14 +75,14 @@ export async function miscRoutes(app: FastifyInstance) {
 
   app.get('/notifications/unread-count', async (req) => {
     const r = get<{ c: number }>(
-      `SELECT COUNT(*) AS c FROM notifications n WHERE n.user_id = $me AND n.read = 0 AND ${visibleQuoteNotification}`,
+      `SELECT COUNT(*) AS c FROM notifications n WHERE n.user_id = $me AND n.read = 0 AND ${visibleNotification}`,
       { me: me(req).id },
     );
     return { count: r?.c ?? 0 };
   });
 
   app.post('/notifications/read-all', async (req) => {
-    run(`UPDATE notifications AS n SET read = 1 WHERE n.user_id = $me AND n.read = 0 AND ${visibleQuoteNotification}`, {
+    run(`UPDATE notifications AS n SET read = 1 WHERE n.user_id = $me AND n.read = 0 AND ${visibleNotification}`, {
       me: me(req).id,
     });
     return { ok: true };
@@ -273,7 +267,7 @@ export async function miscRoutes(app: FastifyInstance) {
       const p = get<{ deleted: number }>('SELECT deleted FROM posts WHERE id = $id AND repost_of IS NULL', { id });
       if (!p) throw new HttpError(404, '帖子不存在');
       if (p.deleted) throw new HttpError(400, '帖子已被删除');
-      manualDecision(id, body.action, me(req).id, body.note);
+      await manualDecision(id, body.action, me(req).id, body.note);
       return { ok: true };
     });
 

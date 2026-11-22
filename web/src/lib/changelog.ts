@@ -9,6 +9,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.12.1',
+    date: '2026-11-21',
+    title: '私密内容和 Android 更新安全',
+    changes: [
+      ['fix', '私密吧的图片、缩略图和推送摘要现在遵守当前的访问权限。'],
+      ['fix', '站点图片上传有累计配额，无效附件不能在审核出错时直接公开。'],
+      ['fix', '新站只能用专用的一次性初始化邀请码注册管理员。'],
+      ['fix', 'Android 从官方 GitHub 下载并验证更新后才交给安装器；其他应用不能伪造通知跳转。'],
+    ],
+  },
+  {
     version: '0.12.0',
     date: '2026-11-21',
     title: '缩略图、保存图片、头像框',

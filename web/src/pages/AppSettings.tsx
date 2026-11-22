@@ -3,9 +3,9 @@ import { App } from '@capacitor/app';
 import { Bell, ChevronRight, Download, X } from 'lucide-react';
 import { UpdateModal } from '../components/AppServices';
 import { Spinner, Switch, toast } from '../components/ui';
-import { AndroidShell, isAndroid } from '../lib/android';
+import { AndroidShell, isAndroid, type UpdateInfo } from '../lib/android';
 import { enablePush, getPushPrefs, savePushPrefs, type PushPrefs } from '../lib/push';
-import { checkUpdate, type UpdateInfo } from '../lib/update';
+import { checkUpdate } from '../lib/update';
 
 const KINDS: { key: keyof Omit<PushPrefs, 'enabled'>; name: string }[] = [
   { key: 'dm', name: '私信' },

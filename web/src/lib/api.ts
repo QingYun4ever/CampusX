@@ -27,6 +27,7 @@ export let WEB_ORIGIN = API_BASE || window.location.origin;
 // 不把一个站点签发的 token 发给另一个站点。
 const TOKEN_KEY = IS_APP_BUILD ? `txq_token:${API_BASE}` : 'txq_token';
 let token: string | null = safeGet(TOKEN_KEY);
+let mediaSession = new AbortController();
 
 function safeGet(k: string) {
   try {
@@ -41,12 +42,19 @@ export function getToken() {
 }
 
 export function setToken(t: string | null) {
+  const changed = token !== t;
   token = t;
   try {
     if (t) localStorage.setItem(TOKEN_KEY, t);
     else localStorage.removeItem(TOKEN_KEY);
   } catch {
     /* ignore */
+  }
+  if (changed) {
+    const previous = mediaSession;
+    mediaSession = new AbortController();
+    previous.abort();
+    window.dispatchEvent(new Event('auth:media-session'));
   }
 }
 
@@ -136,15 +144,51 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
   return data as T;
 }
 
-export function media(p?: string | null) {
-  if (!p) return undefined;
-  return /^(https?:|data:|blob:)/.test(p) ? p : API_BASE + p;
+export function getMediaSession() {
+  return mediaSession.signal;
+}
+
+export function subscribeMediaSession(listener: () => void) {
+  window.addEventListener('auth:media-session', listener);
+  return () => window.removeEventListener('auth:media-session', listener);
+}
+
+/** 只将本站上传地址交给带凭据的请求；App 内的相对路径指向所选站点。 */
+export function siteMediaUrl(source?: string | null) {
+  if (!source) return undefined;
+  try {
+    const { origin } = new URL(API_BASE || window.location.origin, window.location.href);
+    const url = new URL(source, `${origin}/`);
+    if (
+      (url.protocol === 'https:' || url.protocol === 'http:') &&
+      (url.origin === origin || url.origin === window.location.origin) &&
+      !url.username && !url.password && url.pathname.startsWith('/uploads/')
+    ) {
+      return origin + url.pathname;
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+export async function fetchSiteMedia(source: string, signal: AbortSignal) {
+  const url = siteMediaUrl(source);
+  if (!url || !token || (IS_APP_BUILD && !API_BASE)) throw new Error('图片不可用');
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+    credentials: 'omit',
+    redirect: 'error',
+    signal,
+  });
+  if (!res.ok) throw new Error('图片不可用');
+  return res.blob();
 }
 
 /** 时间线上的缩略图（服务器按需生成，长边 1280）；动图和外部地址用原图 */
-export function thumb(p?: string | null) {
-  const m = p?.match(/^\/uploads\/([\w-]+\.(?:jpg|png|webp))$/);
-  return m ? API_BASE + '/uploads/s/' + m[1] : media(p);
+export function thumb(source: string) {
+  const m = siteMediaUrl(source)?.match(/\/uploads\/([\w-]+\.(?:jpg|png|webp))$/);
+  return m ? '/uploads/s/' + m[1] : source;
 }
 
 export async function uploadImage(file: File): Promise<string> {

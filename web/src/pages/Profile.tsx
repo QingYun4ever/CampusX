@@ -5,8 +5,9 @@ import { CalendarDays, Camera, GraduationCap, Mail, School, Settings } from 'luc
 import { Feed } from '../components/Feed';
 import { ImageCropper } from '../components/ImageCropper';
 import { FollowButton } from '../components/FollowButton';
+import { useMediaResource } from '../components/MediaImage';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Tabs, toast, toneFor, TopBar, useModalClose, Verified } from '../components/ui';
-import { api, media, uploadImage, type Profile as ProfileT, type User } from '../lib/api';
+import { api, uploadImage, type Profile as ProfileT, type User } from '../lib/api';
 import { DECORATIONS } from '../lib/decorations';
 import { useAuth, useMe } from '../lib/auth';
 
@@ -19,6 +20,7 @@ export function Profile() {
   const [tab, setTab] = useState<Tab>('posts');
   const [editing, setEditing] = useState(false);
   const q = useQuery({ queryKey: ['profile', username], queryFn: () => api<ProfileT>(`/users/${username}`) });
+  const { url: banner } = useMediaResource(q.data?.banner);
   // 名字滚出视野后，顶栏才显示名字
   const nameRef = useRef<HTMLDivElement>(null);
   const [nameVisible, setNameVisible] = useState(true);
@@ -54,8 +56,8 @@ export function Profile() {
       <div
         className="banner"
         style={
-          u.banner
-            ? { backgroundImage: `url(${media(u.banner)})` }
+          banner
+            ? { backgroundImage: `url(${banner})` }
             : ({ '--tone': toneFor(u.username) } as CSSProperties)
         }
       />
@@ -160,6 +162,8 @@ function EditProfile({ user, onClose }: { user: User; onClose: () => void }) {
     avatarDecoration: user.avatarDecoration,
     banner: user.banner,
   });
+  const initialImages = useRef({ avatar: user.avatar, banner: user.banner });
+  const { url: banner } = useMediaResource(f.banner);
   const [busy, setBusy] = useState(false);
   const avatarRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLInputElement>(null);
@@ -188,7 +192,12 @@ function EditProfile({ user, onClose }: { user: User; onClose: () => void }) {
     try {
       const u = await api<User>('/me', {
         method: 'PATCH',
-        body: { ...f, gradYear: f.gradYear ? Number(f.gradYear) : null },
+        body: {
+          ...f,
+          avatar: f.avatar !== initialImages.current.avatar ? f.avatar : undefined,
+          banner: f.banner !== initialImages.current.banner ? f.banner : undefined,
+          gradYear: f.gradYear ? Number(f.gradYear) : null,
+        },
       });
       setUser(u);
       qc.setQueryData<ProfileT>(['profile', user.username], (current) => current && { ...current, ...u });
@@ -220,7 +229,7 @@ function EditProfile({ user, onClose }: { user: User; onClose: () => void }) {
         className="banner"
         style={{
           position: 'relative',
-          ...(f.banner ? { backgroundImage: `url(${media(f.banner)})` } : ({ '--tone': toneFor(user.username) } as CSSProperties)),
+          ...(banner ? { backgroundImage: `url(${banner})` } : ({ '--tone': toneFor(user.username) } as CSSProperties)),
         }}
       >
         <button

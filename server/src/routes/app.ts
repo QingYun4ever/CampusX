@@ -1,75 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { config } from '../config.ts';
 import { all, get, now } from '../db.ts';
-import { HIDDEN_BOARDS, visibleQuoteNotification } from '../serialize.ts';
+import { HIDDEN_BOARDS, visibleNotification } from '../serialize.ts';
 import { me } from '../util.ts';
-
-/* ---------------- App 更新 ---------------- */
-
-interface Latest {
-  version: string;
-  notes: string;
-  publishedAt: string | null;
-  size: number | null;
-  /** 第一个是推荐线路 */
-  downloads: { label: string; url: string }[];
-  page: string;
-}
-
-let cached: { at: number; value: Latest | null } | null = null;
-
-async function fetchLatest(): Promise<Latest | null> {
-  const repo = config.releaseRepo;
-  const signal = AbortSignal.timeout(8000);
-  let tag: string | undefined;
-  let notes = '';
-  let publishedAt: string | null = null;
-  let size: number | null = null;
-  let apk: string | undefined;
-  try {
-    const r = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-      headers: { accept: 'application/vnd.github+json', 'user-agent': 'campus-forum-server' },
-      signal,
-    });
-    if (r.ok) {
-      const d = (await r.json()) as {
-        tag_name: string;
-        body?: string;
-        published_at?: string;
-        assets?: { name: string; size: number; browser_download_url: string }[];
-      };
-      tag = d.tag_name;
-      notes = (d.body ?? '').trim();
-      publishedAt = d.published_at ?? null;
-      const a = d.assets?.find((x) => x.name.endsWith('.apk'));
-      if (a) {
-        apk = a.browser_download_url;
-        size = a.size;
-      }
-    }
-  } catch {
-    /* 下面用网页跳转再试一次 */
-  }
-  if (!tag) {
-    // API 有频率限制，被限了就看 releases/latest 跳到哪个标签
-    const r = await fetch(`https://github.com/${repo}/releases/latest`, { redirect: 'manual', signal: AbortSignal.timeout(8000) });
-    tag = r.headers.get('location')?.match(/\/releases\/tag\/([^/?#]+)$/)?.[1];
-  }
-  const version = tag?.replace(/^v/, '');
-  if (!version || !/^\d+\.\d+\.\d+$/.test(version)) return null;
-  apk ??= `https://github.com/${repo}/releases/download/v${version}/campusx-android-${version}.apk`;
-  return {
-    version,
-    notes,
-    publishedAt,
-    size,
-    downloads: [
-      ...config.downloadMirrors.map((m, i) => ({ label: `加速线路 ${i + 1}`, url: m.replace(/\/?$/, '/') + apk })),
-      { label: 'GitHub 直连', url: apk },
-    ],
-    page: `https://github.com/${repo}/releases/tag/v${version}`,
-  };
-}
 
 /* ---------------- 后台推送（App 定时来取） ---------------- */
 
@@ -89,21 +21,12 @@ const NOTIF_TEXT: Record<string, string> = {
 };
 
 export async function appRoutes(app: FastifyInstance) {
-  app.get('/app/latest', async (_req, reply) => {
-    const t = now();
-    // 成功缓存 30 分钟，失败 5 分钟内不再重试
-    if (!cached || t - cached.at > (cached.value ? 30 : 5) * 60_000) {
-      cached = { at: t, value: await fetchLatest().catch(() => null) };
-    }
-    reply.header('Cache-Control', 'public, max-age=300');
-    return cached.value ?? { version: null };
-  });
-
   /**
    * App 在后台每隔一段时间来取一次，有新东西就发系统通知。
    * since 是上次返回的 now；第一次不传，只返回游标，避免把旧消息全推一遍。
    */
-  app.get('/push/poll', async (req) => {
+  app.get('/push/poll', async (req, reply) => {
+    reply.header('Cache-Control', 'private, no-store');
     const user = me(req);
     const q = req.query as { since?: string; dm?: string; posts?: string; interactions?: string };
     const t = now();
@@ -174,8 +97,7 @@ export async function appRoutes(app: FastifyInstance) {
       const rows = all<{ id: number; type: string; post_id: number | null; display_name: string; content: string | null }>(
         `SELECT n.id, n.type, n.post_id, u.display_name, p.content
          FROM notifications n JOIN users u ON u.id = n.actor_id LEFT JOIN posts p ON p.id = n.post_id
-         WHERE n.user_id = $me AND n.read = 0 AND n.created_at > $from AND ${visibleQuoteNotification}
-           AND (n.post_id IS NULL OR p.deleted = 0)
+         WHERE n.user_id = $me AND n.read = 0 AND n.created_at > $from AND ${visibleNotification}
          ORDER BY n.id DESC LIMIT 30`,
         { me: user.id, from },
       );
@@ -206,7 +128,10 @@ export async function appRoutes(app: FastifyInstance) {
       }
     }
 
-    const unread = get<{ n: number }>('SELECT COUNT(*) AS n FROM notifications WHERE user_id = $me AND read = 0', { me: user.id })!.n;
+    const unread = get<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM notifications n WHERE n.user_id = $me AND n.read = 0 AND ${visibleNotification}`,
+      { me: user.id },
+    )!.n;
     return { now: t, items, unread };
   });
 }

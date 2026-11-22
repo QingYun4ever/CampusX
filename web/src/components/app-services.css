@@ -49,16 +49,6 @@
   height: 44px;
   font-size: 16px;
 }
-.update-more {
-  align-self: center;
-  margin-top: -6px;
-  font-size: 14px;
-}
-.update-lines {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 8px;
-}
 .update-foot {
   display: flex;
   justify-content: space-between;

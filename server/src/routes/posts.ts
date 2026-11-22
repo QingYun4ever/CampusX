@@ -2,8 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, now, run, tx } from '../db.ts';
-import { enqueue, getConfig, logReview, moderationOn, reviewContext, screen, warnAuthor } from '../moderation.ts';
+import { enqueue, getConfig, logReview, reviewContext, screen, warnAuthor, type ReviewResult } from '../moderation.ts';
 import { boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publicPost, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
+import { consumeDraftUploads, holdDraftUploads, MAX_REVIEW_IMAGE_BYTES, siteUploadUrl, type UploadSnapshots } from '../site-uploads.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 
@@ -12,7 +13,7 @@ const PAGE = 20;
 const createSchema = z.object({
   content: z.string().max(config.maxPostLength, `内容最多 ${config.maxPostLength} 字`).default(''),
   images: z
-    .array(z.string().regex(/^\/uploads\/[\w-]+\.(jpg|png|webp|gif)$/, '图片地址无效'))
+    .array(z.string().regex(siteUploadUrl, '图片地址无效'))
     .max(4, '最多 4 张图片')
     .default([]),
   boardSlug: z.string().nullish(),
@@ -82,18 +83,23 @@ export async function postRoutes(app: FastifyInstance) {
     }
 
     // 开启审核时先审再发：通过才公开；不通过就不发布，并警告作者。审核接口太慢或出错时先存为 pending 交给后台
+    const moderation = getConfig();
+    const imageLimit = moderation.enabled && moderation.reviewImages ? MAX_REVIEW_IMAGE_BYTES : undefined;
     let status: 'ok' | 'pending' | 'rejected' = 'ok';
-    let verdict: Awaited<ReturnType<typeof screen>> = null;
-    if (moderationOn()) {
+    let verdict: ReviewResult | null = null;
+    let snapshots: UploadSnapshots | undefined;
+    if (moderation.enabled) {
+      holdDraftUploads(body.images, user.id, imageLimit);
       const board = boardId ? (get<{ name: string }>('SELECT name FROM boards WHERE id = $id', { id: boardId })?.name ?? null) : null;
       const parentText = parent ? (get<{ content: string }>('SELECT content FROM posts WHERE id = $id', { id: parent.id })?.content ?? '') : null;
-      verdict = await screen(content, body.images, reviewContext(board, parentText));
+      ({ verdict, snapshots } = await screen(content, body.images, reviewContext(board, parentText), moderation));
       status = !verdict ? 'pending' : verdict.verdict === 'pass' ? 'ok' : 'rejected';
     }
 
     const t = now();
     const tags = extractTags(content, body.tags);
     const id = tx(() => {
+      consumeDraftUploads(body.images, user.id, imageLimit, snapshots);
       const quote = body.quoteOfId === undefined ? undefined : get<{ id: number }>(
         `SELECT s.id FROM posts p JOIN posts s ON s.id = COALESCE(p.repost_of, p.id)
          WHERE p.id = $id AND ${publicPost('p')} AND ${publicPost('s')} AND s.repost_of IS NULL`,
@@ -121,7 +127,7 @@ export async function postRoutes(app: FastifyInstance) {
       if (status === 'ok') publishEffects(lastId);
       return lastId;
     });
-    if (verdict) logReview(id, getConfig(), verdict.verdict, verdict);
+    if (verdict) logReview(id, moderation, verdict.verdict, verdict);
     if (status === 'pending') enqueue(id);
     if (status === 'rejected') {
       const warnings = warnAuthor(id, verdict!.reason);

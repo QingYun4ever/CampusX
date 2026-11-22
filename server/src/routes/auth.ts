@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { accountSecurity, completeLoginChallenge, newLoginChallenge } from '../account-security.ts';
 import {
+  bootstrapInviteHash,
   checkCaptcha,
   createSession,
   destroySession,
@@ -28,13 +29,14 @@ export const usernameSchema = z
   .trim()
   .regex(/^[A-Za-z0-9_]{3,20}$/, '用户名为 3-20 位字母、数字或下划线');
 export const passwordSchema = z.string().min(8, '密码至少 8 位').max(64, '密码最多 64 位');
+const inviteCodeSchema = z.string().trim().min(1, '请填写邀请码').max(38, '邀请码格式无效');
 
 const registerSchema = z.object({
   username: usernameSchema,
   password: passwordSchema,
   displayName: z.string().trim().min(1, '请填写昵称').max(20, '昵称最多 20 字'),
   className: z.string().trim().max(20, '班级最多 20 字').optional().default(''),
-  inviteCode: z.string().trim().min(1, '请填写邀请码'),
+  inviteCode: inviteCodeSchema,
   agreeTerms: z.literal(true, '请先阅读并同意用户协议'),
   ...captchaFields,
 });
@@ -45,16 +47,22 @@ const loginSchema = z.object({
   ...captchaFields,
 });
 
-function findInvite(raw: string) {
-  const code = normalizeInvite(raw);
-  const invite = get<{ max_uses: number; used_count: number; expires_at: number | null; note: string }>(
-    'SELECT max_uses, used_count, expires_at, note FROM invites WHERE code = $code',
-    { code },
-  );
-  if (!invite || invite.used_count >= invite.max_uses || (invite.expires_at && invite.expires_at < now())) {
-    throw new HttpError(400, '邀请码无效、已过期或已用完');
+function findInvite(raw: string, time = now()) {
+  if (!get('SELECT 1 FROM users LIMIT 1')) {
+    const code = bootstrapInviteHash(raw);
+    if (code && get('SELECT 1 FROM bootstrap_admin_invite WHERE code_hash = $code AND expires_at > $time', { code, time })) {
+      return { code, role: 'admin' as const, note: '管理员初始化' };
+    }
+    throw new HttpError(400, '站点尚未初始化，需要管理员初始化邀请码');
   }
-  return { code, invite };
+
+  const code = normalizeInvite(raw);
+  const invite = get<{ note: string }>(
+    'SELECT note FROM invites WHERE code = $code AND used_count < max_uses AND (expires_at IS NULL OR expires_at > $time)',
+    { code, time },
+  );
+  if (!invite) throw new HttpError(400, '邀请码无效、已过期或已用完');
+  return { code, role: 'user' as const, note: invite.note };
 }
 
 export async function authRoutes(app: FastifyInstance) {
@@ -62,9 +70,9 @@ export async function authRoutes(app: FastifyInstance) {
 
   // 分步注册：先单独校验邀请码和用户名，最后一步再提交（提交时会重新校验）
   app.post('/auth/invite/check', strict, async (req) => {
-    const body = parse(z.object({ inviteCode: z.string().trim().min(1, '请输入邀请码') }), req.body);
-    const { invite } = findInvite(body.inviteCode);
-    return { ok: true, note: invite.note };
+    const body = parse(z.object({ inviteCode: inviteCodeSchema }), req.body);
+    const { note } = findInvite(body.inviteCode);
+    return { ok: true, note };
   });
 
   app.post('/auth/username/check', strict, async (req) => {
@@ -82,15 +90,23 @@ export async function authRoutes(app: FastifyInstance) {
       throw new HttpError(400, '验证码错误或已过期');
     }
     const body = parse(registerSchema, raw);
-    const { code } = findInvite(body.inviteCode);
+    findInvite(body.inviteCode);
     if (get('SELECT 1 FROM users WHERE username = $u', { u: body.username })) {
       throw new HttpError(409, '用户名已被占用');
     }
     const passwordHash = await hashPassword(body.password);
 
     const userId = tx(() => {
-      // 第一个注册的人自动成为管理员
-      const isFirst = !get('SELECT 1 FROM users LIMIT 1');
+      const t = now();
+      const { code, role } = findInvite(body.inviteCode, t);
+      const used = role === 'admin'
+        ? run('DELETE FROM bootstrap_admin_invite WHERE code_hash = $code AND expires_at > $t', { code, t })
+        : run(
+            `UPDATE invites SET used_count = used_count + 1
+             WHERE code = $code AND used_count < max_uses AND (expires_at IS NULL OR expires_at > $t)`,
+            { code, t },
+          );
+      if (!used.changes) throw new HttpError(400, '邀请码无效、已过期或已用完');
       const { lastId } = run(
         `INSERT INTO users (username, password_hash, display_name, class_name, role, created_at, terms_version, terms_accepted_at)
          VALUES ($u, $h, $d, $c, $role, $t, $tv, $t)`,
@@ -99,16 +115,11 @@ export async function authRoutes(app: FastifyInstance) {
           h: passwordHash,
           d: body.displayName,
           c: body.className,
-          role: isFirst ? 'admin' : 'user',
-          t: now(),
+          role,
+          t,
           tv: TERMS_VERSION,
         },
       );
-      const used = run(
-        'UPDATE invites SET used_count = used_count + 1 WHERE code = $code AND used_count < max_uses',
-        { code },
-      );
-      if (!used.changes) throw new HttpError(400, '邀请码无效或已用完');
       // 默认加入所有初始的吧
       run(
         `INSERT INTO board_members (board_id, user_id, created_at)

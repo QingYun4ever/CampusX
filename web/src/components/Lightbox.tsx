@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Pointer
 import { ChevronLeft, ChevronRight, Download, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { AndroidShell, isAndroid } from '../lib/android';
 import { useEscape } from '../lib/escape';
+import { useMediaResource } from './MediaImage';
 import { toast } from './ui';
 import './lightbox.css';
 
@@ -29,8 +30,8 @@ export function Lightbox({ images, previews, index: start, origin, onDone }: Lig
   const [view, setView] = useState<View>(ONE);
   const [drag, setDrag] = useState({ dx: 0, dy: 0 });
   const [smooth, setSmooth] = useState(false);
-  /** 原图加载好了的页 */
-  const [full, setFull] = useState<Record<number, boolean>>({});
+  const [decoded, setDecoded] = useState<string>();
+  const [broken, setBroken] = useState<string>();
   /** 每页图片的尺寸（先来自缩略图，原图加载后更新），用来算显示大小，换图时不跳 */
   const [dims, setDims] = useState<Record<number, { w: number; h: number; real: boolean }>>({});
   const [box, setBox] = useState({ w: 0, h: 0 });
@@ -55,9 +56,14 @@ export function Lightbox({ images, previews, index: start, origin, onDone }: Lig
   const lastTap = useRef({ t: 0, x: 0, y: 0 });
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const many = images.length > 1;
-  const src = images[index];
-  const preview = previews?.[index];
-  const shown = full[index] || !preview ? src : preview;
+  const source = images[index];
+  const thumbnail = previews?.[index];
+  const media = useMediaResource(source);
+  const { url: src } = media;
+  const { url: preview } = useMediaResource(thumbnail !== source ? thumbnail : undefined);
+  const full = !!src && decoded === src;
+  const failed = media.failed || (!!src && broken === src);
+  const shown = failed ? undefined : full || !preview || broken === preview ? src : preview;
 
   // 舞台可用的大小（去掉内边距）
   useLayoutEffect(() => {
@@ -68,19 +74,17 @@ export function Lightbox({ images, previews, index: start, origin, onDone }: Lig
     return () => ro.disconnect();
   }, []);
 
-  // 加载原图；缩略图先顶上
+  // 有缩略图时先显示它，原图解码成功后再替换。
   useEffect(() => {
-    if (full[index]) return;
+    if (!src || !preview || shown !== preview) return;
     const el = new Image();
-    el.onload = () => {
-      setFull((m) => ({ ...m, [index]: true }));
-      setDims((m) => ({ ...m, [index]: { w: el.naturalWidth, h: el.naturalHeight, real: true } }));
-    };
+    el.onload = () => setDecoded(src);
+    el.onerror = () => setBroken(src);
     el.src = src;
     return () => {
-      el.onload = null;
+      el.onload = el.onerror = null;
     };
-  }, [index, src, full]);
+  }, [src, preview, shown]);
 
   /** 图片显示尺寸：装进舞台，原图比舞台小时不放大（缩略图比原图小，所以可以放大到舞台大小） */
   const d = dims[index];
@@ -104,6 +108,7 @@ export function Lightbox({ images, previews, index: start, origin, onDone }: Lig
   const onLoad = () => {
     const el = img.current;
     if (!el) return;
+    if (shown === src) setDecoded(src);
     // 缩略图长边不到 1280，说明服务器给的就是原图
     const small = Math.max(el.naturalWidth, el.naturalHeight) < 1280;
     setDims((m) => (m[index]?.real ? m : { ...m, [index]: { w: el.naturalWidth, h: el.naturalHeight, real: shown === src || small } }));
@@ -120,14 +125,15 @@ export function Lightbox({ images, previews, index: start, origin, onDone }: Lig
 
   // 换页时新图从滑动方向进来
   useLayoutEffect(() => {
+    if (!img.current) return;
     const dir = slideFrom.current;
     slideFrom.current = 0;
-    if (!dir || reduce || !img.current) return;
+    if (!dir || reduce) return;
     img.current.animate([{ transform: `translateX(${dir * 70}px)`, opacity: 0.2 }, { transform: 'none', opacity: 1 }], {
       duration: 240,
       easing: 'cubic-bezier(.2,.9,.25,1)',
     });
-  }, [index, reduce]);
+  }, [index, reduce, shown]);
 
   const close = useCallback(() => {
     if (closing.current) return;
@@ -334,13 +340,13 @@ export function Lightbox({ images, previews, index: start, origin, onDone }: Lig
   };
 
   const save = async () => {
-    if (saving) return;
+    if (saving || !src || (media.protected && !full)) return;
     setSaving(true);
     try {
-      await saveImage(src);
-      toast(isAndroid ? '已保存到相册' : '已开始下载');
+      await saveImage(src, media.protected ? media.session : undefined);
+      if (!media.session.aborted) toast(isAndroid ? '已保存到相册' : '已开始下载');
     } catch (e) {
-      toast((e as Error).message || '保存失败', 'error');
+      if (!media.session.aborted) toast((e as Error).message || '保存失败', 'error');
     } finally {
       setSaving(false);
     }
@@ -358,18 +364,22 @@ export function Lightbox({ images, previews, index: start, origin, onDone }: Lig
         onPointerUp={up}
         onPointerCancel={up}
       >
-        <img
-          key={index}
-          ref={img}
-          src={shown}
-          alt={many ? `第 ${index + 1} 张，共 ${images.length} 张` : ''}
-          draggable={false}
-          onLoad={onLoad}
-          className={smooth ? 'smooth' : ''}
-          style={{ ...size, transform: `translate(${view.x + drag.dx}px, ${view.y + drag.dy}px) scale(${view.s})` }}
-        />
-        {!d && <span className="lightbox-spin" aria-label="加载中" />}
-        {d && !full[index] && <span className="lightbox-loading" aria-label="正在加载原图" />}
+        {shown && (
+          <img
+            key={index}
+            ref={img}
+            src={shown}
+            alt={many ? `第 ${index + 1} 张，共 ${images.length} 张` : ''}
+            draggable={false}
+            onLoad={onLoad}
+            onError={() => setBroken(shown)}
+            className={smooth ? 'smooth' : ''}
+            style={{ ...size, transform: `translate(${view.x + drag.dx}px, ${view.y + drag.dy}px) scale(${view.s})` }}
+          />
+        )}
+        {failed && <span role="status">图片不可用</span>}
+        {!failed && (!shown || !d) && <span className="lightbox-spin" aria-label="加载中" />}
+        {!failed && shown && d && !full && <span className="lightbox-loading" aria-label="正在加载原图" />}
       </div>
 
       <div className="lightbox-bar">
@@ -388,7 +398,13 @@ export function Lightbox({ images, previews, index: start, origin, onDone }: Lig
           <button className="lightbox-btn desk" aria-label="放大" onClick={() => zoomBy(1.5)} disabled={view.s >= MAX_ZOOM}>
             <ZoomIn size={20} />
           </button>
-          <button className="lightbox-btn" aria-label="保存图片" title="保存图片" onClick={save} disabled={saving}>
+          <button
+            className="lightbox-btn"
+            aria-label="保存图片"
+            title="保存图片"
+            onClick={save}
+            disabled={saving || !src || (media.protected && !full)}
+          >
             <Download size={19} />
           </button>
         </span>
@@ -425,19 +441,23 @@ function blobToBase64(blob: Blob) {
 }
 
 /** 保存原图：App 里存进相册，网页上直接下载 */
-async function saveImage(src: string) {
+async function saveImage(src: string, signal?: AbortSignal) {
   const name = `campusx-${Date.now()}`;
   if (isAndroid) {
     try {
       if (src.startsWith('blob:') || src.startsWith('data:')) {
-        const blob = await (await fetch(src)).blob();
-        await AndroidShell.saveImage({ data: await blobToBase64(blob), mime: blob.type });
+        const res = await fetch(src, { signal });
+        if (!res.ok) throw new Error('图片不可用');
+        const blob = await res.blob();
+        const data = await blobToBase64(blob);
+        if (signal?.aborted) throw new Error('图片不可用');
+        await AndroidShell.saveImage({ data, mime: blob.type });
       } else {
         await AndroidShell.saveImage({ url: new URL(src, location.href).href });
       }
     } catch (e) {
       // 老版本 App 没有这个方法：用浏览器打开，长按保存
-      if ((e as { code?: string }).code === 'UNIMPLEMENTED' && !src.startsWith('blob:')) {
+      if (!signal && !src.startsWith('blob:') && e && typeof e === 'object' && 'code' in e && e.code === 'UNIMPLEMENTED') {
         await AndroidShell.openBrowser({ url: src });
         return;
       }
@@ -445,23 +465,27 @@ async function saveImage(src: string) {
     }
     return;
   }
-  let href = src;
-  let revoke = false;
   try {
-    const res = await fetch(src);
+    const res = await fetch(src, { signal });
     if (!res.ok) throw new Error();
     const blob = await res.blob();
-    href = URL.createObjectURL(blob);
-    revoke = true;
+    if (signal?.aborted) throw new Error('图片不可用');
+    const href = URL.createObjectURL(blob);
+    const timer = window.setTimeout(revoke, 10_000);
+    function revoke() {
+      window.clearTimeout(timer);
+      signal?.removeEventListener('abort', revoke);
+      URL.revokeObjectURL(href);
+    }
+    signal?.addEventListener('abort', revoke, { once: true });
     const ext = { 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[blob.type] ?? 'jpg';
     const a = Object.assign(document.createElement('a'), { href, download: `${name}.${ext}` });
     document.body.append(a);
     a.click();
     a.remove();
-  } catch {
-    // 跨域拿不到：新标签页打开原图
+  } catch (err) {
+    if (signal) throw err;
+    // 外站跨域拿不到时，仍在新标签页打开原图。
     window.open(src, '_blank', 'noopener');
-  } finally {
-    if (revoke) setTimeout(() => URL.revokeObjectURL(href), 10_000);
   }
 }

@@ -2,12 +2,13 @@ import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type M
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart2, Bookmark, ChevronDown, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Quote, Repeat2, SmilePlus, Trash2 } from 'lucide-react';
-import { api, media, thumb, QUICK_REACTIONS, REACTIONS, WEB_ORIGIN, type Post, type Reaction, type User } from '../lib/api';
+import { api, thumb, QUICK_REACTIONS, REACTIONS, WEB_ORIGIN, type Post, type Reaction, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
 import { markViewed, useViewTracking } from '../lib/views';
 import { useCompose } from './compose';
 import { ContentLink } from './ContentLink';
+import { MediaImage } from './MediaImage';
 import { QuoteCard } from './QuoteCard';
 import { Avatar, Emoji, emojiUrl, Empty, Modal, openGallery, Rolling, Spinner, toast, toneFor, usePopover, Verified } from './ui';
 
@@ -68,7 +69,7 @@ export function MediaGrid({ images }: { images: string[] }) {
   return (
     <div ref={grid} className={`media n${shown.length}`}>
       {shown.map((src, i) => (
-        <img
+        <MediaImage
           key={src}
           src={thumb(src)}
           alt=""
@@ -78,8 +79,8 @@ export function MediaGrid({ images }: { images: string[] }) {
           onClick={(e) => {
             e.stopPropagation();
             openGallery({
-              images: shown.map((x) => media(x)!),
-              previews: shown.map((x) => thumb(x)!),
+              images: shown,
+              previews: shown.map(thumb),
               index: i,
               origin: (k) => grid.current?.children[k] as HTMLElement | undefined,
             });

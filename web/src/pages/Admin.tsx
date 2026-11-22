@@ -20,8 +20,9 @@ import {
 import { ContentLink } from '../components/ContentLink';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Logo } from '../components/Logo';
+import { MediaImage } from '../components/MediaImage';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Spinner, Switch, toast, useModalClose, Verified } from '../components/ui';
-import { api, media, WEB_ORIGIN, type Invite, type User, type UserLite } from '../lib/api';
+import { api, WEB_ORIGIN, type Invite, type User, type UserLite } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
 
@@ -382,8 +383,8 @@ function LogItem({ log, onDecided }: { log: ModLog; onDecided: () => void }) {
         {log.post.images.length > 0 && (
           <div className="log-thumbs">
             {log.post.images.map((src) => (
-              <ContentLink key={src} href={media(src)} image>
-                <img src={media(src)} alt="" loading="lazy" />
+              <ContentLink key={src} href={src} image>
+                <MediaImage src={src} alt="查看审核附件" loading="lazy" />
               </ContentLink>
             ))}
           </div>

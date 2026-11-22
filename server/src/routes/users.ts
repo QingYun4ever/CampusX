@@ -2,13 +2,14 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { all, get, now, run, tx } from '../db.ts';
 import { hydrate, notify, postSelect, unnotify, visibleTo } from '../serialize.ts';
+import { consumeDraftUploads, siteUploadUrl } from '../site-uploads.ts';
 import { cursorNum, escapeLike, HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
 
 const PAGE = 20;
 const imagePath = z
   .string()
-  .regex(/^\/uploads\/[\w-]+\.(jpg|png|webp|gif)$/, '图片地址无效')
+  .regex(siteUploadUrl, '图片地址无效')
   .nullable();
 
 const profileSchema = z.object({
@@ -46,16 +47,26 @@ export async function userRoutes(app: FastifyInstance) {
       avatarDecoration: 'avatar_decoration',
       banner: 'banner',
     };
-    const sets: string[] = [];
-    const params: Record<string, unknown> = { id: user.id };
-    for (const [k, col] of Object.entries(map)) {
-      const v = body[k as keyof typeof body];
-      if (v !== undefined) {
+    tx(() => {
+      const previous = body.avatar !== undefined || body.banner !== undefined
+        ? get<{ avatar: string | null; banner: string | null }>('SELECT avatar, banner FROM users WHERE id = $id', { id: user.id })
+        : undefined;
+      const images: string[] = [];
+      const sets: string[] = [];
+      const params: Record<string, unknown> = { id: user.id };
+      for (const [k, col] of Object.entries(map)) {
+        const v = body[k as keyof typeof body];
+        if (v === undefined) continue;
+        if (k === 'avatar' || k === 'banner') {
+          if (v === previous?.[k]) continue; // 旧资料保留原地址，不视为重新附加
+          if (typeof v === 'string') images.push(v);
+        }
         sets.push(`${col} = $${k}`);
         params[k] = v;
       }
-    }
-    if (sets.length) run(`UPDATE users SET ${sets.join(', ')} WHERE id = $id`, params);
+      consumeDraftUploads(images, user.id);
+      if (sets.length) run(`UPDATE users SET ${sets.join(', ')} WHERE id = $id`, params);
+    });
     return userById(user.id);
   });
 

@@ -27,11 +27,17 @@ export const publicPost = (alias: string) => `(${alias}.status = 'ok' AND ${alia
     SELECT 1 FROM boards qb WHERE qb.id = ${alias}.board_id AND qb.visibility = 'public'
   )))`;
 
-/** 通知列表和未读数都要随着两端帖子当前的可见性更新。 */
-export const visibleQuoteNotification = `(n.type <> 'quote' OR EXISTS (
-  SELECT 1 FROM post_quotes nq JOIN posts np ON np.id = nq.post_id JOIN posts ns ON ns.id = nq.quoted_id
-  WHERE nq.post_id = n.post_id AND ${publicPost('np')} AND ${publicPost('ns')}
-))`;
+/** 通知列表、推送和未读数都以收件人当前的帖子权限为准。 */
+export const visibleNotification = `(
+  (n.post_id IS NULL OR EXISTS (
+    SELECT 1 FROM posts vp WHERE vp.id = n.post_id AND vp.deleted = 0
+      AND (vp.status = 'ok' OR (vp.status = 'pending' AND vp.author_id = $me)) AND ${visibleTo('vp.')}
+  ))
+  AND (n.type <> 'quote' OR EXISTS (
+    SELECT 1 FROM post_quotes nq JOIN posts np ON np.id = nq.post_id JOIN posts ns ON ns.id = nq.quoted_id
+    WHERE nq.post_id = n.post_id AND ${publicPost('np')} AND ${publicPost('ns')}
+  ))
+)`;
 
 /**
  * 帖子查询的公共 SELECT。$me 为当前用户 id，用于计算 liked / reposted。

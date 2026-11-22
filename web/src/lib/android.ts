@@ -19,6 +19,17 @@ export const AndroidShell = registerPlugin<{
     posts: boolean;
     interactions: boolean;
   }): Promise<void>;
-  /** 点了系统通知，要打开的站内路径 */
-  addListener(event: 'openPath', fn: (e: { path: string }) => void): Promise<PluginListenerHandle>;
+  /** The native notification activity has recorded a pending, login-scoped destination. */
+  addListener(event: 'notificationOpened', fn: () => void): Promise<PluginListenerHandle>;
+  takeNotificationPath(options: { apiBase: string; token: string }): Promise<{ path?: string }>;
 }>('AndroidShell');
+
+export interface UpdateInfo {
+  current: string;
+  latest: { version: string; notes: string; size: number };
+}
+
+export const AndroidUpdates = registerPlugin<{
+  checkUpdate(): Promise<{ update?: UpdateInfo }>;
+  installUpdate(options: { version: string }): Promise<{ installed: boolean }>;
+}>('AndroidUpdates');

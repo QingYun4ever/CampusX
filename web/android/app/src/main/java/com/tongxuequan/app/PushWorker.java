@@ -3,7 +3,6 @@ package com.tongxuequan.app;
 import android.Manifest;
 import android.app.PendingIntent;
 import android.content.Context;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -115,7 +114,7 @@ public class PushWorker extends Worker {
             if (code < 200 || code >= 300) return Result.success();
             JSONObject d = new JSONObject(read(conn.getInputStream()));
             // 防止两个账号的数据串：取的时候用的 token 已经换掉了就丢弃
-            if (!token.equals(p.getString("token", null))) return Result.success();
+            if (!token.equals(p.getString("token", null)) || !base.equals(p.getString("apiBase", null))) return Result.success();
             p.edit().putLong("since", d.getLong("now")).apply();
             if (MainActivity.foreground) return Result.success();
             if (Build.VERSION.SDK_INT >= 33
@@ -126,20 +125,11 @@ public class PushWorker extends Worker {
             if (items == null) return Result.success();
             createChannels(ctx);
             NotificationManagerCompat nm = NotificationManagerCompat.from(ctx);
+            String scope = NotificationOpenActivity.scope(base, token);
             for (int i = 0; i < items.length(); i++) {
                 JSONObject it = items.getJSONObject(i);
                 String id = it.getString("id");
-                String path = it.optString("path", "/");
-                Intent open = new Intent(ctx, MainActivity.class)
-                    .setAction(Intent.ACTION_VIEW)
-                    .putExtra(MainActivity.EXTRA_PATH, path)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                PendingIntent pi = PendingIntent.getActivity(
-                    ctx,
-                    id.hashCode(),
-                    open,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-                );
+                PendingIntent pi = NotificationOpenActivity.pendingIntent(ctx, id, it.optString("path"), scope);
                 String body = it.optString("body", "");
                 NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, it.optString("kind", "interactions"))
                     .setSmallIcon(R.drawable.ic_stat_notify)

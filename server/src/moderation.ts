@@ -11,14 +11,16 @@
  *  - anthropic：Claude（官方 SDK），默认 claude-opus-5-5
  *  - openai：OpenAI 兼容的 /chat/completions 接口（通义千问、智谱、DeepSeek 等国内模型）
  */
-import fs from 'node:fs/promises';
-import path from 'node:path';
+import { setTimeout as wait } from 'node:timers/promises';
 import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod/v4';
-import { uploadsDir } from './config.ts';
+import { config } from './config.ts';
 import { all, get, now, run, tx } from './db.ts';
 import { publishEffects, unpublishEffects } from './serialize.ts';
+import { AttachmentError, checkStoredUploads, MAX_REVIEW_IMAGE_BYTES, readStoredUpload, siteUploadUrl, type UploadSnapshots } from './site-uploads.ts';
+import { ImageInputError, validateReviewImage } from './thumbs.ts';
+import { HttpError } from './util.ts';
 
 /* ---------------- 配置 ---------------- */
 
@@ -88,9 +90,6 @@ export function publicConfig() {
   };
 }
 
-/** 现在发帖是否需要先审核 */
-export const moderationOn = () => getConfig().enabled;
-
 /* ---------------- 调用模型 ---------------- */
 
 const CATEGORIES = ['none', 'sexual', 'violence', 'hate', 'harassment', 'privacy', 'illegal', 'spam', 'self_harm', 'other'] as const;
@@ -136,30 +135,35 @@ function systemPrompt(c: ModConfig) {
   return c.rules.trim() ? `${SYSTEM}\n\n管理员补充的社区规则：\n${c.rules.trim()}` : SYSTEM;
 }
 
-const MIME: Record<string, 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'> = {
-  jpg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-  gif: 'image/gif',
-};
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-
 interface Img {
-  mime: (typeof MIME)[string];
+  mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
   data: string;
 }
 
-async function loadImages(urls: string[]): Promise<Img[]> {
-  const out: Img[] = [];
-  for (const url of urls) {
-    const name = path.basename(url);
-    const mime = MIME[name.split('.').pop() ?? ''];
-    if (!mime) throw new Error(`不支持的图片格式：${name}`);
-    const buf = await fs.readFile(path.join(uploadsDir, name));
-    if (buf.length > MAX_IMAGE_BYTES) throw new Error(`图片超过 5MB，无法送审：${name}`);
-    out.push({ mime, data: buf.toString('base64') });
+const storedImagesSchema = z.array(z.string().regex(siteUploadUrl)).max(4);
+
+function storedImages(serialized: string) {
+  try {
+    return storedImagesSchema.parse(JSON.parse(serialized));
+  } catch {
+    throw new AttachmentError('帖子附件无效');
   }
-  return out;
+}
+
+interface PreparedImages {
+  images: Img[];
+  snapshots: UploadSnapshots;
+}
+
+async function loadImages(urls: string[], limit: number, sendToModel: boolean): Promise<PreparedImages> {
+  const images: Img[] = [];
+  const snapshots = new Map();
+  for (const url of new Set(urls)) {
+    const image = await validateReviewImage(() => readStoredUpload(url, limit));
+    snapshots.set(url, image.snapshot);
+    if (sendToModel) images.push({ mime: image.mime, data: image.buffer.toString('base64') });
+  }
+  return { images, snapshots };
 }
 
 function describe(text: string, imageCount: number, context: string) {
@@ -214,6 +218,13 @@ async function reviewAnthropic(c: ModConfig, text: string, images: Img[], contex
   return { ...res.parsed_output, inT, outT };
 }
 
+class ProviderInputError extends Error {}
+
+function isProviderInputError(error: unknown) {
+  return error instanceof ProviderInputError
+    || (error instanceof Anthropic.APIError && [400, 413, 422].includes(error.status ?? 0));
+}
+
 async function reviewOpenAI(c: ModConfig, text: string, images: Img[], context: string): Promise<Verdict & { inT: number; outT: number }> {
   if (!c.baseUrl) throw new Error('OpenAI 兼容接口需要填写接口地址');
   const body = {
@@ -247,7 +258,11 @@ async function reviewOpenAI(c: ModConfig, text: string, images: Img[], context: 
     usage?: { prompt_tokens?: number; completion_tokens?: number };
     error?: { message?: string };
   } | null;
-  if (!r.ok) throw new Error(`接口返回 ${r.status}：${j?.error?.message ?? '未知错误'}`);
+  if (!r.ok) {
+    const message = `接口返回 ${r.status}：${j?.error?.message ?? '未知错误'}`;
+    if ([400, 413, 422].includes(r.status)) throw new ProviderInputError(message);
+    throw new Error(message);
+  }
   const raw = j?.choices?.[0]?.message?.content ?? '';
   const m = raw.match(/\{[\s\S]*\}/);
   const parsed = Verdict.safeParse(m ? JSON.parse(m[0]) : null);
@@ -256,7 +271,11 @@ async function reviewOpenAI(c: ModConfig, text: string, images: Img[], context: 
 }
 
 export async function review(text: string, imageUrls: string[], context = '', c = getConfig()): Promise<ReviewResult> {
-  const images = c.reviewImages ? await loadImages(imageUrls) : [];
+  const { images } = await loadImages(imageUrls, c.reviewImages ? MAX_REVIEW_IMAGE_BYTES : config.maxUploadBytes, c.reviewImages);
+  return reviewWithImages(text, images, context, c);
+}
+
+async function reviewWithImages(text: string, images: Img[], context: string, c: ModConfig): Promise<ReviewResult> {
   const t0 = Date.now();
   const r = c.provider === 'openai' ? await reviewOpenAI(c, text, images, context) : await reviewAnthropic(c, text, images, context);
   return {
@@ -305,14 +324,19 @@ function log(postId: number | null, c: ModConfig, verdict: string, extra: Partia
 }
 
 /** 改变帖子的审核状态，并处理通知、回复数等副作用 */
-export function setStatus(postId: number, status: 'ok' | 'rejected') {
-  tx(() => {
-    const p = get<{ status: string; deleted: number }>('SELECT status, deleted FROM posts WHERE id = $id', { id: postId });
-    if (!p || p.status === status) return;
-    run('UPDATE posts SET status = $s WHERE id = $id', { s: status, id: postId });
-    if (p.deleted) return;
-    if (status === 'ok') publishEffects(postId);
-    else if (p.status === 'ok') unpublishEffects(postId);
+function setStatus(postId: number, status: 'ok' | 'rejected', limit: number, pendingOnly = false, snapshots?: UploadSnapshots) {
+  return tx(() => {
+    const p = get<{ status: string; deleted: number; images: string }>(
+      'SELECT status, deleted, images FROM posts WHERE id = $id', { id: postId },
+    );
+    if (!p || p.deleted || (pendingOnly && p.status !== 'pending')) return false;
+    if (status === 'ok') checkStoredUploads(storedImages(p.images), limit, snapshots);
+    if (p.status !== status) {
+      run('UPDATE posts SET status = $s WHERE id = $id', { s: status, id: postId });
+      if (status === 'ok') publishEffects(postId);
+      else if (p.status === 'ok') unpublishEffects(postId);
+    }
+    return true;
   });
 }
 
@@ -326,16 +350,22 @@ export function reviewContext(board: string | null, parentText: string | null) {
     .join('\n');
 }
 
-/** 发帖时的同步审核：限时，超时或出错返回 null，交给后台队列 */
-export async function screen(text: string, images: string[], context: string, budgetMs = 25_000): Promise<ReviewResult | null> {
-  const c = getConfig();
+/** 发帖时的同步审核；上游超时或出错时将已校验的附件交给后台队列。 */
+export async function screen(text: string, urls: string[], context: string, c: ModConfig) {
+  // 本地输入校验失败不是上游错误，不能被超时或 failPolicy 吞掉。
+  const { images, snapshots } = await loadImages(urls, c.reviewImages ? MAX_REVIEW_IMAGE_BYTES : config.maxUploadBytes, c.reviewImages);
+  const deadline = new AbortController();
   try {
-    return await Promise.race([
-      review(text, images, context, c),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
+    const verdict = await Promise.race([
+      reviewWithImages(text, images, context, c),
+      wait(25_000, null, { signal: deadline.signal }),
     ]);
-  } catch {
-    return null;
+    return { verdict, snapshots };
+  } catch (error) {
+    if (images.length && isProviderInputError(error)) throw new AttachmentError('审核服务不接受这些图片，请更换图片后重试');
+    return { verdict: null, snapshots };
+  } finally {
+    deadline.abort();
   }
 }
 
@@ -386,8 +416,6 @@ function pump() {
   }
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 async function handle(postId: number) {
   const post = get<{ content: string; images: string; status: string; deleted: number; parent_id: number | null; board: string | null }>(
     `SELECT p.content, p.images, p.status, p.deleted, p.parent_id, b.name AS board
@@ -396,41 +424,63 @@ async function handle(postId: number) {
   );
   if (!post || post.status !== 'pending' || post.deleted) return;
   const c = getConfig();
-  if (!c.enabled) return; // 审核被关掉了：留给管理员处理
+  const limit = c.reviewImages ? MAX_REVIEW_IMAGE_BYTES : config.maxUploadBytes;
 
   const parentText = post.parent_id
     ? (get<{ content: string }>('SELECT content FROM posts WHERE id = $id', { id: post.parent_id })?.content ?? '')
     : null;
   const context = reviewContext(post.board, parentText);
 
+  let prepared: PreparedImages | undefined;
+  let verdict: ReviewResult | undefined;
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const r = await review(post.content, JSON.parse(post.images), context, c);
-      log(postId, c, r.verdict, r);
-      setStatus(postId, r.verdict === 'pass' ? 'ok' : 'rejected');
-      if (r.verdict === 'block') warnAuthor(postId, r.reason);
-      return;
-    } catch (e) {
-      lastErr = e;
-      if (attempt < 2) await sleep(2000 * 4 ** attempt);
+  try {
+    const urls = storedImages(post.images);
+    checkStoredUploads(urls, limit);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        prepared ??= await loadImages(urls, limit, c.enabled && c.reviewImages);
+        if (!c.enabled) return; // 审核关停时，有效待审帖仍交管理员处理
+        verdict = await reviewWithImages(post.content, prepared.images, context, c);
+        break;
+      } catch (error) {
+        if (error instanceof AttachmentError || error instanceof ImageInputError) throw error;
+        lastErr = error;
+        if (isProviderInputError(error)) break;
+        if (attempt < 2) await wait(2000 * 4 ** attempt);
+      }
     }
+
+    if (verdict) {
+      if (!setStatus(postId, verdict.verdict === 'pass' ? 'ok' : 'rejected', limit, true, prepared?.snapshots)) return;
+      log(postId, c, verdict.verdict, verdict);
+      if (verdict.verdict === 'block') warnAuthor(postId, verdict.reason);
+      return;
+    }
+    if (prepared && !isProviderInputError(lastErr) && c.failPolicy === 'pass' && !setStatus(postId, 'ok', limit, true, prepared.snapshots)) return;
+    if (get(`SELECT 1 FROM posts WHERE id = $id AND deleted = 0 AND status IN ('pending', 'ok')`, { id: postId })) {
+      log(postId, c, 'error', { reason: describeError(lastErr).slice(0, 300) });
+    }
+  } catch (e) {
+    if (!(e instanceof AttachmentError || e instanceof ImageInputError)) throw e;
+    if (setStatus(postId, 'rejected', limit, true)) log(postId, c, 'error', { reason: e.message });
   }
-  log(postId, c, 'error', { reason: describeError(lastErr).slice(0, 300) });
-  if (c.failPolicy === 'pass') setStatus(postId, 'ok');
 }
 
 /** 管理员人工改判 */
-export function manualDecision(postId: number, action: 'approve' | 'reject', actorId: number, note = '') {
-  const before = get<{ status: string }>('SELECT status FROM posts WHERE id = $id', { id: postId })?.status;
-  setStatus(postId, action === 'approve' ? 'ok' : 'rejected');
-  if (action === 'reject' && before !== 'rejected') warnAuthor(postId, note || '管理员判定这条内容不适合发布');
-  log(postId, getConfig(), action === 'approve' ? 'manual_pass' : 'manual_block', { actorId, reason: note });
+export async function manualDecision(postId: number, action: 'approve' | 'reject', actorId: number, note = '') {
+  const before = get<{ status: string; images: string }>('SELECT status, images FROM posts WHERE id = $id AND deleted = 0', { id: postId });
+  if (!before) throw new HttpError(404, '帖子不存在');
+  const c = getConfig();
+  const limit = c.reviewImages ? MAX_REVIEW_IMAGE_BYTES : config.maxUploadBytes;
+  const prepared = action === 'approve' ? await loadImages(storedImages(before.images), limit, false) : undefined;
+  if (!setStatus(postId, action === 'approve' ? 'ok' : 'rejected', limit, false, prepared?.snapshots)) throw new HttpError(404, '帖子不存在');
+  if (action === 'reject' && before.status !== 'rejected') warnAuthor(postId, note || '管理员判定这条内容不适合发布');
+  log(postId, c, action === 'approve' ? 'manual_pass' : 'manual_block', { actorId, reason: note });
 }
 
 /** 服务启动时把上次没审完的帖子重新排队 */
 export function resumePending() {
-  if (!moderationOn()) return;
   for (const r of all<{ id: number }>("SELECT id FROM posts WHERE status = 'pending' AND deleted = 0 ORDER BY id")) {
     enqueue(r.id);
   }

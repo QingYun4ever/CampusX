@@ -4,7 +4,7 @@
 
 - **账号**：仅凭邀请码注册，注册时需同意[用户协议](web/src/pages/Terms.tsx)（`/terms`，协议更新后老用户下次打开会被请求重新确认）；「设置 → 账户安全」可选验证邮箱、开启验证器两步验证（含一次性恢复码）。邮箱不公开，不能用于找回密码
 - **时间线**：「全部 / 关注」两个 tab，发帖、回复（楼中楼）、点赞、普通转发、附评论的引用、@提及、最多 4 张图片
-- **图片**：时间线显示服务器生成的缩略图（长边 1280，WebP，按需生成并缓存在 `uploads/.thumbs`），点开再加载原图；单张按原比例显示，多张按 X 的方式拼版；查看时可以左右翻页、双指 / 滚轮 / 双击缩放、拖动，手机上下滑关闭，可保存原图（App 存到相册 Pictures/校墙）。发帖时可以旋转、按比例裁剪；大照片在上传前压缩到长边 2560，服务器对超过 1.5 MB 的图片再压一次。图片文件名随机且不会被覆盖，浏览器缓存一年
+- **图片**：时间线按需加载缩略图（长边 1280，WebP），点开再取原图。查看时可缩放、翻页、保存；App 保存到相册 Pictures/校墙。原图和缩略图都要求登录，帖子附件还要通过当前帖子权限检查，不进公共缓存。
 - **书签**：帖子下面的书签按钮，左栏「书签」页查看，只有自己能看到
 - **Markdown + LaTeX**：标题、列表、任务清单、表格、代码块、引用；`$行内公式$`、`$$块级公式$$`（KaTeX）。发帖框可以预览。不渲染原始 HTML，外链图片只显示成链接
 - **标签**：正文里的 `#话题` 自动成为标签，也可以在发帖框里单独加（最多 5 个）；`/t/标签` 是标签页，侧栏有热门标签
@@ -19,8 +19,8 @@
 - **私密吧**：吧主可逐个或按班级添加可见成员；吧主、吧务和站点管理员始终可见，私密吧的帖子不能转发或引用。吧主或站点管理员可删除吧，帖子和回复一并删除
 - **个人主页**：头像、背景图、简介、班级、届别、关注 / 粉丝；可设置头像光环 / 头像框，管理员昵称和 ID 有辉光
 - **通知**：点赞、回复、转发、引用、关注、@ 我、表情回应
-- **App 推送**：Android App 打开推送后，私信、关注的人发帖、回复 / @ / 关注会以系统通知提醒，可以分别关闭。没有接入厂商推送，App 在后台约每 15 分钟检查一次
-- **App 更新提示**：Android App 启动时检查 GitHub Releases 上的最新版，从加速镜像下载安装包（自动挑最快的线路，也可以手动换）
+- **App 推送**：Android 后台约每 15 分钟检查一次私信、关注的人发帖和互动。可分别关闭；私密吧的推送和未读数按收件人当前权限过滤。
+- **App 更新提示**：Android App 只从官方 GitHub Releases 检查和下载更新，不使用论坛后端或第三方镜像。实际安装包通过摘要、包名、版本和发布证书校验后，才交给 Android 安装器。
 - **更新日志**：`/changelog`，入口在左栏底部和设置页底部
 - **管理后台**（独立页面 `/admin`）：数据概览；审核模型配置、审核记录、人工通过 / 拦截；生成 / 删除邀请码；设置管理员、蓝标认证、重置密码；删除任何帖子
 - **界面**：类 X 布局，左侧栏可收起，个人主页 / 设置 / 管理后台都在左下角头像菜单里（手机端点底栏头像）；浅色 / 深色 / 跟随系统；背景可选预设渐变或自己调两种颜色和方向；强调色可选或自定义
@@ -51,9 +51,9 @@ npm install
 npm run dev          # 后端 :3000 + 前端 :5173
 ```
 
-第一次启动时后端日志会打印一个**初始邀请码**，打开 http://localhost:5173/register 用它注册，第一个账号自动成为管理员。之后在「管理」页面生成邀请码发到班级群（会复制带注册链接的邀请文案）。
+首次启动时，在与服务相同的 `DATA_DIR` 下运行 `npm run invite -w server -- --bootstrap`。将终端输出的管理员初始化邀请码粘贴到 http://localhost:5173/register。它有效 1 小时、只能用一次；重新生成会作废之前的码。首个管理员注册完成前，普通邀请码不能注册账号。不要把初始化码发到群里或写进日志。
 
-也可以用命令行生成：
+初始化后，在「管理」页面生成邀请码发到班级群（会复制带注册链接的邀请文案），也可用命令行生成：
 
 ```bash
 npm run invite -- --uses 50 --note "高三(2)班" --days 30
@@ -66,7 +66,7 @@ npm run invite -- --uses 50 --note "高三(2)班" --days 30
 - **Claude**：默认模型 `claude-opus-5-5`。密钥填在后台，或者设置环境变量 `ANTHROPIC_API_KEY`
 - **OpenAI 兼容接口**：填模型名、接口地址（到 `/v1` 为止）和密钥。审核图片需要支持视觉的模型
 - 发帖时同步审核，最多等 25 秒：通过就公开；不通过就拒绝发布，草稿留在输入框，作者收到警告通知。被拒的帖子存档在后台，管理员可以人工改判
-- 审核超时或接口出错时，帖子先只对作者可见，交给后台继续审核（重试 3 次）；仍然失败就按设置处理：「先不公开，等管理员处理」或「直接公开」
+- 审核超时或接口出错时，帖子先只对作者可见，交给后台继续审核（重试 3 次）；仍然失败就按设置处理：「先不公开，等管理员处理」或「直接公开」。无效附件不属于上游故障，不能通过此设置放行。
 - 每条帖子调用一次模型，会产生费用；图片越多越贵。后台记录里能看到每次用了多少 tokens
 
 ## 部署（一台云服务器即可）
@@ -116,10 +116,10 @@ server {
 **3. 注册管理员**
 
 ```bash
-docker compose logs app | grep 初始邀请码
+docker compose exec app npm run invite -w server -- --bootstrap
 ```
 
-打开 `https://你的域名/register`，用日志里的初始邀请码注册，第一个账号自动成为管理员。之后在管理后台生成邀请码发给同学，也可以用命令行：
+打开 `https://你的域名/register`，粘贴终端输出的管理员初始化邀请码。旧版本写到启动日志里的初始化码已停用。初始化后在管理后台生成普通邀请码，也可以用命令行：
 
 ```bash
 docker compose exec app node --disable-warning=ExperimentalWarning server/src/cli/invite.ts --uses 50 --note "高三(2)班" --days 30
@@ -182,6 +182,8 @@ npm run build        # 构建前端到 web/dist
 npm start            # 后端同时托管前端页面，监听 3000
 ```
 
+新站点使用与服务相同的 `DATA_DIR` 执行 `npm run invite -w server -- --bootstrap`，再到网页注册管理员。
+
 用上面的 Nginx 配置反代；直接运行 Node 时，可以设置 `HOST=127.0.0.1 TRUST_PROXY=1`，只接收本机反代请求。
 
 需要长期运行可以用 `pm2 start npm --name forum -- start` 或 systemd。备份用 `npm run backup`，并复制 `server/data/uploads/`。
@@ -196,15 +198,20 @@ npm start            # 后端同时托管前端页面，监听 3000
 | `CORS_ORIGINS` | 允许跨域的来源（逗号分隔），默认已包含 App 的 WebView 来源 |
 | `ANTHROPIC_API_KEY` | 可选，用 Claude 做 AI 审核时的密钥（也可以在后台填） |
 | `APP_PORT` | 只用于 docker-compose，app 映射到本机的端口，默认 `3000` |
-| `APP_RELEASE_REPO` | App 更新提示从哪个 GitHub 仓库找最新安装包，默认 `QingYun4ever/CampusX` |
-| `APP_DOWNLOAD_MIRRORS` | 安装包下载加速前缀（逗号分隔，按顺序作为线路 1、2、3），默认 `https://ghfast.top/,https://gh-proxy.com/,https://ghproxy.net/`；设为 `none` 只用 GitHub 直连 |
+| `UPLOAD_ACCOUNT_LIMIT_BYTES` | 单账号站点上传累计配额，默认 256 MiB |
+| `UPLOAD_SITE_LIMIT_BYTES` | 全站站点上传累计配额，默认 10 GiB，包含已有文件 |
+| `UPLOAD_ORPHAN_TTL_MS` | 未引用上传的清理等待时间，默认 24 小时 |
 | `SMTP_HOST` / `MAIL_FROM` | 可选；同时配置后才允许邮箱验证 |
 | `SMTP_PORT` / `SMTP_SECURE` | 默认 587，要求 STARTTLS；465 默认隐式 TLS，也可显式设置 `SMTP_SECURE=1` |
 | `SMTP_USER` / `SMTP_PASS` | SMTP 认证，要么同时设置，要么留空 |
 
 ### 图片与备份
 
-帖子、头像和背景图存在 `DATA_DIR/uploads/`，SQLite 只保留路径；这些图片直链不是访问控制。私信图片存在独立的 `DATA_DIR/dm-uploads/`，通过鉴权接口读取，不走公开图床。撤回后服务端不再提供图片；已下载的副本不能收回。
+帖子、头像和背景图存在 `DATA_DIR/uploads/`。只有上传者能访问尚未绑定的草稿图片；帖子附件按当前访问权限读取，不能拿别人上传的图片路径重新附加。私信图片仍走独立的参与者鉴权。用户已下载到设备的副本无法收回。
+
+升级时请同时更新 Web 和原生 App；旧 Android 版须先从[官方 GitHub Releases](https://github.com/QingYun4ever/CampusX/releases)手动安装新版。若反代或 CDN 曾缓存 `/uploads/`，升级时必须清除旧缓存并禁用该路径的缓存。
+
+每张图片按原图大小的两倍计入配额（最低 4 KiB），包含缩略图预留；历史图片计入全站配额。服务启动时及每小时清理超过保留时间且不再被帖子或资料引用的文件。图片备份无需包含 `uploads/.thumbs/`，缩略图可重新生成。
 
 `npm run backup` 为数据库制作快照，并在需要时生成同名 `.key` 和 `.dm-uploads`。恢复时先停服务，将它们还原为 `forum.db`、`account-security.key`（权限 `0600`）和 `dm-uploads/`；普通 `uploads/` 仍需另行备份。密钥和备份都应留在私有存储，密钥丢失后无法再用原验证器登录。
 
@@ -249,11 +256,15 @@ APK 输出到 `app/build/outputs/apk/release/app-release.apk`。不要提交密�
 
 ### 发布到 GitHub Releases
 
-签名密钥留在本地。安装并登录 GitHub CLI 后，可以直接发 APK：
+签名密钥留在本地。安装并登录 GitHub CLI 后，可直接上传正式签名包和同名摘要。附件名必须与版本对应：
 
 ```bash
-gh release create v0.9.1 web/android/app/build/outputs/apk/release/app-release.apk \
-  --target main --title '校墙 v0.9.1' --notes 'Android 签名安装包'
+version=0.12.1
+name="campusx-android-$version.apk"
+cp web/android/app/build/outputs/apk/release/app-release.apk "$name"
+sha256sum "$name" > "$name.sha256"
+gh release create "v$version" "$name" "$name.sha256" \
+  --target main --title "校墙 v$version" --notes 'Android 签名安装包'
 ```
 
 只有 Git SSH 权限时，先推送临时分支 `android-apk/vX.Y.Z`（只含签名包 `campusx-android-X.Y.Z.apk`）及注释第一行为 `SHA256: <安装包 SHA-256>` 的版本标签 `vX.Y.Z`；注释后面几行会成为 release 正文，App 的更新提示里会显示，建议写这一版的更新日志（每行一条，可以用 `- ` 开头）。再推送指向最新 `main` 的触发标签 `android-release/vX.Y.Z`。Actions 从 GitHub 读取 APK，核对摘要、现有发布证书、包名、版本和正式版清单后上传到 Releases，然后清理临时分支和触发标签。APK 不进入 `main`，不经过第三方网盘。

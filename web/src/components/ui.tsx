@@ -17,9 +17,10 @@ import {
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CircleAlert, X } from 'lucide-react';
-import { media, type AvatarDecoration } from '../lib/api';
+import { subscribeMediaSession, type AvatarDecoration } from '../lib/api';
 import { useEscape } from '../lib/escape';
 import { Lightbox, type LightboxRequest } from './Lightbox';
+import { useMediaResource } from './MediaImage';
 import { AvatarFrame, FRAMED } from './AvatarFrame';
 import { compact } from '../lib/format';
 import './identity.css';
@@ -55,13 +56,14 @@ export function Avatar({ src, name, size = 40, decoration }: {
   decoration?: AvatarDecoration;
 }) {
   // 更换头像时，新图片仍可正常加载。
-  const url = media(src);
+  const { url, ref } = useMediaResource(src, true);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   if (decoration && FRAMED.has(decoration)) {
     // 头像框：外层占位、画框，里面才是头像；大头像（主页、商场）才播放动画
     return (
       <span
         className={`avatar framed ${size >= 64 ? 'live' : ''} ${size < 32 ? 'tiny' : ''}`}
+        ref={ref}
         data-avatar-decoration={decoration}
         style={{ width: size, height: size }}
       >
@@ -80,6 +82,7 @@ export function Avatar({ src, name, size = 40, decoration }: {
     return (
       <img
         className="avatar"
+        ref={ref}
         data-avatar-decoration={decoration || undefined}
         src={url}
         alt=""
@@ -95,6 +98,7 @@ export function Avatar({ src, name, size = 40, decoration }: {
   return (
     <span
       className="avatar"
+      ref={ref}
       data-avatar-decoration={decoration || undefined}
       style={{ width: size, height: size, fontSize: size * 0.42, background: toneFor(name || '?') }}
       aria-hidden
@@ -438,13 +442,15 @@ export function Overlays() {
       setTimeout(() => setToasts((list) => list.map((t) => (t.id === id ? { ...t, leaving: true } : t))), 2600);
       setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), 2900);
     };
-    const onImg = (e: Event) => setImg((e as CustomEvent).detail);
+    const onImg = (e: Event) => setImg((e as CustomEvent<LightboxRequest>).detail);
     const onImgClose = (e: Event) =>
       setImg((current) => (current?.images.includes((e as CustomEvent<string>).detail) ? null : current));
+    const unsubscribe = subscribeMediaSession(() => setImg(null));
     window.addEventListener('app:toast', onToast);
     window.addEventListener('app:lightbox', onImg);
     window.addEventListener('app:lightbox-close', onImgClose);
     return () => {
+      unsubscribe();
       window.removeEventListener('app:toast', onToast);
       window.removeEventListener('app:lightbox', onImg);
       window.removeEventListener('app:lightbox-close', onImgClose);
@@ -460,7 +466,11 @@ export function Overlays() {
         ))}
       </div>
       {img && (
-        <Lightbox key={img.images.join('|') + img.index} {...img} onDone={() => setImg((current) => (current === img ? null : current))} />
+        <Lightbox
+          key={img.images.join('|') + img.index}
+          {...img}
+          onDone={() => setImg((current) => (current === img ? null : current))}
+        />
       )}
     </>
   );

@@ -477,7 +477,9 @@ export function Register() {
     try {
       switch (step) {
         case 'invite': {
-          if (f.inviteCode.replace('-', '').length < 8) return fail('inviteCode', '邀请码是 8 位');
+          if (!/^ADMIN-[0-9A-F]{32}$/i.test(f.inviteCode.trim()) && !/^[A-Z0-9]{4}-?[A-Z0-9]{4}$/i.test(f.inviteCode.trim())) {
+            return fail('inviteCode', '请输入 8 位邀请码或管理员初始化邀请码');
+          }
           const r = await api<{ note: string }>('/auth/invite/check', { body: { inviteCode: f.inviteCode } });
           setNote(r.note);
           return go('name');
@@ -562,9 +564,10 @@ export function Register() {
             variant="outlined"
             label="邀请码"
             value={f.inviteCode}
-            onChange={(v) => set('inviteCode')(formatCode(v))}
+            onChange={set('inviteCode')}
             error={fe('inviteCode')}
-            hint="格式像 ABCD-2345，不区分大小写"
+            hint="普通邀请码格式如 ABCD-2345；首次设置请粘贴管理员初始化邀请码"
+            maxLength={38}
             autoComplete="off"
             autoCapitalize="characters"
             spellCheck={false}

@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomInt, scrypt, timingSafeEqual } from 'node:crypto';
 import svgCaptcha from 'svg-captcha';
 import { config } from './config.ts';
-import { get, now, run } from './db.ts';
+import { get, now, run, tx } from './db.ts';
 
 /* ---------------- 密码 ---------------- */
 
@@ -127,6 +127,24 @@ export function normalizeInvite(code: string) {
 
 export function formatInvite(code: string) {
   return code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+}
+
+export function bootstrapInviteHash(code: string): string | null {
+  const normalized = code.trim().toUpperCase();
+  return /^ADMIN-[0-9A-F]{32}$/.test(normalized) ? sessionTokenHash(normalized) : null;
+}
+
+export function createBootstrapInvite() {
+  const code = `ADMIN-${randomBytes(16).toString('hex').toUpperCase()}`;
+  tx(() => {
+    if (get('SELECT 1 FROM users LIMIT 1')) throw new Error('已有账号，不能再生成管理员初始化邀请码');
+    run(
+      `INSERT INTO bootstrap_admin_invite (id, code_hash, expires_at) VALUES (1, $hash, $expires)
+       ON CONFLICT(id) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at`,
+      { hash: sessionTokenHash(code), expires: now() + 60 * 60_000 },
+    );
+  });
+  return code;
 }
 
 export function createInvite(opts: { createdBy?: number | null; maxUses?: number; note?: string; expiresDays?: number | null }) {

@@ -4,11 +4,11 @@ import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyError } from 'fastify';
-import { createInvite, formatInvite, type SessionUser, touchSeen, userFromToken } from './auth.ts';
-import { config, uploadsDir } from './config.ts';
-import { thumbFor } from './thumbs.ts';
+import { type SessionUser, touchSeen, userFromToken } from './auth.ts';
+import { config } from './config.ts';
 import { get, now } from './db.ts';
 import { resumePending } from './moderation.ts';
+import { registerSiteUploadRoutes, startSiteUploads } from './site-uploads.ts';
 import { appRoutes } from './routes/app.ts';
 import { authRoutes } from './routes/auth.ts';
 import { boardRoutes } from './routes/boards.ts';
@@ -42,6 +42,11 @@ app.addHook('onSend', async (req, reply) => {
   reply.header('X-Content-Type-Options', 'nosniff');
   reply.header('Referrer-Policy', 'same-origin');
   const pathname = req.url.split('?', 1)[0];
+  if (req.routeOptions.url?.startsWith('/uploads/') || pathname === '/uploads' || pathname.startsWith('/uploads/')) {
+    reply.header('Cache-Control', 'private, no-store');
+    const vary = reply.getHeader('Vary');
+    reply.header('Vary', vary ? `${vary}, Authorization` : 'Authorization');
+  }
   if (/^\/api\/(?:auth\/login(?:\/2fa)?|me\/(?:security|password|email(?:\/start|\/confirm)?|2fa(?:\/setup|\/confirm)?))$/.test(pathname)) {
     reply.header('Cache-Control', 'no-store');
   }
@@ -65,7 +70,6 @@ const PUBLIC_API = [
   '/api/auth/username/check',
   '/api/auth/logout',
   '/api/health',
-  '/api/app/latest',
 ];
 app.addHook('preHandler', async (req) => {
   const url = req.url.split('?')[0];
@@ -101,23 +105,8 @@ await app.register(
   { prefix: '/api' },
 );
 
-// 时间线缩略图：/uploads/s/<文件名>，没有可用的缩略图就跳回原图
-app.get('/uploads/s/:name', async (req, reply) => {
-  const { name } = req.params as { name: string };
-  const file = await thumbFor(name);
-  reply.header('Cache-Control', 'public, max-age=31536000, immutable');
-  if (!file) return reply.redirect(`/uploads/${encodeURIComponent(name)}`, 301);
-  return reply.type('image/webp').send(fs.createReadStream(file));
-});
-
-// 用户上传的图片
-await app.register(fastifyStatic, {
-  root: uploadsDir,
-  prefix: '/uploads/',
-  decorateReply: false,
-  maxAge: '365d',
-  immutable: true,
-});
+startSiteUploads();
+registerSiteUploadRoutes(app);
 
 // 生产环境：同时托管前端构建产物（SPA）
 const hasWeb = fs.existsSync(config.webDist);
@@ -144,13 +133,8 @@ app.setNotFoundHandler((req, reply) => {
   return reply.status(404).send({ error: '找不到该资源' });
 });
 
-// 首次启动没有任何用户：生成一个初始邀请码，第一个用它注册的人成为管理员
 if (!get('SELECT 1 FROM users LIMIT 1')) {
-  const existing = get<{ code: string }>(
-    `SELECT code FROM invites WHERE note = '初始管理员' AND used_count < max_uses LIMIT 1`,
-  );
-  const code = existing?.code ?? createInvite({ maxUses: 1, note: '初始管理员' });
-  app.log.warn(`\n\n  ★ 还没有任何用户。初始邀请码：${formatInvite(code)}\n  ★ 用它注册的第一个账号将成为管理员。\n`);
+  app.log.warn('站点尚未初始化。在服务端运行 npm run invite -w server -- --bootstrap 获取管理员初始化邀请码。');
 }
 
 await app.listen({ port: config.port, host: config.host });

@@ -1,25 +1,49 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
-import { AndroidShell, isAndroid } from '../lib/android';
+import { AndroidShell, AndroidUpdates, isAndroid, type UpdateInfo } from '../lib/android';
+import { API_BASE, getToken } from '../lib/api';
 import { syncPush } from '../lib/push';
-import { checkUpdate, fastestDownload, releaseNotes, remindLater, shouldPrompt, skipVersion, type UpdateInfo } from '../lib/update';
+import { checkUpdate, releaseNotes, remindLater, shouldPrompt, skipVersion } from '../lib/update';
 import { Modal, toast } from './ui';
 import './app-services.css';
 
 /** 只在 Android App 里工作：系统通知、点通知跳转、启动时检查更新 */
 export function AppServices() {
   const nav = useNavigate();
+  const navRef = useRef(nav);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
 
   useEffect(() => {
-    if (!isAndroid) return;
-    void syncPush();
-    const h = AndroidShell.addListener('openPath', ({ path }) => {
-      if (path.startsWith('/') && !path.startsWith('//')) nav(path);
-    }).catch(() => null);
-    return () => void h.then((x) => x?.remove());
+    navRef.current = nav;
+    if (isAndroid) void syncPush();
   }, [nav]);
+
+  useEffect(() => {
+    if (!isAndroid) return;
+    let active = true;
+    const open = () => {
+      const token = getToken();
+      const apiBase = API_BASE;
+      if (!active || !token) return;
+      void AndroidShell.takeNotificationPath({ apiBase, token })
+        .then(({ path }) => {
+          if (active && path && getToken() === token && API_BASE === apiBase) navRef.current(path);
+        })
+        .catch(() => {});
+    };
+    const h = AndroidShell.addListener('notificationOpened', open)
+      .then((listener) => {
+        // A notification can start the app before the signed-in WebView attaches.
+        open();
+        return listener;
+      })
+      .catch(() => null);
+    return () => {
+      active = false;
+      void h.then((x) => x?.remove());
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAndroid) return;
@@ -38,26 +62,21 @@ export function AppServices() {
 export function UpdateModal({ info, onClose, auto = false }: { info: UpdateInfo; onClose: () => void; auto?: boolean }) {
   const { latest, current } = info;
   const [busy, setBusy] = useState(false);
-  const [more, setMore] = useState(false);
   const notes = releaseNotes(latest.notes);
 
-  const open = async (url: string) => {
-    try {
-      await AndroidShell.openBrowser({ url });
-      toast('已在浏览器里开始下载，下载完点开安装即可');
-    } catch (e) {
-      toast((e as Error).message, 'error');
-    }
-  };
   const download = async () => {
     setBusy(true);
     try {
-      await open(await fastestDownload(latest.downloads));
+      const { installed } = await AndroidUpdates.installUpdate({ version: latest.version });
+      if (installed) onClose();
+    } catch (e) {
+      toast((e as Error).message, 'error');
     } finally {
       setBusy(false);
     }
   };
   const later = () => {
+    if (busy) return;
     if (auto) remindLater();
     onClose();
   };
@@ -86,29 +105,16 @@ export function UpdateModal({ info, onClose, auto = false }: { info: UpdateInfo;
           </ul>
         )}
 
-        <p className="update-tip">新版直接覆盖安装，登录状态和数据都会保留。如果提示“未知来源”，允许浏览器安装应用即可。</p>
+        <p className="update-tip">从官方 GitHub 下载并校验安装包，不影响现有登录和数据。若系统提示，请在设置中允许安装未知应用。</p>
 
         <button className="btn btn-primary update-main" onClick={download} disabled={busy}>
-          {busy ? '正在找最快的线路…' : '下载更新'}
+          {busy ? '正在准备更新…' : '下载并验证更新'}
         </button>
-
-        {more ? (
-          <div className="update-lines">
-            {latest.downloads.map((d) => (
-              <button key={d.url} className="btn btn-outline" onClick={() => open(d.url)}>
-                {d.label}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <button className="btn btn-text update-more" onClick={() => setMore(true)}>
-            下载慢？换一条线路
-          </button>
-        )}
 
         <div className="update-foot">
           <button
             className="btn btn-text"
+            disabled={busy}
             onClick={() => {
               skipVersion(latest.version);
               onClose();
@@ -116,7 +122,7 @@ export function UpdateModal({ info, onClose, auto = false }: { info: UpdateInfo;
           >
             跳过这个版本
           </button>
-          <button className="btn btn-text" onClick={later}>
+          <button className="btn btn-text" onClick={later} disabled={busy}>
             以后再说
           </button>
         </div>
