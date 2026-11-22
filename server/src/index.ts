@@ -6,6 +6,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyError } from 'fastify';
 import { createInvite, formatInvite, type SessionUser, touchSeen, userFromToken } from './auth.ts';
 import { config, uploadsDir } from './config.ts';
+import { thumbFor } from './thumbs.ts';
 import { get, now } from './db.ts';
 import { resumePending } from './moderation.ts';
 import { appRoutes } from './routes/app.ts';
@@ -99,6 +100,15 @@ await app.register(
   },
   { prefix: '/api' },
 );
+
+// 时间线缩略图：/uploads/s/<文件名>，没有可用的缩略图就跳回原图
+app.get('/uploads/s/:name', async (req, reply) => {
+  const { name } = req.params as { name: string };
+  const file = await thumbFor(name);
+  reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+  if (!file) return reply.redirect(`/uploads/${encodeURIComponent(name)}`, 301);
+  return reply.type('image/webp').send(fs.createReadStream(file));
+});
 
 // 用户上传的图片
 await app.register(fastifyStatic, {

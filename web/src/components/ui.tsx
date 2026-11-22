@@ -20,6 +20,7 @@ import { ArrowLeft, CircleAlert, X } from 'lucide-react';
 import { media, type AvatarDecoration } from '../lib/api';
 import { useEscape } from '../lib/escape';
 import { Lightbox, type LightboxRequest } from './Lightbox';
+import { AvatarFrame, FRAMED } from './AvatarFrame';
 import { compact } from '../lib/format';
 import './identity.css';
 
@@ -56,6 +57,25 @@ export function Avatar({ src, name, size = 40, decoration }: {
   // 更换头像时，新图片仍可正常加载。
   const url = media(src);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  if (decoration && FRAMED.has(decoration)) {
+    // 头像框：外层占位、画框，里面才是头像；大头像（主页、商场）才播放动画
+    return (
+      <span
+        className={`avatar framed ${size >= 64 ? 'live' : ''} ${size < 32 ? 'tiny' : ''}`}
+        data-avatar-decoration={decoration}
+        style={{ width: size, height: size }}
+      >
+        {url && url !== failedUrl ? (
+          <img className="avatar-face" src={url} alt="" loading="lazy" decoding="async" onError={() => setFailedUrl(url)} />
+        ) : (
+          <span className="avatar-face" style={{ fontSize: size * 0.42, background: toneFor(name || '?') }} aria-hidden>
+            {[...(name || '?')][0]}
+          </span>
+        )}
+        <AvatarFrame kind={decoration} />
+      </span>
+    );
+  }
   if (url && url !== failedUrl) {
     return (
       <img

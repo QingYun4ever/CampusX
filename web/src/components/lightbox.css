@@ -148,6 +148,40 @@
   background: #fff;
 }
 
+/* 原图还在加载：顶部一条细细的进度条 */
+.lightbox-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.lightbox-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+  animation: lightbox-loading 1.1s ease-in-out infinite;
+}
+@keyframes lightbox-loading {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+/* 大屏：四周留白，箭头放在图片外面，不会一打开就铺满整个屏幕 */
+@media (hover: hover) and (min-width: 700px) {
+  .lightbox-stage {
+    padding: 64px 88px 48px;
+  }
+}
+
 /* 触屏：手势翻页和缩放，不显示箭头和缩放按钮 */
 @media (hover: none) {
   .lightbox-nav,

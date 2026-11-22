@@ -21,13 +21,29 @@ import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.media.MediaScannerConnection;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Base64;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 @CapacitorPlugin(
     name = "AndroidShell",
-    permissions = { @Permission(strings = { Manifest.permission.POST_NOTIFICATIONS }, alias = "notifications") }
+    permissions = {
+        @Permission(strings = { Manifest.permission.POST_NOTIFICATIONS }, alias = "notifications"),
+        // 只有 Android 9 及以下保存图片到相册需要
+        @Permission(strings = { Manifest.permission.WRITE_EXTERNAL_STORAGE }, alias = "storage"),
+    }
 )
 public class AndroidShellPlugin extends Plugin {
     @PluginMethod
@@ -100,6 +116,105 @@ public class AndroidShellPlugin extends Plugin {
             call.resolve();
         } catch (IOException e) {
             call.reject("保存失败");
+        }
+    }
+
+    /* ---------------- 保存图片到相册 ---------------- */
+
+    private static final int MAX_IMAGE_BYTES = 40 * 1024 * 1024;
+
+    /** url：http(s) 图片地址，由原生下载；data：base64（私信图片这类只在页面里有的 blob） */
+    @PluginMethod
+    public void saveImage(PluginCall call) {
+        if (Build.VERSION.SDK_INT < 29 && getPermissionState("storage") != PermissionState.GRANTED) {
+            requestPermissionForAlias("storage", call, "storagePermissionResult");
+            return;
+        }
+        new Thread(() -> doSaveImage(call)).start();
+    }
+
+    @PermissionCallback
+    private void storagePermissionResult(PluginCall call) {
+        if (getPermissionState("storage") != PermissionState.GRANTED) {
+            call.reject("需要存储权限才能保存图片");
+            return;
+        }
+        new Thread(() -> doSaveImage(call)).start();
+    }
+
+    private void doSaveImage(PluginCall call) {
+        try {
+            byte[] bytes;
+            String mime = call.getString("mime");
+            String data = call.getString("data");
+            if (data != null) {
+                bytes = Base64.decode(data, Base64.DEFAULT);
+            } else {
+                String value = call.getString("url");
+                Uri uri = value == null ? Uri.EMPTY : Uri.parse(value);
+                if (!"https".equals(uri.getScheme()) && !"http".equals(uri.getScheme())) {
+                    call.reject("图片地址无效");
+                    return;
+                }
+                HttpURLConnection conn = (HttpURLConnection) new URL(value).openConnection();
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(30000);
+                conn.setInstanceFollowRedirects(true);
+                try {
+                    if (conn.getResponseCode() != 200) throw new IOException("HTTP " + conn.getResponseCode());
+                    if (mime == null) mime = conn.getContentType();
+                    try (InputStream in = conn.getInputStream(); ByteArrayOutputStream buf = new ByteArrayOutputStream()) {
+                        byte[] chunk = new byte[16384];
+                        int n;
+                        while ((n = in.read(chunk)) > 0) {
+                            buf.write(chunk, 0, n);
+                            if (buf.size() > MAX_IMAGE_BYTES) throw new IOException("too large");
+                        }
+                        bytes = buf.toByteArray();
+                    }
+                } finally {
+                    conn.disconnect();
+                }
+            }
+            if (mime == null || !mime.startsWith("image/")) mime = "image/jpeg";
+            mime = mime.split(";")[0].trim();
+            String ext = mime.equals("image/png") ? "png" : mime.equals("image/webp") ? "webp" : mime.equals("image/gif") ? "gif" : "jpg";
+            String name = "campusx_" + System.currentTimeMillis() + "." + ext;
+            writeToGallery(bytes, name, mime);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("保存失败，请检查网络后再试");
+        }
+    }
+
+    private void writeToGallery(byte[] bytes, String name, String mime) throws IOException {
+        if (Build.VERSION.SDK_INT >= 29) {
+            ContentResolver resolver = getContext().getContentResolver();
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Images.Media.DISPLAY_NAME, name);
+            values.put(MediaStore.Images.Media.MIME_TYPE, mime);
+            values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/校墙");
+            values.put(MediaStore.Images.Media.IS_PENDING, 1);
+            Uri item = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (item == null) throw new IOException("insert failed");
+            try (OutputStream out = resolver.openOutputStream(item)) {
+                if (out == null) throw new IOException("no stream");
+                out.write(bytes);
+            } catch (IOException e) {
+                resolver.delete(item, null, null);
+                throw e;
+            }
+            values.clear();
+            values.put(MediaStore.Images.Media.IS_PENDING, 0);
+            resolver.update(item, values, null, null);
+        } else {
+            File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "校墙");
+            if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("mkdir failed");
+            File file = new File(dir, name);
+            try (FileOutputStream out = new FileOutputStream(file)) {
+                out.write(bytes);
+            }
+            MediaScannerConnection.scanFile(getContext(), new String[] { file.getAbsolutePath() }, new String[] { mime }, null);
         }
     }
 

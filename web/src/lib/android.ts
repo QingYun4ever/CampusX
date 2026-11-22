@@ -6,6 +6,8 @@ export const AndroidShell = registerPlugin<{
   openBrowser(options: { url: string }): Promise<void>;
   setBackdrop(options: { color: string }): Promise<void>;
   saveText(options: { name: string; text: string }): Promise<void>;
+  /** 保存到相册「Pictures/校墙」：url 由原生下载，data 是 base64 */
+  saveImage(options: { url?: string; data?: string; mime?: string }): Promise<void>;
   checkNotifications(): Promise<{ granted: boolean; canAsk: boolean }>;
   requestNotifications(): Promise<{ granted: boolean; canAsk: boolean }>;
   openNotificationSettings(): Promise<void>;

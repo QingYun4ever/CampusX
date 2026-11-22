@@ -16,6 +16,30 @@
   --avatar-ring: #f91880;
   --avatar-glow: #f91880;
 }
+.avatar[data-avatar-decoration='prism'] {
+  --avatar-ring: transparent;
+  --avatar-glow: #a26bff;
+}
+.avatar[data-avatar-decoration='neon'] {
+  --avatar-ring: #22d3ee;
+  --avatar-glow: #e879f9;
+}
+.avatar[data-avatar-decoration='stars'] {
+  --avatar-ring: #f5c542;
+  --avatar-glow: #f5c542;
+}
+.avatar[data-avatar-decoration='sakura'] {
+  --avatar-ring: #ff8fb1;
+  --avatar-glow: #ff8fb1;
+}
+.avatar[data-avatar-decoration='neko'] {
+  --avatar-ring: #f4a259;
+  --avatar-glow: #f4a259;
+}
+.avatar[data-avatar-decoration='snow'] {
+  --avatar-ring: #9ad7ff;
+  --avatar-glow: #7cc4ff;
+}
 .avatar[data-avatar-decoration],
 .new-pill .stack .avatar[data-avatar-decoration],
 .face-stack .avatar[data-avatar-decoration] {
@@ -28,6 +52,201 @@
 }
 .profile-avatar:has(> .avatar[data-avatar-decoration]) {
   overflow: visible;
+}
+
+/* ---------- 头像框：外层占位并画框，头像在 .avatar-face 里 ---------- */
+.avatar.framed {
+  position: relative;
+  overflow: visible;
+  background: none;
+  isolation: isolate;
+}
+.avatar-face {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  color: #fff;
+  font-weight: 600;
+  background: var(--bg-3);
+}
+.avatar-frame {
+  position: absolute;
+  left: -20%;
+  top: -20%;
+  width: 140%;
+  height: 140%;
+  overflow: visible;
+  pointer-events: none;
+}
+.avatar-frame.back {
+  z-index: 0;
+}
+.avatar-frame.front {
+  z-index: 2;
+}
+/* 很小的头像（引用卡片、头像叠放）只留一圈颜色，图形看不清反而乱 */
+.avatar.framed.tiny .avatar-frame {
+  display: none;
+}
+
+/* 流光：彩色光带 + 柔光 */
+.avatar[data-avatar-decoration='prism']::before,
+.avatar[data-avatar-decoration='prism']::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: conic-gradient(#ff5f6d, #ffc371, #47e5bc, #1d9bf0, #a26bff, #ff5f6d);
+  pointer-events: none;
+}
+.avatar[data-avatar-decoration='prism']::before {
+  inset: -3px;
+  z-index: 2;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+}
+.avatar[data-avatar-decoration='prism']::after {
+  inset: -4px;
+  z-index: 0;
+  filter: blur(7px);
+  opacity: 0.6;
+}
+.avatar.framed.tiny[data-avatar-decoration='prism']::after {
+  display: none;
+}
+
+/* 霓虹：青色内环、品红外环 */
+.avatar[data-avatar-decoration='neon'] {
+  box-shadow: 0 0 0 2px #22d3ee, 0 0 0 4px color-mix(in srgb, var(--bg) 70%, transparent), 0 0 0 5.5px #e879f9 !important;
+}
+.avatar[data-avatar-decoration='neon']::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  z-index: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 14px 3px color-mix(in srgb, #e879f9 70%, transparent), inset 0 0 8px 1px color-mix(in srgb, #22d3ee 60%, transparent);
+  pointer-events: none;
+}
+.avatar.framed.tiny[data-avatar-decoration='neon'] {
+  box-shadow: 0 0 0 2px #22d3ee, 0 0 0 3.5px #e879f9 !important;
+}
+.avatar.framed.tiny[data-avatar-decoration='neon']::after {
+  display: none;
+}
+
+.avatar-frame g.twinkle,
+.avatar-frame g.spin,
+.avatar-frame g.ear {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.avatar-frame g.ear {
+  transform-origin: 50% 100%;
+}
+
+/* 动画只在大头像（个人主页、商场预览）上播放，时间线里保持安静 */
+@media (prefers-reduced-motion: no-preference) {
+  .avatar.framed.live[data-avatar-decoration='prism']::before,
+  .avatar.framed.live[data-avatar-decoration='prism']::after {
+    animation: frame-spin 6s linear infinite;
+  }
+  .avatar.framed.live[data-avatar-decoration='neon']::after {
+    animation: frame-breathe 2.6s ease-in-out infinite;
+  }
+  .avatar.framed.live .twinkle {
+    animation: frame-twinkle 2.4s ease-in-out infinite;
+  }
+  .avatar.framed.live .spin {
+    animation: frame-spin 14s linear infinite;
+  }
+  .avatar.framed.live .spin.rev {
+    animation-direction: reverse;
+    animation-duration: 18s;
+  }
+  .avatar.framed.live .petal-fall {
+    animation: frame-petal 5s ease-in infinite;
+  }
+  .avatar.framed.live .petal-fall.late {
+    animation-delay: 2.5s;
+  }
+  .avatar.framed.live .ear.right {
+    animation: frame-ear 5s ease-in-out infinite;
+  }
+  .avatar.framed.live .ear.left {
+    animation: frame-ear-l 7s ease-in-out 1.5s infinite;
+  }
+}
+@keyframes frame-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+@keyframes frame-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes frame-twinkle {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.45);
+    opacity: 0.35;
+  }
+}
+@keyframes frame-petal {
+  0% {
+    transform: translate(0, -6px) rotate(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-10px, 22px) rotate(-70deg);
+    opacity: 0;
+  }
+}
+@keyframes frame-ear {
+  0%,
+  86%,
+  100% {
+    transform: rotate(0);
+  }
+  89% {
+    transform: rotate(9deg);
+  }
+  92% {
+    transform: rotate(-3deg);
+  }
+  95% {
+    transform: rotate(6deg);
+  }
+}
+@keyframes frame-ear-l {
+  0%,
+  90%,
+  100% {
+    transform: rotate(0);
+  }
+  93% {
+    transform: rotate(-8deg);
+  }
+  96% {
+    transform: rotate(3deg);
+  }
 }
 
 .avatar-decoration-picker {

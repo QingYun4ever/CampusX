@@ -3,7 +3,7 @@
 /** 长边超过这个就缩小（X 的大图也是 2048 左右） */
 const MAX_EDGE = 2560;
 /** 小于这个大小、尺寸也不超的图片原样上传 */
-const KEEP_BYTES = 1.2 * 1024 * 1024;
+const KEEP_BYTES = 500 * 1024;
 
 let webpOk: boolean | undefined;
 function canWebp() {
@@ -18,7 +18,7 @@ function canWebp() {
 /** 画布导出成文件：优先 WebP（体积小、保留透明），老系统退回 JPEG / PNG */
 export async function canvasToFile(canvas: HTMLCanvasElement, name: string, opaque = false): Promise<File> {
   const type = canWebp() ? 'image/webp' : opaque ? 'image/jpeg' : 'image/png';
-  const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, type, 0.88));
+  const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, type, 0.85));
   if (!blob) throw new Error('图片处理失败');
   const ext = blob.type.split('/')[1].replace('jpeg', 'jpg');
   return new File([blob], `${name}.${ext}`, { type: blob.type });

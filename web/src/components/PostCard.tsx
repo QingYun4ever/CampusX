@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type M
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart2, Bookmark, ChevronDown, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Quote, Repeat2, SmilePlus, Trash2 } from 'lucide-react';
-import { api, media, QUICK_REACTIONS, REACTIONS, WEB_ORIGIN, type Post, type Reaction, type User } from '../lib/api';
+import { api, media, thumb, QUICK_REACTIONS, REACTIONS, WEB_ORIGIN, type Post, type Reaction, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
 import { markViewed, useViewTracking } from '../lib/views';
@@ -70,7 +70,7 @@ export function MediaGrid({ images }: { images: string[] }) {
       {shown.map((src, i) => (
         <img
           key={src}
-          src={media(src)}
+          src={thumb(src)}
           alt=""
           loading="lazy"
           decoding="async"
@@ -79,6 +79,7 @@ export function MediaGrid({ images }: { images: string[] }) {
             e.stopPropagation();
             openGallery({
               images: shown.map((x) => media(x)!),
+              previews: shown.map((x) => thumb(x)!),
               index: i,
               origin: (k) => grid.current?.children[k] as HTMLElement | undefined,
             });
@@ -475,45 +476,48 @@ function ActionBar({ post: item, big, rx }: { post: Post; big?: boolean; rx: Rx 
           )}
         </div>
       )}
-      <div className="actions">
+      {/* 时间线上只留回复、喜欢、浏览，书签和复制链接靠右；转发 / 引用和回应在帖子详情里 */}
+      <div className={`actions ${big ? '' : 'compact'}`}>
         <button className="act reply" onClick={stop(() => compose({ replyTo: post }))} aria-label="回复">
           <span className="ico">
             <MessageCircle size={size} />
           </span>
           {!big && <Rolling value={post.replyCount} />}
         </button>
-        <div className="popover-anchor" ref={repostMenu.ref} onClick={(e) => e.stopPropagation()}>
-          <button
-            className={`act repost ${a.reposted ? 'on' : ''}`}
-            onClick={() => repostMenu.setOpen((open) => !open)}
-            aria-label="转发与引用"
-            aria-expanded={repostMenu.open}
-            title="转发与引用"
-          >
-            <span className="ico">
-              <Repeat2 size={size} key={a.fx?.kind === 'repost' ? a.fx.key : 0} className={a.fx?.kind === 'repost' ? 'spin-once' : ''} />
-            </span>
-            {!big && <Rolling value={a.reposts} />}
-          </button>
-          {repostMenu.open && (
-            <div className="menu repost-menu" style={repostMenu.style} role="group" aria-label="转发与引用">
-              <button disabled={a.repostPending} onClick={() => {
-                repostMenu.setOpen(false);
-                repostMenu.ref.current?.querySelector('button')?.focus();
-                void a.toggleRepost();
-              }}>
-                <Repeat2 size={18} /> {a.reposted ? '撤销转发' : '转发'}
-              </button>
-              <button disabled={!canQuote} title={canQuote ? undefined : '这条帖子不能引用'} onClick={() => {
-                if (!canQuote) return;
-                repostMenu.setOpen(false);
-                compose({ quoteOf: post });
-              }}>
-                <Quote size={18} /> 引用
-              </button>
-            </div>
-          )}
-        </div>
+        {big && (
+          <div className="popover-anchor" ref={repostMenu.ref} onClick={(e) => e.stopPropagation()}>
+            <button
+              className={`act repost ${a.reposted ? 'on' : ''}`}
+              onClick={() => repostMenu.setOpen((open) => !open)}
+              aria-label="转发与引用"
+              aria-expanded={repostMenu.open}
+              title="转发与引用"
+            >
+              <span className="ico">
+                <Repeat2 size={size} key={a.fx?.kind === 'repost' ? a.fx.key : 0} className={a.fx?.kind === 'repost' ? 'spin-once' : ''} />
+              </span>
+              {!big && <Rolling value={a.reposts} />}
+            </button>
+            {repostMenu.open && (
+              <div className="menu repost-menu" style={repostMenu.style} role="group" aria-label="转发与引用">
+                <button disabled={a.repostPending} onClick={() => {
+                  repostMenu.setOpen(false);
+                  repostMenu.ref.current?.querySelector('button')?.focus();
+                  void a.toggleRepost();
+                }}>
+                  <Repeat2 size={18} /> {a.reposted ? '撤销转发' : '转发'}
+                </button>
+                <button disabled={!canQuote} title={canQuote ? undefined : '这条帖子不能引用'} onClick={() => {
+                  if (!canQuote) return;
+                  repostMenu.setOpen(false);
+                  compose({ quoteOf: post });
+                }}>
+                  <Quote size={18} /> 引用
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <button
           className={`act like ${a.liked ? 'on' : ''}`}
           onClick={stop(a.toggleLike)}
@@ -539,7 +543,7 @@ function ActionBar({ post: item, big, rx }: { post: Post; big?: boolean; rx: Rx 
             <Rolling value={post.viewCount} />
           </span>
         )}
-        <ReactButton rx={rx} size={size} />
+        {big && <ReactButton rx={rx} size={size} />}
         <button
           className={`act bookmark ${a.bookmarked ? 'on' : ''}`}
           onClick={stop(a.toggleBookmark)}

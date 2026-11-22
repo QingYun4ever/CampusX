@@ -7,6 +7,7 @@ import { createInvite, formatInvite, hashPassword, normalizeInvite } from '../au
 import { uploadsDir } from '../config.ts';
 import { all, get, now, run } from '../db.ts';
 import { readUploadedImage } from '../image-upload.ts';
+import { shrinkOriginal, thumbFor } from '../thumbs.ts';
 import { configSchema, describeError, getConfig, manualDecision, publicConfig, review, saveConfig, type ModConfig } from '../moderation.ts';
 import { postsByIds, visibleQuoteNotification } from '../serialize.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
@@ -18,9 +19,12 @@ export async function miscRoutes(app: FastifyInstance) {
     me(req);
     const file = await req.file();
     if (!file) throw new HttpError(400, '没有收到文件');
-    const { buffer, ext } = await readUploadedImage(file);
+    const raw = await readUploadedImage(file);
+    const { buffer, ext } = await shrinkOriginal(raw.buffer, raw.ext);
     const name = `${randomBytes(12).toString('base64url')}.${ext}`;
     await fs.writeFile(path.join(uploadsDir, name), buffer);
+    // 顺手把缩略图生成好，发出去以后别人刷到时不用等
+    void thumbFor(name);
     return { url: `/uploads/${name}` };
   });
 

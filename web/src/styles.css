@@ -119,13 +119,26 @@ html[data-bg] .side-search {
 * {
   box-sizing: border-box;
 }
+/* 表情统一用 Twemoji（彩色字体，465 KB，只有页面里出现表情时才会下载）。
+   选表情时看到的样子和发出去、别人手机上看到的一样，不再随系统变成苹果 / 谷歌 / 华为各自的风格。
+   unicode-range 刻意不含数字、#、*、©、®、™，避免普通文字被换成表情。
+   字体：SIL OFL 1.1（twemoji-colr-font 15.0.3）；图形：Twitter Twemoji，CC-BY 4.0 */
+@font-face {
+  font-family: 'Twemoji';
+  src: url('./assets/fonts/twemoji-15.0.3.woff2') format('woff2');
+  font-display: swap;
+  unicode-range:
+    U+200D, U+203C, U+2049, U+20E3, U+2139, U+2194-2199, U+21A9-21AA, U+231A-231B, U+2328, U+23CF, U+23E9-23F3,
+    U+23F8-23FA, U+24C2, U+25AA-25AB, U+25B6, U+25C0, U+25FB-25FE, U+2600-27BF, U+2934-2935, U+2B05-2B07,
+    U+2B1B-2B1C, U+2B50, U+2B55, U+3030, U+303D, U+3297, U+3299, U+FE0F, U+1F000-1FAFF, U+E0020-E007F;
+}
 html,
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font-family:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Segoe UI Variable Text',
+    'Twemoji', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Segoe UI Variable Text',
     'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans SC', Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.5;
@@ -1688,6 +1701,21 @@ a.card-row:hover {
   max-width: 425px;
   margin: 4px 0 -6px -8px;
   color: var(--text-2);
+}
+/* 时间线：左边回复 / 喜欢 / 浏览，右边书签 / 复制链接 */
+.actions.compact {
+  max-width: none;
+  justify-content: flex-start;
+}
+.actions.compact > .act {
+  min-width: 76px;
+}
+.actions.compact > .act.bookmark {
+  margin-left: auto;
+}
+.actions.compact > .act.bookmark,
+.actions.compact > .act.share {
+  min-width: 0;
 }
 .act {
   display: inline-flex;

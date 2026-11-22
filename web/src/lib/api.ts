@@ -141,6 +141,12 @@ export function media(p?: string | null) {
   return /^(https?:|data:|blob:)/.test(p) ? p : API_BASE + p;
 }
 
+/** 时间线上的缩略图（服务器按需生成，长边 1280）；动图和外部地址用原图 */
+export function thumb(p?: string | null) {
+  const m = p?.match(/^\/uploads\/([\w-]+\.(?:jpg|png|webp))$/);
+  return m ? API_BASE + '/uploads/s/' + m[1] : media(p);
+}
+
 export async function uploadImage(file: File): Promise<string> {
   const { prepareImage } = await import('./image');
   const form = new FormData();
@@ -151,7 +157,7 @@ export async function uploadImage(file: File): Promise<string> {
 
 /* ---------------- 类型 ---------------- */
 
-export type AvatarDecoration = '' | 'halo' | 'aurora' | 'rose';
+export type AvatarDecoration = '' | 'halo' | 'aurora' | 'rose' | 'prism' | 'neon' | 'stars' | 'sakura' | 'neko' | 'snow';
 
 export interface UserLite {
   id: number;

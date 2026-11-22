@@ -66,7 +66,7 @@ function Halos() {
       setUser(u);
       // 光环出现在动态、回复、私信等各处缓存里
       void qc.invalidateQueries();
-      toast(id ? `已佩戴「${name}」` : '已取下光环');
+      toast(id ? `已佩戴「${name}」` : '已取下装扮');
     } catch (e) {
       toast((e as Error).message, 'error');
     } finally {
@@ -75,7 +75,7 @@ function Halos() {
   };
   return (
     <>
-      <p className="market-intro">光环显示在你的头像周围，在动态、回复和私信里都看得到，所有人看到的颜色都一样。</p>
+      <p className="market-intro">光环和头像框显示在你的头像周围，在动态、回复和私信里都看得到，所有人看到的都一样。头像框的动画只在个人主页上播放。</p>
       <div className="market-halos">
         {DECORATIONS.map((d, i) => {
           const on = me.avatarDecoration === d.id;
@@ -91,7 +91,7 @@ function Halos() {
                 disabled={on || busy !== null}
                 onClick={() => wear(d.id, d.name)}
               >
-                {on ? <><Check size={15} strokeWidth={2.5} />{d.id ? '佩戴中' : '当前'}</> : busy === d.id ? '…' : d.id ? '佩戴' : '取下光环'}
+                {on ? <><Check size={15} strokeWidth={2.5} />{d.id ? '佩戴中' : '当前'}</> : busy === d.id ? '…' : d.id ? '佩戴' : '取下装扮'}
               </button>
             </article>
           );
@@ -112,7 +112,7 @@ export function Market() {
         onChange={(t) => setParams(t === 'emoji' ? {} : { tab: t }, { replace: true })}
         items={[
           ['emoji', '表情包'],
-          ['halo', '头像光环'],
+          ['halo', '头像装扮'],
         ]}
       />
       <div className="market" key={tab}>{tab === 'emoji' ? <EmojiPacks /> : <Halos />}</div>
