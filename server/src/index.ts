@@ -42,11 +42,6 @@ app.addHook('onSend', async (req, reply) => {
   reply.header('X-Content-Type-Options', 'nosniff');
   reply.header('Referrer-Policy', 'same-origin');
   const pathname = req.url.split('?', 1)[0];
-  if (req.routeOptions.url?.startsWith('/uploads/') || pathname === '/uploads' || pathname.startsWith('/uploads/')) {
-    reply.header('Cache-Control', 'private, no-store');
-    const vary = reply.getHeader('Vary');
-    reply.header('Vary', vary ? `${vary}, Authorization` : 'Authorization');
-  }
   if (/^\/api\/(?:auth\/login(?:\/2fa)?|me\/(?:security|password|email(?:\/start|\/confirm)?|2fa(?:\/setup|\/confirm)?))$/.test(pathname)) {
     reply.header('Cache-Control', 'no-store');
   }
@@ -70,6 +65,7 @@ const PUBLIC_API = [
   '/api/auth/username/check',
   '/api/auth/logout',
   '/api/health',
+  '/api/app/latest',
 ];
 app.addHook('preHandler', async (req) => {
   const url = req.url.split('?')[0];

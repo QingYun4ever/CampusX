@@ -24,12 +24,23 @@ export const AndroidShell = registerPlugin<{
   takeNotificationPath(options: { apiBase: string; token: string }): Promise<{ path?: string }>;
 }>('AndroidShell');
 
+export interface Latest {
+  version: string;
+  notes: string;
+  size: number | null;
+  sha256: string | null;
+  publishedAt: string | null;
+  /** 第一个是推荐线路（加速镜像在前，最后是 GitHub 直连） */
+  downloads: { label: string; url: string }[];
+  page: string;
+}
+
 export interface UpdateInfo {
   current: string;
-  latest: { version: string; notes: string; size: number };
+  latest: Latest;
 }
 
 export const AndroidUpdates = registerPlugin<{
-  checkUpdate(): Promise<{ update?: UpdateInfo }>;
-  installUpdate(options: { version: string }): Promise<{ installed: boolean }>;
+  /** 按 urls 的顺序下载，核对 SHA-256 和官方签名后交给系统安装器 */
+  installUpdate(options: { version: string; size: number; sha256: string; urls: string[] }): Promise<{ installed: boolean }>;
 }>('AndroidUpdates');

@@ -62,14 +62,32 @@ export function AppServices() {
 export function UpdateModal({ info, onClose, auto = false }: { info: UpdateInfo; onClose: () => void; auto?: boolean }) {
   const { latest, current } = info;
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
   const notes = releaseNotes(latest.notes);
+  // 服务器拿不到 SHA-256 时没法在 App 里校验，只能交给浏览器下载
+  const verifiable = !!latest.sha256 && !!latest.size;
 
+  const browser = async () => {
+    try {
+      await AndroidShell.openBrowser({ url: latest.downloads[0].url });
+      toast('已在浏览器里开始下载，下载完点开安装即可');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
   const download = async () => {
+    if (!verifiable) return browser();
     setBusy(true);
     try {
-      const { installed } = await AndroidUpdates.installUpdate({ version: latest.version });
+      const { installed } = await AndroidUpdates.installUpdate({
+        version: latest.version,
+        size: latest.size!,
+        sha256: latest.sha256!,
+        urls: latest.downloads.map((d) => d.url),
+      });
       if (installed) onClose();
     } catch (e) {
+      setFailed(true);
       toast((e as Error).message, 'error');
     } finally {
       setBusy(false);
@@ -105,11 +123,20 @@ export function UpdateModal({ info, onClose, auto = false }: { info: UpdateInfo;
           </ul>
         )}
 
-        <p className="update-tip">从官方 GitHub 下载并校验安装包，不影响现有登录和数据。若系统提示，请在设置中允许安装未知应用。</p>
+        <p className="update-tip">
+          {verifiable
+            ? '优先走加速线路下载，装之前会核对安装包的校验值和官方签名。登录状态和数据都会保留；若系统提示，请允许安装未知应用。'
+            : '新版直接覆盖安装，登录状态和数据都会保留。如果提示“未知来源”，允许浏览器安装应用即可。'}
+        </p>
 
         <button className="btn btn-primary update-main" onClick={download} disabled={busy}>
-          {busy ? '正在准备更新…' : '下载并验证更新'}
+          {busy ? '正在下载并校验…' : verifiable ? '下载更新' : '用浏览器下载'}
         </button>
+        {verifiable && failed && !busy && (
+          <button className="btn btn-text update-more" onClick={browser}>
+            改用浏览器下载
+          </button>
+        )}
 
         <div className="update-foot">
           <button

@@ -2,12 +2,10 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { userFromToken, type SessionUser } from './auth.ts';
+import type { FastifyInstance } from 'fastify';
 import { config, uploadsDir } from './config.ts';
 import { all, get, now, run, tx } from './db.ts';
 import { hasImageSignature, imageTypes } from './image-upload.ts';
-import { visibleTo } from './serialize.ts';
 import { makeThumb } from './thumbs.ts';
 import { HttpError } from './util.ts';
 
@@ -238,51 +236,25 @@ function thumbnailFor(name: string, size: number) {
   return job;
 }
 
-function access(name: string, user: SessionUser) {
-  // 旧版允许同一路径被别人引用；不能用公开帖或资料绑定绕过任何仍在引用的受限帖子。
-  const row = get<{ size: number }>(
-    `WITH refs AS (
-       SELECT (
-         (p.status = 'ok' AND ${visibleTo('p.')})
-         OR (p.status = 'pending' AND p.author_id = $me AND ${visibleTo('p.')})
-         OR ($admin AND p.status IN ('pending', 'rejected'))
-       ) AS visible
-       FROM post_upload_refs r JOIN posts p ON p.id = r.post_id
-       WHERE r.url = $url AND p.deleted = 0
-     )
-     SELECT su.size FROM site_uploads su WHERE su.name = $name
-       AND NOT EXISTS (SELECT 1 FROM refs WHERE NOT visible)
-       AND (
-         (su.used = 0 AND su.owner_id = $me)
-         OR EXISTS (SELECT 1 FROM users WHERE avatar = $url OR banner = $url)
-         OR EXISTS (SELECT 1 FROM refs)
-       )`,
-    { name, url: prefix + name, me: user.id, admin: user.role === 'admin' },
-  );
+/** 站点图片按随机文件名公开访问（和私信图片不同）；只发送已登记的文件 */
+function registeredSize(name: string) {
+  const row = get<{ size: number }>('SELECT size FROM site_uploads WHERE name = $name', { name });
   if (!row) throw new HttpError(404, '图片不存在');
   return row.size;
-}
-
-function refreshedUser(req: FastifyRequest) {
-  const token = req.headers.authorization;
-  const user = token?.startsWith('Bearer ') ? userFromToken(token.slice(7)) : null;
-  if (!user) throw new HttpError(401, '请先登录');
-  return user;
 }
 
 export function registerSiteUploadRoutes(app: FastifyInstance) {
   for (const [route, thumbnail] of [['/uploads/:name', false], ['/uploads/s/:name', true]] as const) {
     app.get<{ Params: { name: string } }>(route, async (req, reply) => {
-      const user = refreshedUser(req);
       const { name } = req.params;
       if (!imageName.test(name)) throw new HttpError(404, '图片不存在');
-      let size = access(name, user);
+      let size = registeredSize(name);
       let thumb: string | null = null;
       if (thumbnail) {
         const result = thumbnailFor(name, size);
         if (result instanceof Promise) {
           thumb = await result;
-          size = access(name, refreshedUser(req)); // 生成期间可能已退出登录、撤权、删帖或改判
+          size = registeredSize(name); // 生成期间可能已被清理
         } else {
           thumb = result;
         }
@@ -314,7 +286,8 @@ export function registerSiteUploadRoutes(app: FastifyInstance) {
           }
         }
       }
-      reply.type(file.mime).header('Content-Length', file.size);
+      // 文件名随机、内容不会变，浏览器和 App 的 WebView 都可以缓存一年
+      reply.type(file.mime).header('Content-Length', file.size).header('Cache-Control', 'public, max-age=31536000, immutable');
       if (req.method === 'HEAD') {
         fs.closeSync(file.fd);
         return reply.send();

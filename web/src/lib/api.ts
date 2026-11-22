@@ -153,7 +153,7 @@ export function subscribeMediaSession(listener: () => void) {
   return () => window.removeEventListener('auth:media-session', listener);
 }
 
-/** 只将本站上传地址交给带凭据的请求；App 内的相对路径指向所选站点。 */
+/** 本站上传的图片地址；App 内的相对路径指向所选站点。 */
 export function siteMediaUrl(source?: string | null) {
   if (!source) return undefined;
   try {
@@ -169,20 +169,6 @@ export function siteMediaUrl(source?: string | null) {
   } catch {
     return undefined;
   }
-}
-
-export async function fetchSiteMedia(source: string, signal: AbortSignal) {
-  const url = siteMediaUrl(source);
-  if (!url || !token || (IS_APP_BUILD && !API_BASE)) throw new Error('图片不可用');
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: 'no-store',
-    credentials: 'omit',
-    redirect: 'error',
-    signal,
-  });
-  if (!res.ok) throw new Error('图片不可用');
-  return res.blob();
 }
 
 /** 时间线上的缩略图（服务器按需生成，长边 1280）；动图和外部地址用原图 */

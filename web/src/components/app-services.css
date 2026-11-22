@@ -49,6 +49,11 @@
   height: 44px;
   font-size: 16px;
 }
+.update-more {
+  align-self: center;
+  margin-top: -6px;
+  font-size: 14px;
+}
 .update-foot {
   display: flex;
   justify-content: space-between;

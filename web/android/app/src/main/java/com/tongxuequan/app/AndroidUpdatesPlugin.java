@@ -14,6 +14,7 @@ import android.os.Build;
 import android.provider.Settings;
 import androidx.activity.result.ActivityResult;
 import androidx.core.content.FileProvider;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -22,6 +23,8 @@ import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -32,34 +35,6 @@ public class AndroidUpdatesPlugin extends Plugin {
     // Only the UI thread owns the file once it has been passed to the installer.
     private File installerFile;
     private Uri installerUri;
-
-    @PluginMethod
-    public void checkUpdate(PluginCall call) {
-        new Thread(() -> {
-            try {
-                PackageInfo installed = installedPackage(0);
-                cleanCache(installed.lastUpdateTime);
-                OfficialAndroidRelease release = OfficialAndroidRelease.latest(installed.versionName);
-                JSObject result = new JSObject();
-                if (release != null) {
-                    release.expectedDigest();
-                    JSObject latest = new JSObject();
-                    latest.put("version", release.version);
-                    latest.put("notes", release.notes);
-                    latest.put("size", release.size);
-                    JSObject update = new JSObject();
-                    update.put("current", installed.versionName);
-                    update.put("latest", latest);
-                    result.put("update", update);
-                }
-                call.resolve(result);
-            } catch (OfficialAndroidRelease.Rejected e) {
-                call.reject(e.getMessage());
-            } catch (Exception e) {
-                call.reject("暂时查不到官方 GitHub 更新，请检查网络后再试");
-            }
-        }, "campusx-update-check").start();
-    }
 
     @PluginMethod
     public void installUpdate(PluginCall call) {
@@ -119,15 +94,24 @@ public class AndroidUpdatesPlugin extends Plugin {
             File apk = null;
             try {
                 cleanCache(installed.lastUpdateTime);
-                OfficialAndroidRelease release = OfficialAndroidRelease.latest(installed.versionName);
-                if (release == null || !release.version.equals(call.getString("version"))) {
-                    throw new OfficialAndroidRelease.Rejected("官方版本已变化，请重新检查更新");
+                OfficialAndroidRelease release = new OfficialAndroidRelease(
+                    call.getString("version"),
+                    call.getLong("size", 0L),
+                    call.getString("sha256")
+                );
+                List<String> urls = new ArrayList<>();
+                JSArray list = call.getArray("urls");
+                if (list != null) {
+                    for (int i = 0; i < list.length(); i++) {
+                        String url = list.optString(i, "");
+                        if (url.startsWith("https://")) urls.add(url);
+                    }
                 }
-                byte[] digest = release.expectedDigest();
+                if (urls.isEmpty()) throw new OfficialAndroidRelease.Rejected("没有可用的下载线路");
                 File cache = cacheDirectory();
                 if (!cache.isDirectory() && !cache.mkdirs() && !cache.isDirectory()) throw new IOException("cache directory");
                 apk = File.createTempFile("campusx-", ".apk", cache);
-                release.download(apk, digest);
+                release.download(apk, urls);
                 release.verifyArchive(getContext().getPackageManager(), installed, apk);
                 File verified = apk;
                 getActivity().runOnUiThread(() -> handOffToInstaller(call, verified));
@@ -135,7 +119,7 @@ public class AndroidUpdatesPlugin extends Plugin {
             } catch (OfficialAndroidRelease.Rejected e) {
                 fail(call, e.getMessage());
             } catch (Exception e) {
-                fail(call, "无法下载并验证官方安装包，请检查网络与存储空间");
+                fail(call, "所有下载线路都失败了，请检查网络后再试，或改用浏览器下载");
             } finally {
                 if (apk != null) apk.delete();
             }

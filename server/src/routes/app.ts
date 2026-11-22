@@ -1,7 +1,87 @@
 import type { FastifyInstance } from 'fastify';
+import { config } from '../config.ts';
 import { all, get, now } from '../db.ts';
 import { HIDDEN_BOARDS, visibleNotification } from '../serialize.ts';
 import { me } from '../util.ts';
+
+/* ---------------- App 更新 ---------------- */
+
+interface Latest {
+  version: string;
+  notes: string;
+  publishedAt: string | null;
+  size: number | null;
+  /** 安装包的 SHA-256（十六进制）。App 下载后核对它和官方签名证书，所以走加速镜像也安全 */
+  sha256: string | null;
+  /** 第一个是推荐线路 */
+  downloads: { label: string; url: string }[];
+  page: string;
+}
+
+let cached: { at: number; value: Latest | null } | null = null;
+const HEX64 = /^[a-f0-9]{64}$/i;
+
+async function fetchLatest(): Promise<Latest | null> {
+  const repo = config.releaseRepo;
+  const signal = AbortSignal.timeout(8000);
+  let tag: string | undefined;
+  let notes = '';
+  let publishedAt: string | null = null;
+  let size: number | null = null;
+  let sha256: string | null = null;
+  try {
+    const r = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'campus-forum-server' },
+      signal,
+    });
+    if (r.ok) {
+      const d = (await r.json()) as {
+        tag_name: string;
+        body?: string;
+        published_at?: string;
+        assets?: { name: string; size: number; digest?: string | null }[];
+      };
+      tag = d.tag_name;
+      notes = (d.body ?? '').trim();
+      publishedAt = d.published_at ?? null;
+      const v = tag?.replace(/^v/, '');
+      const a = d.assets?.find((x) => x.name === `campusx-android-${v}.apk`);
+      if (a) {
+        size = a.size;
+        const digest = a.digest?.replace(/^sha256:/, '');
+        if (digest && HEX64.test(digest)) sha256 = digest.toLowerCase();
+      }
+    }
+  } catch {
+    /* 下面用网页跳转再试一次 */
+  }
+  if (!tag) {
+    // API 有频率限制，被限了就看 releases/latest 跳到哪个标签
+    const r = await fetch(`https://github.com/${repo}/releases/latest`, { redirect: 'manual', signal: AbortSignal.timeout(8000) });
+    tag = r.headers.get('location')?.match(/\/releases\/tag\/([^/?#]+)$/)?.[1];
+  }
+  const version = tag?.replace(/^v/, '');
+  if (!version || !/^\d+\.\d+\.\d+$/.test(version)) return null;
+  const apk = `https://github.com/${repo}/releases/download/v${version}/campusx-android-${version}.apk`;
+  if (!sha256) {
+    // 发布流程会附带 .sha256 文件
+    const r = await fetch(`${apk}.sha256`, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+    const hex = r?.ok ? (await r.text()).trim().split(/\s+/)[0] : '';
+    if (HEX64.test(hex)) sha256 = hex.toLowerCase();
+  }
+  return {
+    version,
+    notes,
+    publishedAt,
+    size,
+    sha256,
+    downloads: [
+      ...config.downloadMirrors.map((m, i) => ({ label: `加速线路 ${i + 1}`, url: m.replace(/\/?$/, '/') + apk })),
+      { label: 'GitHub 直连', url: apk },
+    ],
+    page: `https://github.com/${repo}/releases/tag/v${version}`,
+  };
+}
 
 /* ---------------- 后台推送（App 定时来取） ---------------- */
 
@@ -21,6 +101,17 @@ const NOTIF_TEXT: Record<string, string> = {
 };
 
 export async function appRoutes(app: FastifyInstance) {
+  // 旧版 App（0.11、0.12）也靠这个接口提示更新，不能去掉
+  app.get('/app/latest', async (_req, reply) => {
+    const t = now();
+    // 成功缓存 30 分钟，失败 5 分钟内不再重试；学校同一出口 IP 的人再多也不会撞上 GitHub 的频率限制
+    if (!cached || t - cached.at > (cached.value ? 30 : 5) * 60_000) {
+      cached = { at: t, value: await fetchLatest().catch(() => null) };
+    }
+    reply.header('Cache-Control', 'public, max-age=300');
+    return cached.value ?? { version: null };
+  });
+
   /**
    * App 在后台每隔一段时间来取一次，有新东西就发系统通知。
    * since 是上次返回的 now；第一次不传，只返回游标，避免把旧消息全推一遍。

@@ -1,91 +1,36 @@
-import { useCallback, useLayoutEffect, useState, useSyncExternalStore, type ImgHTMLAttributes } from 'react';
-import { API_BASE, fetchSiteMedia, getMediaSession, siteMediaUrl, subscribeMediaSession } from '../lib/api';
+import { useEffect, useState, useSyncExternalStore, type ImgHTMLAttributes } from 'react';
+import { API_BASE, getMediaSession, siteMediaUrl, subscribeMediaSession } from '../lib/api';
 
 type Source = string | Blob;
-type Result = { source: Source; session: AbortSignal; url: string | null };
-type LiveMedia = { users: number; result: Promise<string | null>; dispose: () => void };
-const liveMedia = new Map<string, LiveMedia>();
+const noRef = () => {};
 
-// Share a request/object URL only while views of this resource are mounted in the current session.
-function retainMedia(url: string, session: AbortSignal) {
-  let entry = liveMedia.get(url);
-  if (!entry) {
-    const controller = new AbortController();
-    let objectUrl: string | undefined;
-    const dispose = () => {
-      if (controller.signal.aborted) return;
-      liveMedia.delete(url);
-      session.removeEventListener('abort', dispose);
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-    entry = {
-      users: 0,
-      dispose,
-      result: fetchSiteMedia(url, controller.signal).then((blob) => {
-        if (controller.signal.aborted) return null;
-        objectUrl = URL.createObjectURL(blob);
-        return objectUrl;
-      }).catch(() => {
-        dispose();
-        return null;
-      }),
-    };
-    liveMedia.set(url, entry);
-    session.addEventListener('abort', dispose);
-  }
-  entry.users++;
-  return entry;
+/** 本地文件（发帖时还没上传的图）给它一个临时地址，组件卸载时释放 */
+function useObjectUrl(blob?: Blob) {
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    if (!blob) return setUrl(undefined);
+    const u = URL.createObjectURL(blob);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [blob]);
+  return url;
 }
 
-export function useMediaResource(source?: Source | null, lazy = false) {
-  const siteUrl = typeof source === 'string' ? siteMediaUrl(source) : undefined;
-  const resource = siteUrl ?? (source instanceof Blob ? source : undefined);
+/**
+ * 图片地址：站内上传的图是公开地址（文件名随机），直接交给 <img>，浏览器能长期缓存；
+ * App 里相对路径要拼上所选服务器。
+ */
+export function useMediaResource(source?: Source | null, _lazy = false) {
   const session = useSyncExternalStore(subscribeMediaSession, getMediaSession);
-  const [seen, setSeen] = useState(false);
-  const [result, setResult] = useState<Result>();
-  const wait = !!resource && lazy && !seen && typeof IntersectionObserver !== 'undefined';
-  const ref = useCallback((node: HTMLElement | null) => {
-    if (!node || !wait) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) setSeen(true);
-    }, { rootMargin: '600px' });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [wait]);
-
-  useLayoutEffect(() => {
-    setResult(undefined);
-    if (!resource || wait || session.aborted) return;
-    if (typeof resource !== 'string') {
-      const url = URL.createObjectURL(resource);
-      const dispose = () => URL.revokeObjectURL(url);
-      session.addEventListener('abort', dispose, { once: true });
-      setResult({ source: resource, session, url });
-      return () => {
-        session.removeEventListener('abort', dispose);
-        if (!session.aborted) dispose();
-      };
-    }
-    const entry = retainMedia(resource, session);
-    let released = false;
-    void entry.result.then((url) => {
-      if (!released && !session.aborted) setResult({ source: resource, session, url });
-    });
-    return () => {
-      released = true;
-      if (--entry.users === 0) entry.dispose();
-    };
-  }, [resource, session, wait]);
-
-  const current = result && result.source === resource && result.session === session ? result : undefined;
-  const directSrc = !resource && typeof source === 'string' && source
-    ? /^(https?:|data:|blob:)/i.test(source) ? source : API_BASE + source
-    : undefined;
-  return { url: current?.url ?? directSrc, failed: current?.url === null, protected: !!siteUrl, session, ref };
+  const blobUrl = useObjectUrl(source instanceof Blob ? source : undefined);
+  let url: string | undefined = blobUrl;
+  if (typeof source === 'string' && source) {
+    url = siteMediaUrl(source) ?? (/^(https?:|data:|blob:)/i.test(source) ? source : API_BASE + source);
+  }
+  return { url, failed: false, protected: false, session, ref: noRef };
 }
 
-export function MediaImage({ src, loading, ...props }: Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'srcSet'> & { src?: Source | null }) {
-  const { url, ref } = useMediaResource(src, loading === 'lazy');
-  return <img {...props} ref={ref} src={url} loading={loading} />;
+export function MediaImage({ src, ...props }: Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'srcSet'> & { src?: Source | null }) {
+  const { url } = useMediaResource(src);
+  return <img {...props} src={url} />;
 }
