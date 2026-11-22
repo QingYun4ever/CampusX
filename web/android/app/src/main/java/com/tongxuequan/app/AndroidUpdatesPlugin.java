@@ -96,7 +96,8 @@ public class AndroidUpdatesPlugin extends Plugin {
                 cleanCache(installed.lastUpdateTime);
                 OfficialAndroidRelease release = new OfficialAndroidRelease(
                     call.getString("version"),
-                    call.getLong("size", 0L),
+                    // 不能用 call.getLong：JSON 里小于 2^31 的数会被解析成 Integer，getLong 会直接返回默认值 0
+                    call.getData().optLong("size", 0L),
                     call.getString("sha256")
                 );
                 List<String> urls = new ArrayList<>();

@@ -9,6 +9,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.12.3',
+    date: '2026-11-21',
+    title: '修复 App 内更新',
+    changes: [
+      ['fix', '修复 App 内更新时提示「安装包大小无效」、无法下载的问题。0.12.1 / 0.12.2 请点「改用浏览器下载」装一次这个版本。'],
+    ],
+  },
+  {
     version: '0.12.2',
     date: '2026-11-21',
     title: '转发和回应回到时间线',

@@ -49,7 +49,7 @@ export const config = {
   downloadMirrors:
     process.env.APP_DOWNLOAD_MIRRORS?.trim() === 'none'
       ? []
-      : list(process.env.APP_DOWNLOAD_MIRRORS, ['https://ghfast.top/', 'https://gh-proxy.com/', 'https://ghproxy.net/']),
+      : list(process.env.APP_DOWNLOAD_MIRRORS, ['https://ghfast.top/', 'https://gh-proxy.org/', 'https://ghproxy.net/']),
   maxPostLength: 2000,
   smtp: smtpConfig(),
 };
