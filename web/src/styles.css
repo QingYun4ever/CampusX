@@ -1704,13 +1704,30 @@ a.card-row:hover {
 
 /* 操作栏 */
 .actions {
+  --action-icon-width: 34px;
   display: flex;
   justify-content: space-between;
   max-width: 425px;
-  flex-wrap: wrap;
-  row-gap: 2px;
+  align-items: center;
   margin: 4px 0 -6px -8px;
   color: var(--text-2);
+}
+.actions > :is(.act, .popover-anchor) {
+  min-width: var(--action-icon-width);
+}
+.actions .act {
+  max-width: 100%;
+}
+.actions .roll {
+  display: block;
+  min-width: 0;
+  padding-inline: 2px 0;
+  white-space: nowrap;
+}
+.actions .roll-v {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .act {
   display: inline-flex;
@@ -1720,7 +1737,8 @@ a.card-row:hover {
 }
 .act .ico {
   position: relative;
-  width: 34px;
+  width: var(--action-icon-width);
+  flex-shrink: 0;
   height: 34px;
   border-radius: 50%;
   display: inline-flex;
@@ -4680,6 +4698,25 @@ img.emoji {
   }
   .auth-foot {
     padding: 8px 16px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .actions {
+    --action-icon-width: clamp(22px, 6.8vw, 30px);
+  }
+  .actions .act {
+    font-size: 11px;
+  }
+  .actions .roll {
+    padding: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .post-body > .actions {
+    /* 借用头像下方的空白，把整排操作留在一行。 */
+    margin-inline-start: -52px;
   }
 }
 
