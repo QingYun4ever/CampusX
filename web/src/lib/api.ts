@@ -16,9 +16,11 @@ function serverOrigin(value?: string | null) {
   return url.origin;
 }
 
+/** App 默认连接的服务器；打包时可以用 VITE_API_BASE 换成别的站点，用户也能在登录页自己改 */
+export const DEFAULT_APP_SERVER = 'https://www.cjlwall.cc';
 const defaultBase = import.meta.env.VITE_API_BASE;
 export let API_BASE = IS_APP_BUILD
-  ? serverOrigin(safeGet(SERVER_KEY)) ?? serverOrigin(defaultBase) ?? ''
+  ? serverOrigin(safeGet(SERVER_KEY)) ?? serverOrigin(defaultBase) ?? DEFAULT_APP_SERVER
   : (defaultBase ?? '').replace(/\/$/, '');
 
 /** 分享链接指向站点，而不是 App 内 WebView 的地址。 */

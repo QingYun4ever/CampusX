@@ -9,6 +9,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.12.4',
+    date: '2026-11-21',
+    title: '默认服务器',
+    changes: [
+      ['improve', 'App 默认连接 https://www.cjlwall.cc，装好就能直接登录，不用先填服务器地址。'],
+    ],
+  },
+  {
     version: '0.12.3',
     date: '2026-11-21',
     title: '修复 App 内更新',

@@ -239,7 +239,7 @@ function ServerAddressModal({ onClose }: { onClose: () => void }) {
           inputMode="url"
           autoCapitalize="off"
           spellCheck={false}
-          placeholder="https://forum.example.com"
+          placeholder="https://www.cjlwall.cc"
           hint={ALLOWS_HTTP_SERVER ? '调试版允许 HTTP。' : '正式服务器须使用 HTTPS。'}
         />
       </form>

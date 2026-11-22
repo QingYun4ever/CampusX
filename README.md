@@ -215,11 +215,11 @@ npm start            # 后端同时托管前端页面，监听 3000
 
 ## 打包原生 App
 
-App 登录页的「服务器地址」设置会保存在本机。可选的 `VITE_API_BASE` 只提供初始地址；正式包只允许 HTTPS，不带路径。后端设置 `CORS_ORIGINS` 时应保留 Android 的 `https://localhost` 和 iOS 的 `capacitor://localhost`。
+App 默认连接 `https://www.cjlwall.cc`，登录页的「服务器地址」可以改，改过后保存在本机。打包时可用 `VITE_API_BASE` 换掉默认地址；正式包只允许 HTTPS，不带路径。后端设置 `CORS_ORIGINS` 时应保留 Android 的 `https://localhost` 和 iOS 的 `capacitor://localhost`。
 
 ```bash
 cd web
-# 可选：在 .env.app.local 中填写 VITE_API_BASE=https://forum.example.com
+# 可选：在 .env.app.local 中填写 VITE_API_BASE=https://你的站点 换掉默认的 https://www.cjlwall.cc
 npm run app:sync       # 构建正式网页资源并同步到 Android 和 iOS
 npm run app:android    # Android Studio
 npm run app:ios        # Xcode（需要 macOS）
