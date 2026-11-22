@@ -232,6 +232,7 @@ export interface BoardRef {
 export interface Board extends BoardRef {
   id: number;
   description: string;
+  avatar: string | null;
   createdBy: number | null;
   ownerId: number | null;
   visibility: 'public' | 'private';

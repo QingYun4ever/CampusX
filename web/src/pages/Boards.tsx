@@ -1,12 +1,13 @@
-import { useState, type CSSProperties, type MouseEvent } from 'react';
+import { useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, Crown, Lock, Megaphone, Pencil, Plus, Shield, UserMinus, X } from 'lucide-react';
 import { Composer } from '../components/Composer';
 import { Feed } from '../components/Feed';
+import { ImageCropper } from '../components/ImageCropper';
 import { PostCard, RichText } from '../components/PostCard';
 import { Avatar, BoardMark, toneFor, Empty, Field, Modal, PostSkeleton, Tabs, toast, TopBar, Verified } from '../components/ui';
-import { api, type Board, type BoardDetail, type Page, type Post, type User } from '../lib/api';
+import { api, uploadImage, type Board, type BoardDetail, type Page, type Post, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { timeAgo } from '../lib/format';
 
@@ -45,15 +46,27 @@ function BoardForm({ board, onClose, quota }: { board?: BoardDetail; onClose: ()
     slug: board?.slug ?? '',
     name: board?.name ?? '',
     description: board?.description ?? '',
-    icon: board?.icon ?? '💬',
     visibility: board?.visibility ?? 'public',
   });
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const [avatar, setAvatar] = useState<string | null>();
+  const [crop, setCrop] = useState<File | null>(null);
+  const previewAvatar = avatar === undefined ? board?.avatar : avatar;
+  const uploadAvatar = async (file: File) => {
+    try {
+      setAvatar(await uploadImage(file));
+      setCrop(null);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
   const submit = async () => {
     setBusy(true);
     try {
-      const { slug, ...patch } = f;
+      const { slug, ...fields } = f;
+      const patch = { ...fields, avatar };
       const r = board
         ? await api<BoardDetail>(`/boards/${board.slug}`, { method: 'PATCH', body: patch })
         : await api<BoardDetail>('/boards', { body: { slug, ...patch } });
@@ -75,19 +88,50 @@ function BoardForm({ board, onClose, quota }: { board?: BoardDetail; onClose: ()
       title={board ? '编辑吧' : '创建新吧'}
       onClose={onClose}
       right={
-        <button className="btn btn-light" disabled={busy || !f.name || (!board && !f.slug)} onClick={submit}>
+        <button className="btn btn-light" disabled={busy || !!crop || !f.name || (!board && !f.slug)} onClick={submit}>
           {board ? '保存' : '创建'}
         </button>
       }
     >
       <div className="modal-body">
         <div className="board-form-preview">
-          <BoardMark name={f.name || '吧'} slug={f.slug || board?.slug || 'new'} size={56} />
+          <BoardMark name={f.name || '吧'} slug={f.slug || 'new'} avatar={previewAvatar} size={56} />
           <div>
             <div className="name">{f.name ? `${f.name}吧` : '新的吧'}</div>
             <div className="muted small">/b/{f.slug || board?.slug || '…'}</div>
           </div>
         </div>
+        <div className="modal-actions">
+          <button className="btn btn-outline sm" disabled={busy} onClick={() => avatarInput.current?.click()}>
+            {previewAvatar ? '更换头像' : '上传头像'}
+          </button>
+          {previewAvatar && (
+            <button className="btn btn-text sm" disabled={busy} onClick={() => setAvatar(null)}>恢复默认</button>
+          )}
+        </div>
+        {f.visibility === 'private' && <p className="muted small">知道图片链接的人仍能打开头像，请勿在头像中放入私密内容。</p>}
+        <input
+          ref={avatarInput}
+          type="file"
+          accept="image/*"
+          aria-label="选择吧头像图片"
+          hidden
+          onChange={(e) => {
+            const file = e.currentTarget.files?.[0];
+            e.currentTarget.value = '';
+            if (file) setCrop(file);
+          }}
+        />
+        {crop && (
+          <ImageCropper
+            file={crop}
+            title="裁剪吧头像"
+            aspect={1}
+            output={{ width: 512, height: 512 }}
+            onCancel={() => setCrop(null)}
+            onDone={uploadAvatar}
+          />
+        )}
         {!board && quota?.max != null && (
           <p className="board-quota">
             每位同学最多创建 {quota.max} 个吧，你还可以再建 {Math.max(0, quota.max - quota.used)} 个。
@@ -221,7 +265,7 @@ export function Boards() {
       ) : (
         q.data.map((b, i) => (
           <Link key={b.slug} to={`/b/${b.slug}`} className="board-row enter" style={{ '--i': i } as CSSProperties}>
-            <BoardMark name={b.name} slug={b.slug} size={48} />
+            <BoardMark name={b.name} slug={b.slug} avatar={b.avatar} size={48} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="name team-part">
                 {b.name}吧
@@ -640,7 +684,7 @@ export function BoardPage() {
     <>
       <TopBar back title={`${b.name}吧`} sub={`${b.postCount} 帖`} />
       <div className="board-hero" style={{ '--tone': toneFor(b.slug) } as CSSProperties}>
-        <BoardMark name={b.name} slug={b.slug} size={72} />
+        <BoardMark name={b.name} slug={b.slug} avatar={b.avatar} size={72} />
         <div className="board-hero-info">
           <h2>
             {b.name}吧

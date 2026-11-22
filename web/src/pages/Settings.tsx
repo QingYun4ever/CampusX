@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, ChevronRight, FileText, LogOut, Plus, Shield, Trash2 } from 'lucide-react';
+import { Check, ChevronRight, Download, FileText, LogOut, Plus, Shield, Trash2 } from 'lucide-react';
 import { TopBar } from '../components/ui';
 import { useAuth, useMe } from '../lib/auth';
 import { CURRENT } from '../lib/changelog';
@@ -259,6 +259,16 @@ export function Settings() {
       <Link to="/terms" className="list-link">
         <FileText size={20} />
         <span className="grow">用户协议</span>
+        <ChevronRight size={18} className="muted" />
+      </Link>
+      <Link to="/privacy" className="list-link">
+        <Shield size={20} />
+        <span className="grow">隐私政策</span>
+        <ChevronRight size={18} className="muted" />
+      </Link>
+      <Link to="/install" className="list-link">
+        <Download size={20} />
+        <span className="grow">安装校墙</span>
         <ChevronRight size={18} className="muted" />
       </Link>
 

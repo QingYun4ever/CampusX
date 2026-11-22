@@ -1,0 +1,38 @@
+.install-page {
+  max-width: 640px;
+  min-height: var(--viewport-height);
+  margin: 0 auto;
+  background: var(--bg);
+}
+.install-content {
+  display: grid;
+  gap: 12px;
+  padding: 16px max(16px, var(--safe-right)) calc(32px + var(--safe-bottom)) max(16px, var(--safe-left));
+}
+.install-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.install-card h2 {
+  font-size: 18px;
+  line-height: 1.35;
+  margin: 0;
+}
+.install-card p,
+.install-card ul {
+  margin: 0;
+}
+.install-card ul {
+  padding-inline-start: 1.3em;
+}
+.install-card li + li {
+  margin-top: 6px;
+}
+.install-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

@@ -108,15 +108,19 @@ export function Avatar({ src, name, size = 40, decoration }: {
   );
 }
 
-/** 吧的标识：方形字标，取吧名首字 */
-export function BoardMark({ name, slug, size = 44 }: { name: string; slug: string; size?: number }) {
+/** 吧的标识：优先显示头像，缺图时取吧名首字。 */
+export function BoardMark({ name, slug, avatar, size = 44 }: { name: string; slug: string; avatar?: string | null; size?: number }) {
+  const { url } = useMediaResource(avatar);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   return (
     <span
       className="board-mark"
       style={{ width: size, height: size, fontSize: size * 0.44, background: toneFor(slug), borderRadius: size * 0.24 }}
       aria-hidden
     >
-      {[...name][0]}
+      {url && url !== failedUrl ? (
+        <img src={url} alt="" loading="lazy" decoding="async" onError={() => setFailedUrl(url)} />
+      ) : [...name][0]}
     </span>
   );
 }

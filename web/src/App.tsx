@@ -1,6 +1,6 @@
 import { App as AndroidApp } from '@capacitor/app';
-import { lazy, Suspense, useEffect } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useLayoutEffect } from 'react';
+import { matchPath, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ComposeProvider } from './components/compose';
 import { AppServices } from './components/AppServices';
 import { Layout } from './components/Layout';
@@ -11,6 +11,8 @@ import { useAuth } from './lib/auth';
 import { dismissTopOverlay } from './lib/escape';
 import { Home } from './pages/Home';
 import { Login, Register } from './pages/Auth';
+import { InstallPage } from './pages/Install';
+import { PrivacyPage } from './pages/Privacy';
 import { TermsGate, TermsPage } from './pages/Terms';
 
 const Admin = lazy(() => import('./pages/Admin').then(({ Admin }) => ({ default: Admin })));
@@ -49,6 +51,14 @@ export function App() {
   useAndroidBack();
   const { user, loading } = useAuth();
   const loc = useLocation();
+  const PublicPage = matchPath('/privacy', loc.pathname) ? PrivacyPage
+    : matchPath('/install', loc.pathname) ? InstallPage
+    : null;
+  useLayoutEffect(() => {
+    if (PublicPage) window.scrollTo(0, 0);
+  }, [PublicPage]);
+
+  if (PublicPage) return <><PublicPage /><Overlays /></>;
 
   if (loading) {
     return (

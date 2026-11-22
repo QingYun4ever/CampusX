@@ -344,7 +344,7 @@ function Side() {
           {hot.map((b, i) => (
             <Link key={b.slug} to={`/b/${b.slug}`} className="card-row">
               <span className="rank">{i + 1}</span>
-              <BoardMark name={b.name} slug={b.slug} size={36} />
+              <BoardMark name={b.name} slug={b.slug} avatar={b.avatar} size={36} />
               <div style={{ minWidth: 0 }}>
                 <div className="name">{b.name}吧</div>
                 <div className="muted small">
@@ -404,6 +404,8 @@ function Side() {
         <Link to="/changelog" className={`changelog-link ${hasUnseen() ? 'unseen' : ''}`}>
           v{CURRENT} 更新日志
         </Link>
+        <Link to="/privacy">隐私政策</Link>
+        <Link to="/install">安装校墙</Link>
       </footer>
     </aside>
   );

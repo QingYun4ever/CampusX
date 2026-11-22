@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { Modal, toast } from '../components/ui';
@@ -102,6 +102,7 @@ export function TermsPage() {
         <h1>校墙用户协议</h1>
       </header>
       <TermsBody />
+      <Link className="btn btn-text" to="/privacy">隐私政策</Link>
     </div>
   );
 }
@@ -131,6 +132,7 @@ export function TermsGate() {
         </div>
       </header>
       <TermsBody />
+      <Link className="btn btn-text" to="/privacy">隐私政策</Link>
       <footer>
         <button className="btn btn-text" onClick={() => void signOut()} disabled={busy}>
           退出登录

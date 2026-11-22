@@ -3,13 +3,14 @@ import { z } from 'zod';
 import { all, get, now, run, tx, type Row } from '../db.ts';
 import type { SessionUser } from '../auth.ts';
 import { boardRole, HIDDEN_BOARDS, hydrate, postSelect } from '../serialize.ts';
+import { consumeDraftUploads, siteUploadUrl } from '../site-uploads.ts';
 import { HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 
 const PAGE = 20;
 
 const BOARD_SELECT = `
-SELECT b.id, b.slug, b.name, b.description, b.icon, b.created_by, b.created_at, b.owner_id, b.visibility,
+SELECT b.id, b.slug, b.name, b.description, b.icon, b.avatar, b.created_by, b.created_at, b.owner_id, b.visibility,
   b.announcement, b.announcement_at, b.announcement_by,
   (SELECT COUNT(*) FROM board_viewers v WHERE v.board_id = b.id) AS viewer_count,
   (b.id IN ${HIDDEN_BOARDS}) AS hidden,
@@ -25,6 +26,7 @@ function boardDTO(r: Row) {
     name: r.name as string,
     description: r.description as string,
     icon: r.icon as string,
+    avatar: r.avatar as string | null,
     createdBy: (r.created_by as number | null) ?? null,
     ownerId: (r.owner_id as number | null) ?? null,
     visibility: (r.visibility === 'private' ? 'private' : 'public') as 'public' | 'private',
@@ -73,6 +75,7 @@ const boardFields = {
   name: z.string().trim().min(1, '请填写名称').max(16, '名称最多 16 字'),
   description: z.string().trim().max(100, '简介最多 100 字'),
   icon: z.string().trim().min(1).max(8),
+  avatar: z.string().regex(siteUploadUrl, '图片地址无效').nullable(),
   visibility: z.enum(['public', 'private']),
 };
 /** 每人最多创建几个吧（管理员不限）。自己建的、或者转给自己的都算；吧删掉之后名额就空出来 */
@@ -86,6 +89,7 @@ const boardSchema = z.object({
   ...boardFields,
   description: boardFields.description.default(''),
   icon: boardFields.icon.default('💬'),
+  avatar: boardFields.avatar.default(null),
   visibility: boardFields.visibility.default('public'),
 });
 // 修改时不能带默认值，否则只改名字也会把简介、图标、可见范围重置掉（zod 4 的 partial 会保留 default）
@@ -145,9 +149,10 @@ export async function boardRoutes(app: FastifyInstance) {
     if (get('SELECT 1 FROM boards WHERE slug = $s', { s: body.slug })) throw new HttpError(409, '该地址已被使用');
     if (get('SELECT 1 FROM boards WHERE name = $n', { n: body.name })) throw new HttpError(409, '已有同名的吧');
     tx(() => {
+      if (body.avatar) consumeDraftUploads([body.avatar], user.id);
       const { lastId } = run(
-        `INSERT INTO boards (slug, name, description, icon, visibility, created_by, owner_id, created_at)
-         VALUES ($slug, $name, $description, $icon, $visibility, $by, $by, $t)`,
+        `INSERT INTO boards (slug, name, description, icon, avatar, visibility, created_by, owner_id, created_at)
+         VALUES ($slug, $name, $description, $icon, $avatar, $visibility, $by, $by, $t)`,
         { ...body, by: user.id, t: now() },
       );
       run('INSERT INTO board_members (board_id, user_id, created_at) VALUES ($b, $u, $t)', {
@@ -171,11 +176,15 @@ export async function boardRoutes(app: FastifyInstance) {
     if (body.name && get('SELECT 1 FROM boards WHERE name = $n AND id != $id', { n: body.name, id: b.id })) {
       throw new HttpError(409, '已有同名的吧');
     }
-    run(
-      `UPDATE boards SET name = COALESCE($name, name), description = COALESCE($description, description),
-       icon = COALESCE($icon, icon), visibility = COALESCE($visibility, visibility) WHERE id = $id`,
-      { name: null, description: null, icon: null, visibility: null, ...body, id: b.id },
-    );
+    tx(() => {
+      if (body.avatar && body.avatar !== b.avatar) consumeDraftUploads([body.avatar], user.id);
+      run(
+        `UPDATE boards SET name = COALESCE($name, name), description = COALESCE($description, description),
+         icon = COALESCE($icon, icon), avatar = CASE WHEN $setAvatar THEN $avatar ELSE avatar END,
+         visibility = COALESCE($visibility, visibility) WHERE id = $id`,
+        { name: null, description: null, icon: null, visibility: null, avatar: null, ...body, setAvatar: body.avatar === undefined ? 0 : 1, id: b.id },
+      );
+    });
     return detail(b.slug, user);
   });
 

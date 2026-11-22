@@ -170,7 +170,10 @@ function AuthShell({
       </main>
       <footer className="auth-foot">
         <ThemeSelect />
-        <span>校墙 · 仅限受邀同学</span>
+        <nav className="auth-foot-links" aria-label="校墙信息">
+          <Link to="/privacy">隐私政策</Link>
+          <Link to="/install">安装校墙</Link>
+        </nav>
       </footer>
     </div>
   );

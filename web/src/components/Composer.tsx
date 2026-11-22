@@ -108,7 +108,7 @@ function BoardPicker({ value, onChange }: { value: string; onChange: (v: string)
           </button>
           {boards.data?.map((b) => (
             <button type="button" key={b.slug} onClick={() => pick(b.slug)} role="option" aria-selected={value === b.slug}>
-              <BoardMark name={b.name} slug={b.slug} size={32} />
+              <BoardMark name={b.name} slug={b.slug} avatar={b.avatar} size={32} />
               <span className="grow">
                 <span className="name">{b.name}吧</span>
                 <span className="muted ellipsis">{b.description || `${b.memberCount} 人关注`}</span>

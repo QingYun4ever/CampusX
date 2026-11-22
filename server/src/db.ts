@@ -211,6 +211,7 @@ if (addColumn('boards', 'owner_id', 'INTEGER REFERENCES users(id) ON DELETE SET 
 addColumn('boards', 'announcement', "TEXT NOT NULL DEFAULT ''");
 addColumn('boards', 'announcement_at', 'INTEGER');
 addColumn('boards', 'announcement_by', 'INTEGER REFERENCES users(id) ON DELETE SET NULL');
+addColumn('boards', 'avatar', 'TEXT');
 addColumn('posts', 'pinned_at', 'INTEGER');
 // 通知的附加信息（例如表情回应用的哪个表情）
 addColumn('notifications', 'extra', "TEXT NOT NULL DEFAULT ''");
@@ -408,6 +409,7 @@ END;
 
 CREATE INDEX IF NOT EXISTS idx_users_avatar ON users(avatar) WHERE avatar IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_banner ON users(banner) WHERE banner IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_boards_avatar ON boards(avatar) WHERE avatar IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS post_upload_refs (
   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,

@@ -309,6 +309,7 @@ function collectExpiredUploads() {
            WHERE su.name > $cursor AND su.created_at < $cutoff AND su.hold_until <= $t
              AND NOT EXISTS (SELECT 1 FROM post_upload_refs WHERE url = '/uploads/' || su.name)
              AND NOT EXISTS (SELECT 1 FROM users WHERE avatar = '/uploads/' || su.name OR banner = '/uploads/' || su.name)
+             AND NOT EXISTS (SELECT 1 FROM boards WHERE avatar = '/uploads/' || su.name)
            ORDER BY su.name LIMIT $limit`,
           { cursor, cutoff, t, limit: gcBatchSize },
         );
