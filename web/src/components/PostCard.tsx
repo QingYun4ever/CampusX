@@ -477,48 +477,45 @@ function ActionBar({ post: item, big, rx }: { post: Post; big?: boolean; rx: Rx 
           )}
         </div>
       )}
-      {/* 时间线上只留回复、喜欢、浏览，书签和复制链接靠右；转发 / 引用和回应在帖子详情里 */}
-      <div className={`actions ${big ? '' : 'compact'}`}>
+      <div className="actions">
         <button className="act reply" onClick={stop(() => compose({ replyTo: post }))} aria-label="回复">
           <span className="ico">
             <MessageCircle size={size} />
           </span>
           {!big && <Rolling value={post.replyCount} />}
         </button>
-        {big && (
-          <div className="popover-anchor" ref={repostMenu.ref} onClick={(e) => e.stopPropagation()}>
-            <button
-              className={`act repost ${a.reposted ? 'on' : ''}`}
-              onClick={() => repostMenu.setOpen((open) => !open)}
-              aria-label="转发与引用"
-              aria-expanded={repostMenu.open}
-              title="转发与引用"
-            >
-              <span className="ico">
-                <Repeat2 size={size} key={a.fx?.kind === 'repost' ? a.fx.key : 0} className={a.fx?.kind === 'repost' ? 'spin-once' : ''} />
-              </span>
-              {!big && <Rolling value={a.reposts} />}
-            </button>
-            {repostMenu.open && (
-              <div className="menu repost-menu" style={repostMenu.style} role="group" aria-label="转发与引用">
-                <button disabled={a.repostPending} onClick={() => {
-                  repostMenu.setOpen(false);
-                  repostMenu.ref.current?.querySelector('button')?.focus();
-                  void a.toggleRepost();
-                }}>
-                  <Repeat2 size={18} /> {a.reposted ? '撤销转发' : '转发'}
-                </button>
-                <button disabled={!canQuote} title={canQuote ? undefined : '这条帖子不能引用'} onClick={() => {
-                  if (!canQuote) return;
-                  repostMenu.setOpen(false);
-                  compose({ quoteOf: post });
-                }}>
-                  <Quote size={18} /> 引用
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+        <div className="popover-anchor" ref={repostMenu.ref} onClick={(e) => e.stopPropagation()}>
+          <button
+            className={`act repost ${a.reposted ? 'on' : ''}`}
+            onClick={() => repostMenu.setOpen((open) => !open)}
+            aria-label="转发与引用"
+            aria-expanded={repostMenu.open}
+            title="转发与引用"
+          >
+            <span className="ico">
+              <Repeat2 size={size} key={a.fx?.kind === 'repost' ? a.fx.key : 0} className={a.fx?.kind === 'repost' ? 'spin-once' : ''} />
+            </span>
+            {!big && <Rolling value={a.reposts} />}
+          </button>
+          {repostMenu.open && (
+            <div className="menu repost-menu" style={repostMenu.style} role="group" aria-label="转发与引用">
+              <button disabled={a.repostPending} onClick={() => {
+                repostMenu.setOpen(false);
+                repostMenu.ref.current?.querySelector('button')?.focus();
+                void a.toggleRepost();
+              }}>
+                <Repeat2 size={18} /> {a.reposted ? '撤销转发' : '转发'}
+              </button>
+              <button disabled={!canQuote} title={canQuote ? undefined : '这条帖子不能引用'} onClick={() => {
+                if (!canQuote) return;
+                repostMenu.setOpen(false);
+                compose({ quoteOf: post });
+              }}>
+                <Quote size={18} /> 引用
+              </button>
+            </div>
+          )}
+        </div>
         <button
           className={`act like ${a.liked ? 'on' : ''}`}
           onClick={stop(a.toggleLike)}
@@ -544,7 +541,7 @@ function ActionBar({ post: item, big, rx }: { post: Post; big?: boolean; rx: Rx 
             <Rolling value={post.viewCount} />
           </span>
         )}
-        {big && <ReactButton rx={rx} size={size} />}
+        <ReactButton rx={rx} size={size} />
         <button
           className={`act bookmark ${a.bookmarked ? 'on' : ''}`}
           onClick={stop(a.toggleBookmark)}

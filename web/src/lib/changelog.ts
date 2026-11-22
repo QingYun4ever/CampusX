@@ -9,6 +9,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.12.2',
+    date: '2026-11-21',
+    title: '转发和回应回到时间线',
+    changes: [
+      ['improve', '时间线上的帖子重新显示转发 / 引用和表情回应按钮，不用点进帖子也能操作。'],
+    ],
+  },
+  {
     version: '0.12.1',
     date: '2026-11-21',
     title: '推送权限、上传配额与更新校验',

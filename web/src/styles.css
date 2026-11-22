@@ -1704,21 +1704,6 @@ a.card-row:hover {
   margin: 4px 0 -6px -8px;
   color: var(--text-2);
 }
-/* 时间线：左边回复 / 喜欢 / 浏览，右边书签 / 复制链接 */
-.actions.compact {
-  max-width: none;
-  justify-content: flex-start;
-}
-.actions.compact > .act {
-  min-width: 76px;
-}
-.actions.compact > .act.bookmark {
-  margin-left: auto;
-}
-.actions.compact > .act.bookmark,
-.actions.compact > .act.share {
-  min-width: 0;
-}
 .act {
   display: inline-flex;
   align-items: center;
