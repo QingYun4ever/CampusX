@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config, uploadsDir } from './config.ts';
 import { all, get, now, run, tx } from './db.ts';
 import { hasImageSignature, imageTypes } from './image-upload.ts';
@@ -247,7 +247,8 @@ function registeredSize(name: string) {
 
 export function registerSiteUploadRoutes(app: FastifyInstance) {
   for (const [route, variant] of [['/uploads/:name', null], ['/uploads/s/:name', 'post'], ['/uploads/a/:name', 'avatar']] as const) {
-    app.get<{ Params: { name: string } }>(route, async (req, reply) => {
+    const serve = async (req: FastifyRequest<{ Params: { name: string } }>, reply: FastifyReply) => {
+      reply.header('Cache-Control', 'no-store');
       const { name } = req.params;
       if (!imageName.test(name)) throw new HttpError(404, '图片不存在');
       let size = registeredSize(name);
@@ -275,7 +276,16 @@ export function registerSiteUploadRoutes(app: FastifyInstance) {
         try {
           fd = fs.openSync(thumb, flags);
           const stat = fs.fstatSync(fd);
-          if (stat.isFile() && stat.size < file.size) size = stat.size;
+          if (stat.isFile()) {
+            const header = Buffer.allocUnsafe(12);
+            if (stat.size < file.size && fs.readSync(fd, header, 0, header.length, 0) === header.length &&
+                hasImageSignature(header, 'webp') && header.readUInt32LE(4) + 8 === stat.size) {
+              size = stat.size;
+            } else {
+              // 缓存是可重建数据。坏文件不能作为不可变响应发给客户端。
+              fs.rmSync(thumb, { force: true });
+            }
+          }
         } catch {
           // 缓存不是授权或发送原图的前提。
         }
@@ -287,17 +297,18 @@ export function registerSiteUploadRoutes(app: FastifyInstance) {
           thumb = undefined;
         }
       }
-      // 文件名随机、内容不会变，浏览器和 App 的 WebView 都可以缓存一年
-      reply.type(file.mime).header('Content-Length', file.size).header(
-        'Cache-Control',
-        thumb === undefined ? 'no-store' : 'public, max-age=31536000, immutable',
-      );
+      reply.type(file.mime).header('Content-Length', file.size);
+      // 只有原图与有效的缩略结果长期缓存；本次退回的原图下次还能重新请求缩略图。
+      if (thumb !== undefined) reply.header('Cache-Control', 'public, max-age=31536000, immutable');
       if (req.method === 'HEAD') {
         fs.closeSync(file.fd);
         return reply.send();
       }
       return reply.send(fs.createReadStream(path.join(uploadsDir, name), { fd: file.fd, autoClose: true }));
-    });
+    };
+    // Fastify 生成的 HEAD 路由会把手动设置的 Content-Length 改成 0。
+    app.get(route, { exposeHeadRoute: false }, serve);
+    app.head(route, serve);
   }
 }
 

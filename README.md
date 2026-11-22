@@ -117,6 +117,8 @@ server {
 }
 ```
 
+反向代理应保留后端的 `Cache-Control`，不要在整个站点追加 `add_header Cache-Control no-cache`。HTML 入口会重新验证；带哈希的静态资源和可用的图片可长期复用；私信图片和缩略图暂时失败时返回的原图不缓存。
+
 **3. 注册管理员**
 
 ```bash

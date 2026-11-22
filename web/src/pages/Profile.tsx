@@ -201,8 +201,8 @@ function EditProfile({ user, onClose }: { user: User; onClose: () => void }) {
       });
       setUser(u);
       qc.setQueryData<ProfileT>(['profile', user.username], (current) => current && { ...current, ...u });
-      if (u.avatarDecoration !== user.avatarDecoration) {
-        // 头像装扮同时出现在动态、回复、用户列表和私信等缓存中。
+      if (u.avatar !== user.avatar || u.avatarDecoration !== user.avatarDecoration) {
+        // 头像资料同时出现在动态、回复、用户列表和私信等缓存中。
         void qc.invalidateQueries();
       } else {
         void qc.invalidateQueries({ queryKey: ['profile', user.username] });

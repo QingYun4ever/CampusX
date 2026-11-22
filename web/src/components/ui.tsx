@@ -20,7 +20,7 @@ import { ArrowLeft, CircleAlert, X } from 'lucide-react';
 import { subscribeMediaSession, thumb, type AvatarDecoration } from '../lib/api';
 import { useEscape } from '../lib/escape';
 import { Lightbox, type LightboxRequest } from './Lightbox';
-import { useMediaResource } from './MediaImage';
+import { resolveMediaUrl, useMediaResource } from './MediaImage';
 import { AvatarFrame, FRAMED } from './AvatarFrame';
 import { compact } from '../lib/format';
 import './identity.css';
@@ -49,6 +49,25 @@ export function toneFor(s: string) {
   return TONES[h % TONES.length];
 }
 
+function useAvatarImage(src?: string | null, original = false) {
+  const primary = src && !original ? thumb(src, 'avatar') : src;
+  const { url: primaryUrl } = useMediaResource(primary);
+  const [failure, setFailure] = useState<{ url: string; exhausted: boolean }>();
+  const primaryFailed = !!primaryUrl && failure?.url === primaryUrl;
+  let url = primaryUrl;
+  if (primaryFailed) {
+    // App 比站点先更新时，旧站点没有头像专用接口，仍可使用已有的帖子缩略图。
+    const fallback = !failure.exhausted && src && primary !== src ? thumb(src) : undefined;
+    url = fallback && fallback !== src ? resolveMediaUrl(fallback) : undefined;
+  }
+  return {
+    url,
+    onError: () => {
+      if (primaryUrl) setFailure({ url: primaryUrl, exhausted: primaryFailed });
+    },
+  };
+}
+
 export function Avatar({ src, name, size = 40, decoration, original = false }: {
   src?: string | null;
   name: string;
@@ -56,9 +75,8 @@ export function Avatar({ src, name, size = 40, decoration, original = false }: {
   decoration?: AvatarDecoration;
   original?: boolean;
 }) {
-  const { url } = useMediaResource(src && !original ? thumb(src, 'avatar') : src);
+  const { url, onError } = useAvatarImage(src, original);
   const loading = original ? 'eager' : 'lazy';
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   if (decoration && FRAMED.has(decoration)) {
     // 头像框：外层占位、画框，里面才是头像；大头像（主页、商场）才播放动画
     return (
@@ -67,8 +85,8 @@ export function Avatar({ src, name, size = 40, decoration, original = false }: {
         data-avatar-decoration={decoration}
         style={{ width: size, height: size }}
       >
-        {url && url !== failedUrl ? (
-          <img className="avatar-face" src={url} alt="" width={size} height={size} loading={loading} decoding="async" onError={() => setFailedUrl(url)} />
+        {url ? (
+          <img className="avatar-face" src={url} alt="" width={size} height={size} loading={loading} decoding="async" onError={onError} />
         ) : (
           <span className="avatar-face" style={{ fontSize: size * 0.42, background: toneFor(name || '?') }} aria-hidden>
             {[...(name || '?')][0]}
@@ -78,7 +96,7 @@ export function Avatar({ src, name, size = 40, decoration, original = false }: {
       </span>
     );
   }
-  if (url && url !== failedUrl) {
+  if (url) {
     return (
       <img
         className="avatar"
@@ -90,7 +108,7 @@ export function Avatar({ src, name, size = 40, decoration, original = false }: {
         loading={loading}
         decoding="async"
         style={{ width: size, height: size }}
-        onError={() => setFailedUrl(url)}
+        onError={onError}
       />
     );
   }
@@ -108,16 +126,15 @@ export function Avatar({ src, name, size = 40, decoration, original = false }: {
 
 /** 吧的标识：优先显示头像，缺图时取吧名首字。 */
 export function BoardMark({ name, slug, avatar, size = 44 }: { name: string; slug: string; avatar?: string | null; size?: number }) {
-  const { url } = useMediaResource(avatar ? thumb(avatar, 'avatar') : avatar);
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const { url, onError } = useAvatarImage(avatar);
   return (
     <span
       className="board-mark"
       style={{ width: size, height: size, fontSize: size * 0.44, background: toneFor(slug), borderRadius: size * 0.24 }}
       aria-hidden
     >
-      {url && url !== failedUrl ? (
-        <img src={url} alt="" width={size} height={size} loading="lazy" decoding="async" onError={() => setFailedUrl(url)} />
+      {url ? (
+        <img src={url} alt="" width={size} height={size} loading="lazy" decoding="async" onError={onError} />
       ) : [...name][0]}
     </span>
   );

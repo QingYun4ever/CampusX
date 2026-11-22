@@ -9,6 +9,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.12.9',
+    date: '2026-11-22',
+    title: '头像缩略图与图片缓存',
+    changes: [
+      ['improve', '动态、列表和吧头像默认使用小图，个人主页大头像保留原图。'],
+      ['fix', '引用卡片按需加载缩略图；缩略图暂不可用时不会把回退的原图长期缓存。'],
+      ['improve', '下载线路默认只保留 gh-proxy.org 和 GitHub 直连。'],
+    ],
+  },
+  {
     version: '0.12.8',
     date: '2026-11-22',
     title: '手机布局与导航设置',
