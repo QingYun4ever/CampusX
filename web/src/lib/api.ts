@@ -166,17 +166,20 @@ export function siteMediaUrl(source?: string | null) {
       (url.origin === origin || url.origin === window.location.origin) &&
       !url.username && !url.password && url.pathname.startsWith('/uploads/')
     ) {
-      return origin + url.pathname;
+      return origin + url.pathname + (url.pathname.startsWith('/uploads/s/') ? url.search : '');
     }
   } catch {
     return undefined;
   }
 }
 
-/** 时间线上的缩略图（服务器按需生成，长边 1280）；动图和外部地址用原图 */
-export function thumb(source: string) {
-  const m = siteMediaUrl(source)?.match(/\/uploads\/([\w-]+\.(?:jpg|png|webp))$/);
-  return m ? '/uploads/s/' + m[1] : source;
+/** 站内图片按需生成缩略图；正文 GIF 保留动画，头像 GIF 可用静态预览。 */
+export function thumb(source: string, kind: 'post' | 'avatar' = 'post') {
+  const match = siteMediaUrl(source)?.match(/\/uploads\/([\w-]+\.(jpg|png|webp|gif))$/);
+  if (!match) return source;
+  if (kind === 'avatar') return `/uploads/a/${match[1]}`;
+  // 旧地址可能已经把并发时退回的原图缓存一年。
+  return match[2] === 'gif' ? source : `/uploads/s/${match[1]}?v=2`;
 }
 
 export async function uploadImage(file: File): Promise<string> {

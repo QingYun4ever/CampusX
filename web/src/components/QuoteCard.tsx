@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import type { QuotePreview } from '../lib/api';
+import { thumb, type QuotePreview } from '../lib/api';
 import { fullTime, timeAgo } from '../lib/format';
 import { MediaImage } from './MediaImage';
 import { Avatar, Verified } from './ui';
@@ -22,7 +22,7 @@ export function QuoteCard({ post, preview }: { post: QuotePreview | null; previe
       {content && <div className="quote-card-content">{content}</div>}
       {!!images.length && (
         <div className="quote-card-images" style={{ gridTemplateColumns: `repeat(${images.length}, minmax(0, 1fr))` }}>
-          {images.map((src, i) => <MediaImage key={i} src={src} alt={content ? '' : `原帖图片 ${i + 1}`} loading="lazy" />)}
+          {images.map((src, i) => <MediaImage key={i} src={thumb(src)} alt={content ? '' : `原帖图片 ${i + 1}`} loading="lazy" decoding="async" />)}
         </div>
       )}
     </>

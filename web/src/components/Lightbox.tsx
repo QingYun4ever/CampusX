@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Pointer
 import { ChevronLeft, ChevronRight, Download, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { AndroidShell, isAndroid } from '../lib/android';
 import { useEscape } from '../lib/escape';
-import { useMediaResource } from './MediaImage';
+import { resolveMediaUrl, useMediaResource } from './MediaImage';
 import { toast } from './ui';
 import './lightbox.css';
 
@@ -174,9 +174,12 @@ export function Lightbox({ images, previews, index: start, origin, onDone }: Lig
     [index, images.length],
   );
 
-  // 预先加载前后两张
+  // 只预取相邻缩略图，原图等切到对应页再加载。
   useEffect(() => {
-    for (const i of [index - 1, index + 1]) if (images[i]) new Image().src = previews?.[i] ?? images[i];
+    for (const i of [index - 1, index + 1]) {
+      const nearby = previews?.[i];
+      if (nearby && nearby !== images[i]) new Image().src = resolveMediaUrl(nearby);
+    }
   }, [index, images, previews]);
 
   /* ---------- 缩放 ---------- */

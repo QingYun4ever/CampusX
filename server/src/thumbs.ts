@@ -1,6 +1,8 @@
 import { HttpError } from './util.ts';
 
 const thumbEdge = 1280;
+const avatarEdge = 192;
+const maxQueuedThumbnails = 24;
 const maxInputPixels = 24_000_000;
 const maxConcurrentImages = 2;
 const sharpOptions = { failOn: 'warning', limitInputPixels: maxInputPixels } as const;
@@ -80,10 +82,29 @@ export function validateReviewImage<T extends { buffer: Buffer; ext: string }>(r
   });
 }
 
-export function makeThumb(read: () => Promise<Buffer>) {
-  return useSharp(async (sharp) => sharp(await read(), sharpOptions).timeout({ seconds: 10 })
-    .rotate()
-    .resize({ width: thumbEdge, height: thumbEdge, fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 80, effort: 4 })
-    .toBuffer());
+// 缩略图排队且只占一个处理槽，避免首屏并发让后续图片全部退回原图。
+let makingThumbnail = false;
+const queuedThumbnails: (() => void)[] = [];
+
+export async function makeThumb(read: () => Promise<Buffer>, avatar: boolean) {
+  if (makingThumbnail) {
+    if (queuedThumbnails.length >= maxQueuedThumbnails) throw new ImageProcessingUnavailable();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    queuedThumbnails.push(resolve);
+    await promise;
+  } else {
+    makingThumbnail = true;
+  }
+  const edge = avatar ? avatarEdge : thumbEdge;
+  try {
+    return await useSharp(async (sharp) => sharp(await read(), sharpOptions).timeout({ seconds: 10 })
+      .rotate()
+      .resize({ width: edge, height: edge, fit: avatar ? 'cover' : 'inside', withoutEnlargement: true })
+      .webp({ quality: 80, effort: 4 })
+      .toBuffer());
+  } finally {
+    const next = queuedThumbnails.shift();
+    if (next) next();
+    else makingThumbnail = false;
+  }
 }

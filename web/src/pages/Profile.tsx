@@ -77,7 +77,7 @@ export function Profile() {
           )}
         </div>
         <div className="profile-avatar avatar" style={{ width: 'min(134px, 25vw)', height: 'min(134px, 25vw)' }}>
-          <Avatar src={u.avatar} name={u.displayName} size={134} decoration={u.avatarDecoration} />
+          <Avatar src={u.avatar} name={u.displayName} size={134} decoration={u.avatarDecoration} original />
         </div>
         <div className="profile-name" ref={nameRef}>
           <span data-admin={u.role === 'admin' || undefined}>{u.displayName}</span>
@@ -243,7 +243,7 @@ function EditProfile({ user, onClose }: { user: User; onClose: () => void }) {
       </div>
       <div style={{ padding: '0 16px', marginTop: -44, position: 'relative', width: 'fit-content' }}>
         <div className="edit-avatar">
-          <Avatar src={f.avatar} name={f.displayName} size={96} decoration={f.avatarDecoration} />
+          <Avatar src={f.avatar} name={f.displayName} size={96} decoration={f.avatarDecoration} original />
         </div>
         <button
           className="icon-btn"

@@ -75,12 +75,11 @@ export function MediaGrid({ images }: { images: string[] }) {
           alt=""
           loading="lazy"
           decoding="async"
-          onLoad={(e) => e.currentTarget.classList.add('loaded')}
           onClick={(e) => {
             e.stopPropagation();
             openGallery({
               images: shown,
-              previews: shown.map(thumb),
+              previews: shown.map((source) => thumb(source)),
               index: i,
               origin: (k) => grid.current?.children[k] as HTMLElement | undefined,
             });

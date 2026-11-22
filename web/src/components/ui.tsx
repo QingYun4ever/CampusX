@@ -17,7 +17,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CircleAlert, X } from 'lucide-react';
-import { subscribeMediaSession, type AvatarDecoration } from '../lib/api';
+import { subscribeMediaSession, thumb, type AvatarDecoration } from '../lib/api';
 import { useEscape } from '../lib/escape';
 import { Lightbox, type LightboxRequest } from './Lightbox';
 import { useMediaResource } from './MediaImage';
@@ -49,26 +49,26 @@ export function toneFor(s: string) {
   return TONES[h % TONES.length];
 }
 
-export function Avatar({ src, name, size = 40, decoration }: {
+export function Avatar({ src, name, size = 40, decoration, original = false }: {
   src?: string | null;
   name: string;
   size?: number;
   decoration?: AvatarDecoration;
+  original?: boolean;
 }) {
-  // 更换头像时，新图片仍可正常加载。
-  const { url, ref } = useMediaResource(src, true);
+  const { url } = useMediaResource(src && !original ? thumb(src, 'avatar') : src);
+  const loading = original ? 'eager' : 'lazy';
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   if (decoration && FRAMED.has(decoration)) {
     // 头像框：外层占位、画框，里面才是头像；大头像（主页、商场）才播放动画
     return (
       <span
         className={`avatar framed ${size >= 64 ? 'live' : ''} ${size < 32 ? 'tiny' : ''}`}
-        ref={ref}
         data-avatar-decoration={decoration}
         style={{ width: size, height: size }}
       >
         {url && url !== failedUrl ? (
-          <img className="avatar-face" src={url} alt="" loading="lazy" decoding="async" onError={() => setFailedUrl(url)} />
+          <img className="avatar-face" src={url} alt="" width={size} height={size} loading={loading} decoding="async" onError={() => setFailedUrl(url)} />
         ) : (
           <span className="avatar-face" style={{ fontSize: size * 0.42, background: toneFor(name || '?') }} aria-hidden>
             {[...(name || '?')][0]}
@@ -82,13 +82,12 @@ export function Avatar({ src, name, size = 40, decoration }: {
     return (
       <img
         className="avatar"
-        ref={ref}
         data-avatar-decoration={decoration || undefined}
         src={url}
         alt=""
         width={size}
         height={size}
-        loading="lazy"
+        loading={loading}
         decoding="async"
         style={{ width: size, height: size }}
         onError={() => setFailedUrl(url)}
@@ -98,7 +97,6 @@ export function Avatar({ src, name, size = 40, decoration }: {
   return (
     <span
       className="avatar"
-      ref={ref}
       data-avatar-decoration={decoration || undefined}
       style={{ width: size, height: size, fontSize: size * 0.42, background: toneFor(name || '?') }}
       aria-hidden
@@ -110,7 +108,7 @@ export function Avatar({ src, name, size = 40, decoration }: {
 
 /** 吧的标识：优先显示头像，缺图时取吧名首字。 */
 export function BoardMark({ name, slug, avatar, size = 44 }: { name: string; slug: string; avatar?: string | null; size?: number }) {
-  const { url } = useMediaResource(avatar);
+  const { url } = useMediaResource(avatar ? thumb(avatar, 'avatar') : avatar);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   return (
     <span
@@ -119,7 +117,7 @@ export function BoardMark({ name, slug, avatar, size = 44 }: { name: string; slu
       aria-hidden
     >
       {url && url !== failedUrl ? (
-        <img src={url} alt="" loading="lazy" decoding="async" onError={() => setFailedUrl(url)} />
+        <img src={url} alt="" width={size} height={size} loading="lazy" decoding="async" onError={() => setFailedUrl(url)} />
       ) : [...name][0]}
     </span>
   );
