@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart2, ChevronDown, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Quote, Repeat2, SmilePlus, Trash2 } from 'lucide-react';
+import { BarChart2, Bookmark, ChevronDown, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Quote, Repeat2, SmilePlus, Trash2 } from 'lucide-react';
 import { api, media, QUICK_REACTIONS, REACTIONS, WEB_ORIGIN, type Post, type Reaction, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
@@ -9,7 +9,7 @@ import { markViewed, useViewTracking } from '../lib/views';
 import { useCompose } from './compose';
 import { ContentLink } from './ContentLink';
 import { QuoteCard } from './QuoteCard';
-import { Avatar, Emoji, emojiUrl, Empty, Modal, openLightbox, Rolling, Spinner, toast, toneFor, usePopover, Verified } from './ui';
+import { Avatar, Emoji, emojiUrl, Empty, Modal, openGallery, Rolling, Spinner, toast, toneFor, usePopover, Verified } from './ui';
 
 /* ---------- 正文 ---------- */
 // Markdown / LaTeX 渲染器比较大（KaTeX），只有正文里出现相应语法时才加载
@@ -62,19 +62,26 @@ export function PlainText({ text }: { text: string }) {
 }
 
 export function MediaGrid({ images }: { images: string[] }) {
+  const grid = useRef<HTMLDivElement>(null);
   if (!images.length) return null;
+  const shown = images.slice(0, 4);
   return (
-    <div className={`media n${Math.min(images.length, 4)}`}>
-      {images.slice(0, 4).map((src) => (
+    <div ref={grid} className={`media n${shown.length}`}>
+      {shown.map((src, i) => (
         <img
           key={src}
           src={media(src)}
           alt=""
           loading="lazy"
+          decoding="async"
           onLoad={(e) => e.currentTarget.classList.add('loaded')}
           onClick={(e) => {
             e.stopPropagation();
-            openLightbox(media(src)!, e.currentTarget);
+            openGallery({
+              images: shown.map((x) => media(x)!),
+              index: i,
+              origin: (k) => grid.current?.children[k] as HTMLElement | undefined,
+            });
           }}
         />
       ))}
@@ -134,6 +141,20 @@ function usePostActions(post: Post) {
       setRepostPending(false);
     }
   };
+  const [bookmarked, setBookmarked] = useState(post.bookmarked);
+  useEffect(() => setBookmarked(post.bookmarked), [post.id, post.bookmarked]);
+  const toggleBookmark = async () => {
+    const next = !bookmarked;
+    setBookmarked(next);
+    try {
+      await api(`/posts/${post.id}/bookmark`, { method: next ? 'POST' : 'DELETE' });
+      toast(next ? '已加入书签' : '已移出书签');
+      qc.invalidateQueries({ queryKey: ['bookmarks'] });
+    } catch (e) {
+      setBookmarked(!next);
+      toast((e as Error).message, 'error');
+    }
+  };
   const share = async () => {
     const url = `${WEB_ORIGIN}/post/${post.id}`;
     try {
@@ -143,7 +164,7 @@ function usePostActions(post: Post) {
       toast(url);
     }
   };
-  return { liked, likes, reposted, reposts, repostPending, fx, toggleLike, toggleRepost, share };
+  return { liked, likes, reposted, reposts, repostPending, fx, toggleLike, toggleRepost, share, bookmarked, toggleBookmark };
 }
 
 /* ---------- 表情回应（Telegram 式） ---------- */
@@ -519,6 +540,17 @@ function ActionBar({ post: item, big, rx }: { post: Post; big?: boolean; rx: Rx 
           </span>
         )}
         <ReactButton rx={rx} size={size} />
+        <button
+          className={`act bookmark ${a.bookmarked ? 'on' : ''}`}
+          onClick={stop(a.toggleBookmark)}
+          aria-label={a.bookmarked ? '移出书签' : '加入书签'}
+          aria-pressed={a.bookmarked}
+          title={a.bookmarked ? '移出书签' : '书签'}
+        >
+          <span className="ico">
+            <Bookmark size={size} fill={a.bookmarked ? 'currentColor' : 'none'} />
+          </span>
+        </button>
         <button className="act share" onClick={stop(a.share)} aria-label="复制链接">
           <span className="ico">
             <Link2 size={size} />

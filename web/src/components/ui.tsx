@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CircleAlert, X } from 'lucide-react';
 import { media, type AvatarDecoration } from '../lib/api';
 import { useEscape } from '../lib/escape';
+import { Lightbox, type LightboxRequest } from './Lightbox';
 import { compact } from '../lib/format';
 import './identity.css';
 
@@ -390,7 +391,12 @@ export function toast(message: string, type: 'info' | 'error' = 'info') {
 
 /** from：被点击的缩略图，查看器会从它的位置放大出来 */
 export function openLightbox(src: string, from?: HTMLElement | null) {
-  window.dispatchEvent(new CustomEvent('app:lightbox', { detail: { src, from } }));
+  openGallery({ images: [src], index: 0, origin: () => from });
+}
+
+/** 多张图一起看，可以左右翻页 */
+export function openGallery(req: LightboxRequest) {
+  window.dispatchEvent(new CustomEvent<LightboxRequest>('app:lightbox', { detail: req }));
 }
 
 /** 私有图片被撤回或卸载时，关闭同一资源的查看器。 */
@@ -400,60 +406,9 @@ export function closeLightbox(src: string) {
 
 type ToastItem = { id: number; message: string; type: string; leaving?: boolean };
 
-function Lightbox({ src, from, onDone }: { src: string; from?: HTMLElement | null; onDone: () => void }) {
-  const img = useRef<HTMLImageElement>(null);
-  const bg = useRef<HTMLDivElement>(null);
-  const closing = useRef(false);
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  const delta = () => {
-    const el = img.current;
-    if (!el || !from) return null;
-    const a = from.getBoundingClientRect();
-    const b = el.getBoundingClientRect();
-    if (!b.width || !a.width) return null;
-    return `translate(${a.left + a.width / 2 - (b.left + b.width / 2)}px, ${a.top + a.height / 2 - (b.top + b.height / 2)}px) scale(${Math.max(a.width / b.width, a.height / b.height)})`;
-  };
-
-  const onLoad = () => {
-    if (reduce) return;
-    const d = delta();
-    img.current?.animate(
-      d ? [{ transform: d, borderRadius: '16px' }, { transform: 'none', borderRadius: '4px' }] : [{ opacity: 0, transform: 'scale(.94)' }, {}],
-      { duration: 380, easing: 'cubic-bezier(.2,.9,.25,1)' },
-    );
-  };
-
-  const close = useCallback(() => {
-    if (closing.current) return;
-    closing.current = true;
-    if (reduce) return onDone();
-    const d = delta();
-    bg.current?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards', easing: 'ease' });
-    const a = img.current?.animate(
-      d ? [{ transform: 'none' }, { transform: d, borderRadius: '16px' }] : [{}, { opacity: 0, transform: 'scale(.94)' }],
-      { duration: 280, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' },
-    );
-    if (a) a.onfinish = onDone;
-    else onDone();
-  }, [onDone]);
-
-  useEscape(close);
-
-  return (
-    <div className="lightbox" onClick={close}>
-      <div className="lightbox-bg" ref={bg} />
-      <img ref={img} src={src} alt="" onLoad={onLoad} />
-      <button className="icon-btn lightbox-close" aria-label="关闭">
-        <X size={22} />
-      </button>
-    </div>
-  );
-}
-
 export function Overlays() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [img, setImg] = useState<{ src: string; from?: HTMLElement | null } | null>(null);
+  const [img, setImg] = useState<LightboxRequest | null>(null);
   useEffect(() => {
     let seq = 0;
     const onToast = (e: Event) => {
@@ -464,7 +419,8 @@ export function Overlays() {
       setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), 2900);
     };
     const onImg = (e: Event) => setImg((e as CustomEvent).detail);
-    const onImgClose = (e: Event) => setImg((current) => (current?.src === (e as CustomEvent<string>).detail ? null : current));
+    const onImgClose = (e: Event) =>
+      setImg((current) => (current?.images.includes((e as CustomEvent<string>).detail) ? null : current));
     window.addEventListener('app:toast', onToast);
     window.addEventListener('app:lightbox', onImg);
     window.addEventListener('app:lightbox-close', onImgClose);
@@ -484,7 +440,7 @@ export function Overlays() {
         ))}
       </div>
       {img && (
-        <Lightbox key={img.src} src={img.src} from={img.from} onDone={() => setImg((current) => (current === img ? null : current))} />
+        <Lightbox key={img.images.join('|') + img.index} {...img} onDone={() => setImg((current) => (current === img ? null : current))} />
       )}
     </>
   );

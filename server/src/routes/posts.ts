@@ -193,6 +193,45 @@ export async function postRoutes(app: FastifyInstance) {
   });
 
   /* ---------- 点赞 ---------- */
+  /* ---------- 书签（私人收藏，作者不会收到通知） ---------- */
+  app.post('/posts/:id/bookmark', async (req) => {
+    const user = me(req);
+    const target = resolveTarget(Number((req.params as { id: string }).id), user.id);
+    run('INSERT OR IGNORE INTO bookmarks (user_id, post_id, created_at) VALUES ($u, $p, $t)', {
+      u: user.id,
+      p: target.id,
+      t: now(),
+    });
+    return { ok: true };
+  });
+
+  app.delete('/posts/:id/bookmark', async (req) => {
+    const user = me(req);
+    // 原帖已经看不到了（删了、私密吧被移出）也要能取消
+    const id = Number((req.params as { id: string }).id);
+    const orig = get<{ repost_of: number | null }>('SELECT repost_of FROM posts WHERE id = $id', { id });
+    run('DELETE FROM bookmarks WHERE user_id = $u AND post_id = $p', { u: user.id, p: orig?.repost_of ?? id });
+    return { ok: true };
+  });
+
+  app.get('/bookmarks', async (req) => {
+    const user = me(req);
+    const q = req.query as { cursor?: string };
+    // 游标是「加书签的时间_帖子 id」
+    const [ct, cp] = (q.cursor ?? '').split('_').map(Number);
+    const rows = all(
+      `${postSelect(', bk.created_at AS bk_at')}
+       JOIN bookmarks bk ON bk.post_id = p.id AND bk.user_id = $me
+       WHERE p.deleted = 0 AND ($ct IS NULL OR (bk.created_at, p.id) < ($ct, $cp))
+       ORDER BY bk.created_at DESC, p.id DESC LIMIT $limit`,
+      { me: user.id, ct: Number.isFinite(ct) && ct > 0 ? ct : null, cp: Number.isFinite(cp) ? cp : 0, limit: PAGE },
+    );
+    const at = new Map(rows.map((r) => [r.id as number, r.bk_at as number]));
+    const items = hydrate(rows, user.id);
+    const last = rows[rows.length - 1];
+    return { items, nextCursor: rows.length >= PAGE ? `${last.bk_at}_${last.id}` : null, savedAt: Object.fromEntries(at) };
+  });
+
   app.post('/posts/:id/like', async (req) => {
     const user = me(req);
     const target = resolveTarget(Number((req.params as { id: string }).id), user.id);

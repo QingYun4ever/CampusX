@@ -180,6 +180,17 @@ addColumn('users', 'mod_warnings', 'INTEGER NOT NULL DEFAULT 0');
 // 同意的用户协议版本（0 = 还没同意过）和时间，见 TERMS_VERSION
 addColumn('users', 'terms_version', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'terms_accepted_at', 'INTEGER');
+
+// 书签：只有自己看得到，原帖删掉就跟着没了
+db.exec(`
+CREATE TABLE IF NOT EXISTS bookmarks (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, post_id)
+);
+CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON bookmarks(user_id, created_at);
+`);
 // 审核状态：ok 公开；pending 审核中（只有作者看得到）；rejected 未通过（不发布，只留给管理员复核）
 addColumn('posts', 'status', "TEXT NOT NULL DEFAULT 'ok'");
 // 在线状态：最近一次请求的时间（每分钟最多写一次）

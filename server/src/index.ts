@@ -105,7 +105,7 @@ await app.register(fastifyStatic, {
   root: uploadsDir,
   prefix: '/uploads/',
   decorateReply: false,
-  maxAge: '30d',
+  maxAge: '365d',
   immutable: true,
 });
 

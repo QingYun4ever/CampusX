@@ -47,6 +47,7 @@ SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.con
   pu.username AS parent_username,
   EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $me) AS liked,
   EXISTS(SELECT 1 FROM posts r WHERE r.repost_of = p.id AND r.author_id = $me) AS reposted,
+  EXISTS(SELECT 1 FROM bookmarks bk0 WHERE bk0.post_id = p.id AND bk0.user_id = $me) AS bookmarked,
   (SELECT json_group_array(tag) FROM post_tags WHERE post_id = p.id) AS tags,
   (SELECT json_group_array(json_object('key', emoji, 'count', n, 'me', mine, 'users', json(us))) FROM (
      SELECT r.emoji, COUNT(*) AS n, MAX(r.user_id = $me) AS mine, MIN(r.created_at) AS first,
@@ -101,6 +102,8 @@ export interface PostDTO {
   viewCount: number;
   liked: boolean;
   reposted: boolean;
+  /** 当前用户加了书签（只有自己知道） */
+  bookmarked: boolean;
   deleted: boolean;
   createdAt: number;
   tags: string[];
@@ -158,6 +161,7 @@ function serializeRow(r: Row, quotes: Map<number, QuotePreview>): PostDTO {
     viewCount: r.view_count ?? 0,
     liked: !!r.liked,
     reposted: !!r.reposted,
+    bookmarked: !!r.bookmarked,
     deleted,
     createdAt: r.created_at,
     tags: deleted ? [] : (JSON.parse(r.tags ?? '[]') as string[]),

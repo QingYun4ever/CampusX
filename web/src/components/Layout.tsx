@@ -30,6 +30,7 @@ import {
   Settings,
   Shield,
   Store,
+  Bookmark,
   User as UserIcon,
 } from 'lucide-react';
 import { api, type Board, type SiteStats, type User } from '../lib/api';
@@ -95,6 +96,9 @@ function AccountMenuItems({ onDone }: { onDone: () => void }) {
       <hr />
       <Link to={`/u/${me.username}`} onClick={onDone}>
         <UserIcon size={18} /> 个人主页
+      </Link>
+      <Link to="/bookmarks" onClick={onDone} className="mobile-only">
+        <Bookmark size={18} /> 书签
       </Link>
       <Link to="/market" onClick={onDone} className="mobile-only">
         <Store size={18} /> 商场
@@ -178,6 +182,7 @@ function Nav({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void
     ['/search', '搜索', Search],
     ['/notifications', '通知', Bell, unread],
     ['/messages', '私信', Mail, dmUnread],
+    ['/bookmarks', '书签', Bookmark],
     ['/market', '商场', Store],
   ];
 

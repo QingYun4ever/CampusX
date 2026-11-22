@@ -19,9 +19,11 @@
 .cropper-stage:active {
   cursor: grabbing;
 }
+.cropper-stage {
+  align-self: center;
+}
 .cropper-stage.round {
   width: min(100%, 360px);
-  align-self: center;
 }
 .cropper-stage img {
   position: absolute;
@@ -71,4 +73,44 @@
 .cropper-original {
   align-self: center;
   margin: -6px 0 0;
+}
+.cropper-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cropper-aspects {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cropper-aspects button {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.cropper-aspects button:hover {
+  background: var(--hover);
+}
+.cropper-aspects button.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.cropper-rotate {
+  display: flex;
+  gap: 4px;
+  color: var(--text-2);
 }

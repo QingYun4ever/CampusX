@@ -142,8 +142,9 @@ export function media(p?: string | null) {
 }
 
 export async function uploadImage(file: File): Promise<string> {
+  const { prepareImage } = await import('./image');
   const form = new FormData();
-  form.append('file', file);
+  form.append('file', await prepareImage(file));
   const r = await api<{ url: string }>('/upload', { form });
   return r.url;
 }
@@ -245,6 +246,8 @@ export interface Post {
   viewCount: number;
   liked: boolean;
   reposted: boolean;
+  /** 自己加了书签 */
+  bookmarked: boolean;
   deleted: boolean;
   createdAt: number;
   tags: string[];

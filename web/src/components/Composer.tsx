@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronDown, Eye, Hash, ImagePlus, PenLine, ShieldAlert, X } from 'lucide-react';
 import { api, ApiError, media, uploadImage, type Board, type Post } from '../lib/api';
+import { ImageCropper } from './ImageCropper';
 import { useMe } from '../lib/auth';
 import type { ComposeOpts } from './compose';
 import { EmojiPicker } from './EmojiPicker';
@@ -137,7 +138,9 @@ export function Composer({
   const me = useMe();
   const qc = useQueryClient();
   const [text, setText] = useState('');
-  const [images, setImages] = useState<string[]>([]);
+  // file：本机的原图，用来再次编辑（旋转、裁剪），不用再从服务器下载
+  const [images, setImages] = useState<{ url: string; file?: File }[]>([]);
+  const [editing, setEditing] = useState<number | null>(null);
   const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
   const [board, setBoard] = useState(boardSlug ?? '');
@@ -198,7 +201,7 @@ export function Composer({
       setUploading((n) => n + 1);
       try {
         const url = await uploadImage(f);
-        setImages((arr) => [...arr, url]);
+        setImages((arr) => [...arr, { url, file: f }]);
       } catch (e) {
         toast((e as Error).message, 'error');
       } finally {
@@ -228,7 +231,7 @@ export function Composer({
       const post = await api<Post>('/posts', {
         body: {
           content: text,
-          images,
+          images: images.map((i) => i.url),
           parentId: target?.id ?? null,
           quoteOfId: quoteOf?.id,
           boardSlug: target ? null : board || null,
@@ -260,6 +263,22 @@ export function Composer({
   return (
     <>
       {blocked && <BlockedNotice {...blocked} onClose={() => setBlocked(null)} />}
+      {editing !== null && images[editing]?.file && (
+        <ImageCropper
+          file={images[editing].file!}
+          title="编辑图片"
+          editable
+          output={{ maxEdge: 2560 }}
+          onCancel={() => setEditing(null)}
+          onDone={async (file) => {
+            const at = editing;
+            const url = await uploadImage(file);
+            // 编辑后的图片当新的原图，再编辑时从这一版继续；旋转方向等不会叠加出错
+            setImages((arr) => arr.map((x, i) => (i === at ? { url, file } : x)));
+            setEditing(null);
+          }}
+        />
+      )}
       {showReplyContext && target && (
         <div className="composer reply-context">
           <div className="post-left">
@@ -304,12 +323,21 @@ export function Composer({
           {(showTags || tags.length > 0) && <TagInput tags={tags} onChange={setTags} />}
           {(images.length > 0 || uploading > 0) && (
             <div className={`thumbs n${Math.min(images.length + uploading, 4)}`}>
-              {images.map((src) => (
-                <div className="thumb" key={src}>
-                  <img src={media(src)} alt="" />
-                  <button onClick={() => setImages((a) => a.filter((x) => x !== src))} aria-label="移除图片">
+              {images.map((im, i) => (
+                <div className="thumb" key={im.url}>
+                  <img src={media(im.url)} alt="" />
+                  <button
+                    className="thumb-remove"
+                    onClick={() => setImages((a) => a.filter((x) => x.url !== im.url))}
+                    aria-label="移除图片"
+                  >
                     <X size={15} />
                   </button>
+                  {im.file && im.file.type !== 'image/gif' && (
+                    <button className="thumb-edit" onClick={() => setEditing(i)}>
+                      编辑
+                    </button>
+                  )}
                 </div>
               ))}
               {Array.from({ length: uploading }, (_, i) => (
