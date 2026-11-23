@@ -435,3 +435,35 @@ tx(() => {
        WHERE j.type = 'text' AND j.value LIKE '/uploads/%'`);
   run("INSERT INTO settings (key, value) VALUES ('post_upload_refs_indexed', '1')");
 });
+
+/* ---------------- 吧内等级（贴吧式） ---------------- */
+// 每人在每个吧的经验和签到；退出吧不清空，重新加入就恢复
+db.exec(`
+CREATE TABLE IF NOT EXISTS board_exp (
+  board_id      INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  exp           INTEGER NOT NULL DEFAULT 0,
+  checkin_day   TEXT,
+  streak        INTEGER NOT NULL DEFAULT 0,
+  checkin_total INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (board_id, user_id)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_board_exp_rank ON board_exp(board_id, exp DESC);
+CREATE INDEX IF NOT EXISTS idx_board_exp_user ON board_exp(user_id, exp DESC);
+
+-- 经验流水：算每天上限、删帖时扣回。day 是北京时间的日期
+CREATE TABLE IF NOT EXISTS exp_log (
+  id         INTEGER PRIMARY KEY,
+  board_id   INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind       TEXT NOT NULL,
+  ref        TEXT NOT NULL,
+  delta      INTEGER NOT NULL,
+  day        TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_exp_log_ref ON exp_log(board_id, user_id, kind, ref);
+CREATE INDEX IF NOT EXISTS idx_exp_log_day ON exp_log(board_id, user_id, day, kind);
+`);
+// 吧主自定义的 18 个等级头衔（JSON 数组，空字符串的位置用默认头衔）
+addColumn('boards', 'level_titles', "TEXT NOT NULL DEFAULT '[]'");

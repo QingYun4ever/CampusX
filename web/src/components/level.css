@@ -1,0 +1,354 @@
+/* 等级牌子：贴吧式四档颜色，实心数字 + 浅底头衔 */
+.lv {
+  --lv: #2da44e;
+  --lv-ink: #fff;
+  --lv-text: #1a7f37;
+  display: inline-flex;
+  align-items: stretch;
+  height: 16px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 700;
+  vertical-align: middle;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--lv) 14%, transparent);
+  color: var(--lv-text);
+}
+.lv b {
+  min-width: 16px;
+  padding: 0 4px;
+  text-align: center;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: var(--lv);
+  color: var(--lv-ink);
+}
+.lv > span {
+  padding: 0 5px 0 4px;
+}
+.lv.compact {
+  background: none;
+}
+.lv-blue {
+  --lv: #2f81f7;
+  --lv-text: #0b62d6;
+}
+.lv-yellow {
+  --lv: #f2b40b;
+  --lv-ink: #3b2800;
+  --lv-text: #8a5d00;
+}
+.lv-orange {
+  --lv: #f26a1b;
+  --lv-text: #c2490a;
+}
+:root[data-theme='dark'] .lv-green {
+  --lv: #2ea043;
+  --lv-text: #56d364;
+}
+:root[data-theme='dark'] .lv-blue {
+  --lv: #2f81f7;
+  --lv-text: #79b8ff;
+}
+:root[data-theme='dark'] .lv-yellow {
+  --lv: #e3b341;
+  --lv-text: #f2cc60;
+}
+:root[data-theme='dark'] .lv-orange {
+  --lv: #f0712c;
+  --lv-text: #ffa657;
+}
+/* 黄牌、橙牌加一道细光，一眼看得出是老人 */
+.lv-yellow b,
+.lv-orange b {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 60%);
+}
+.lv.big {
+  height: 22px;
+  line-height: 22px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+.lv.big b {
+  min-width: 22px;
+  padding: 0 6px;
+}
+.lv.big > span {
+  padding: 0 8px 0 6px;
+}
+
+.lv-bar {
+  --lv: #2da44e;
+  position: relative;
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--bg-3);
+}
+.lv-bar.lv-blue {
+  --lv: #2f81f7;
+}
+.lv-bar.lv-yellow {
+  --lv: #e3a008;
+}
+.lv-bar.lv-orange {
+  --lv: #f26a1b;
+}
+.lv-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--pct);
+  border-radius: inherit;
+  background: var(--lv);
+  transition: width 0.6s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+
+/* 吧首页：我的等级 + 签到 */
+.level-strip {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.level-strip-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  border: 1px solid var(--line);
+  text-align: left;
+  transition: border-color 0.2s;
+}
+.level-strip-main:hover {
+  border-color: var(--line-strong);
+}
+.level-strip-exp {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.level-strip-exp small {
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.level-strip-main .chev {
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+.checkin-btn {
+  flex-shrink: 0;
+  height: 40px;
+  min-width: 76px;
+  position: relative;
+}
+.checkin-btn.done {
+  color: var(--text-2);
+}
+.checkin-btn .gain {
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--accent);
+  pointer-events: none;
+  animation: gain-float 1.1s cubic-bezier(0.2, 0.9, 0.25, 1) forwards;
+}
+@keyframes gain-float {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -26px);
+  }
+}
+
+/* 等级面板 */
+.level-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 16px 16px;
+}
+.level-sheet-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 4px;
+}
+.level-sheet-head .row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.level-sheet-head .row b {
+  color: var(--text);
+  font-size: 15px;
+}
+.level-facts {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.level-facts b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.level-sheet .tabs {
+  margin: 0 -16px;
+  border-bottom: 1px solid var(--line);
+}
+.rank-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  min-width: 0;
+}
+.rank-row .rank {
+  width: 22px;
+  text-align: center;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+.rank-row .rank.top {
+  color: var(--text);
+}
+.rank-row .who {
+  flex: 1;
+  min-width: 0;
+}
+.rank-row .who .name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  min-width: 0;
+}
+.rank-row .exp {
+  font-size: 13px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.rank-row.me {
+  margin: 0 -16px;
+  padding: 10px 16px;
+  background: var(--accent-10);
+  border-radius: 0;
+}
+.title-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  font-size: 14px;
+}
+.title-row .exp {
+  text-align: right;
+  color: var(--text-3);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.title-row.current {
+  font-weight: 700;
+}
+.title-row.current .exp {
+  color: var(--text-2);
+}
+.title-row .lv {
+  justify-self: start;
+}
+.title-row input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+.title-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.tier-gap {
+  height: 6px;
+}
+.level-rules {
+  margin: 0;
+  padding: 0 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.level-rules b {
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 400px) {
+  .checkin-all-long {
+    display: none;
+  }
+}
+.level-note {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/* 个人主页：在哪些吧几级 */
+.profile-levels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 14px;
+}
+.profile-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 100%;
+  transition: border-color 0.2s;
+}
+.profile-level:hover {
+  border-color: var(--line-strong);
+}
+.profile-level .ellipsis {
+  min-width: 0;
+}

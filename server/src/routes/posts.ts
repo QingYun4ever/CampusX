@@ -6,6 +6,7 @@ import { enqueue, getConfig, logReview, reviewContext, screen, warnAuthor, type 
 import { boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publicPost, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
 import { consumeDraftUploads, holdDraftUploads, MAX_REVIEW_IMAGE_BYTES, siteUploadUrl, type UploadSnapshots } from '../site-uploads.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
+import { grantForLike, revokeForPost } from '../levels.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 
 const PAGE = 20;
@@ -187,6 +188,8 @@ export async function postRoutes(app: FastifyInstance) {
         run('UPDATE posts SET repost_count = MAX(repost_count - 1, 0) WHERE id = $o', { o: p.repost_of });
         return;
       }
+      // 吧务 / 管理员删的算违规，扣回这条帖子给的经验；自己删的不扣
+      if (p.author_id !== user.id) revokeForPost(id);
       // 软删除，保留楼中楼结构
       run(`UPDATE posts SET deleted = 1, content = '', images = '[]', pinned_at = NULL WHERE id = $id`, { id });
       run('DELETE FROM posts WHERE repost_of = $id', { id });
@@ -250,6 +253,7 @@ export async function postRoutes(app: FastifyInstance) {
       if (r.changes) {
         run('UPDATE posts SET like_count = like_count + 1 WHERE id = $p', { p: target.id });
         notify(target.author_id, user.id, 'like', target.id);
+        grantForLike(target, user.id);
       }
     });
     return { ok: true };
@@ -321,6 +325,7 @@ export async function postRoutes(app: FastifyInstance) {
       });
       unnotify(target.author_id, user.id, 'reaction', target.id);
       notify(target.author_id, user.id, 'reaction', target.id, emoji);
+      grantForLike(target, user.id);
     });
     return postById(target.id, user.id)?.reactions ?? [];
   });

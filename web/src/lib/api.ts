@@ -206,6 +206,25 @@ export interface UserLite {
   verifiedNote?: string;
   /** 作者在帖子所在吧的身份（只在帖子里有） */
   boardRole?: 'owner' | 'mod' | null;
+  /** 作者在帖子所在吧的等级（只在帖子里有；退出了吧或不在吧里时为 null） */
+  level?: LevelInfo | null;
+}
+
+export interface LevelInfo {
+  level: number;
+  title: string;
+}
+
+/** 我在某个吧的经验和签到 */
+export interface MyLevel extends LevelInfo {
+  exp: number;
+  /** 当前等级的起点和下一级门槛（满级时 nextExp 为 null） */
+  levelExp: number;
+  nextExp: number | null;
+  checkedIn: boolean;
+  streak: number;
+  checkinTotal: number;
+  nextCheckinExp: number;
 }
 
 export interface User extends UserLite {
@@ -224,6 +243,8 @@ export interface Profile extends User {
   postsCount: number;
   followsYou: boolean;
   isFollowing: boolean;
+  /** 等级最高的几个吧 */
+  boardLevels: (LevelInfo & { slug: string; name: string; icon: string; avatar: string | null; exp: number })[];
 }
 
 export interface BoardRef {
@@ -242,6 +263,8 @@ export interface Board extends BoardRef {
   memberCount: number;
   postCount: number;
   joined: boolean;
+  /** 加入了才有 */
+  myLevel: (LevelInfo & { checkedIn: boolean }) | null;
 }
 
 /** 吧详情页：吧主、吧务、公告、我的身份 */
@@ -254,6 +277,16 @@ export interface BoardDetail extends Board {
   announcement: { text: string; updatedAt: number; by: User | null } | null;
   /** owner 吧主 / mod 吧务 / admin 站点管理员 / null 普通成员 */
   myRole: 'owner' | 'mod' | 'admin' | null;
+  /** 18 个等级的经验门槛和头衔；custom 是吧主改过的（空字符串 = 默认） */
+  levels: { exp: number[]; titles: string[]; defaults: string[]; custom: string[] };
+  /** 没加入时为 null */
+  me: MyLevel | null;
+}
+
+export interface RankingItem extends LevelInfo {
+  rank: number;
+  user: User;
+  exp: number;
 }
 
 export interface SiteStats {

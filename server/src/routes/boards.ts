@@ -5,6 +5,7 @@ import type { SessionUser } from '../auth.ts';
 import { boardRole, HIDDEN_BOARDS, hydrate, postSelect } from '../serialize.ts';
 import { consumeDraftUploads, siteUploadUrl } from '../site-uploads.ts';
 import { HttpError, me, parse } from '../util.ts';
+import { checkin, dayOf, DEFAULT_TITLES, LEVEL_EXP, levelInfo, MAX_LEVEL, myLevel, parseTitles, rankOf, ranking, titleOf } from '../levels.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 
 const PAGE = 20;
@@ -16,8 +17,10 @@ SELECT b.id, b.slug, b.name, b.description, b.icon, b.avatar, b.created_by, b.cr
   (b.id IN ${HIDDEN_BOARDS}) AS hidden,
   (SELECT COUNT(*) FROM board_members m WHERE m.board_id = b.id) AS member_count,
   (SELECT COUNT(*) FROM posts p WHERE p.board_id = b.id AND p.parent_id IS NULL AND p.deleted = 0 AND p.status = 'ok') AS post_count,
-  EXISTS(SELECT 1 FROM board_members m WHERE m.board_id = b.id AND m.user_id = $me) AS joined
-FROM boards b`;
+  EXISTS(SELECT 1 FROM board_members m WHERE m.board_id = b.id AND m.user_id = $me) AS joined,
+  b.level_titles, me_exp.exp AS my_exp, me_exp.checkin_day AS my_checkin_day
+FROM boards b
+LEFT JOIN board_exp me_exp ON me_exp.board_id = b.id AND me_exp.user_id = $me`;
 
 function boardDTO(r: Row) {
   return {
@@ -33,6 +36,8 @@ function boardDTO(r: Row) {
     memberCount: r.member_count as number,
     postCount: r.post_count as number,
     joined: !!r.joined,
+    /** 我在这个吧的等级（加入了才有）和今天签没签 */
+    myLevel: r.joined ? { ...levelInfo((r.my_exp as number | null) ?? 0, r.level_titles as string), checkedIn: r.my_checkin_day === dayOf(now()) } : null,
   };
 }
 
@@ -59,6 +64,15 @@ function boardDetail(r: Row, user: SessionUser) {
       ? { text: r.announcement as string, updatedAt: r.announcement_at as number, by: userRow(r.announcement_by as number | null) }
       : null,
     myRole,
+    /** 18 个等级的门槛和头衔；custom 是吧主改过的（空字符串表示用默认） */
+    levels: {
+      exp: LEVEL_EXP,
+      titles: Array.from({ length: MAX_LEVEL }, (_, i) => titleOf(i + 1, parseTitles(r.level_titles as string))),
+      defaults: DEFAULT_TITLES,
+      custom: Array.from({ length: MAX_LEVEL }, (_, i) => parseTitles(r.level_titles as string)[i] ?? ''),
+    },
+    /** 我在这个吧的经验、签到；没加入时为 null */
+    me: base.joined ? myLevel(base.id, user.id, r.level_titles as string) : null,
     /** 私密吧里吧主指定的可见成员人数 */
     viewerCount: r.viewer_count as number,
     deletePostCount: myRole === 'owner' || user.role === 'admin'
@@ -93,7 +107,13 @@ const boardSchema = z.object({
   visibility: boardFields.visibility.default('public'),
 });
 // 修改时不能带默认值，否则只改名字也会把简介、图标、可见范围重置掉（zod 4 的 partial 会保留 default）
-const boardPatchSchema = z.object(boardFields).omit({ slug: true }).partial();
+const boardPatchSchema = z
+  .object({
+    ...boardFields,
+    levelTitles: z.array(z.string().trim().max(8, '头衔最多 8 个字')).length(MAX_LEVEL),
+  })
+  .omit({ slug: true })
+  .partial();
 
 function findRow(slug: string, meId: number) {
   const r = get(`${BOARD_SELECT} WHERE b.slug = $slug`, { slug, me: meId });
@@ -181,8 +201,16 @@ export async function boardRoutes(app: FastifyInstance) {
       run(
         `UPDATE boards SET name = COALESCE($name, name), description = COALESCE($description, description),
          icon = COALESCE($icon, icon), avatar = CASE WHEN $setAvatar THEN $avatar ELSE avatar END,
-         visibility = COALESCE($visibility, visibility) WHERE id = $id`,
-        { name: null, description: null, icon: null, visibility: null, avatar: null, ...body, setAvatar: body.avatar === undefined ? 0 : 1, id: b.id },
+         visibility = COALESCE($visibility, visibility), level_titles = COALESCE($titles, level_titles) WHERE id = $id`,
+        {
+          name: null, description: null, icon: null, visibility: null, avatar: null,
+          ...body,
+          levelTitles: undefined,
+          // 和默认一样的头衔不存，以后改默认时跟着变
+          titles: body.levelTitles ? JSON.stringify(body.levelTitles.map((x, i) => (x === DEFAULT_TITLES[i] ? '' : x))) : null,
+          setAvatar: body.avatar === undefined ? 0 : 1,
+          id: b.id,
+        },
       );
     });
     return detail(b.slug, user);
@@ -367,6 +395,52 @@ export async function boardRoutes(app: FastifyInstance) {
     const b = findBoard((req.params as { slug: string }).slug, user.id);
     run('DELETE FROM board_members WHERE board_id = $b AND user_id = $u', { b: b.id, u: user.id });
     return { ok: true };
+  });
+
+  /* ---------- 签到与等级 ---------- */
+  app.post('/boards/:slug/checkin', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
+    const user = me(req);
+    const r = findRow(slugOf(req), user.id);
+    if (!r.joined) throw new HttpError(400, '先加入这个吧再签到');
+    const res = tx(() => checkin(r.id as number, user.id));
+    return { gained: res?.gained ?? 0, already: !res, me: myLevel(r.id as number, user.id, r.level_titles as string) };
+  });
+
+  /** 一键签到所有加入了的吧 */
+  app.post('/checkin/all', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+    const user = me(req);
+    const boards = all<{ id: number }>(
+      `SELECT m.board_id AS id FROM board_members m WHERE m.user_id = $me AND m.board_id NOT IN ${HIDDEN_BOARDS}`,
+      { me: user.id },
+    );
+    let count = 0;
+    let gained = 0;
+    tx(() => {
+      for (const b of boards) {
+        const res = checkin(b.id, user.id);
+        if (res) {
+          count++;
+          gained += res.gained;
+        }
+      }
+    });
+    return { count, gained };
+  });
+
+  app.get('/boards/:slug/ranking', async (req) => {
+    const user = me(req);
+    const r = findRow(slugOf(req), user.id);
+    const titles = r.level_titles as string;
+    const rows = ranking(r.id as number);
+    const users = new Map(
+      all(`SELECT ${USER_COLS} FROM users u WHERE u.id IN (SELECT value FROM json_each($ids))`, {
+        ids: JSON.stringify(rows.map((x) => x.user_id)),
+      }).map((u) => [u.id as number, userPublic(u)]),
+    );
+    return {
+      items: rows.map((x, i) => ({ rank: i + 1, user: users.get(x.user_id)!, exp: x.exp, ...levelInfo(x.exp, titles) })),
+      me: r.joined ? { rank: rankOf(r.id as number, user.id), ...myLevel(r.id as number, user.id, titles) } : null,
+    };
   });
 
   /** sort=active：按最后回复（贴吧式）；sort=new：按发帖时间 */

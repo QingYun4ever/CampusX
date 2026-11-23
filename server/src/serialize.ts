@@ -1,4 +1,5 @@
 import { all, get, now, run, type Row } from './db.ts';
+import { grantForPost, levelInfo, revokeForPost, type LevelInfo } from './levels.ts';
 
 /** 表情回应（Telegram 式）：每人每帖一个，换一个会替换掉之前的。前端的列表要和这里一致 */
 export const REACTIONS = [
@@ -49,7 +50,9 @@ export function postSelect(extraCols = '') {
 SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.content, p.images,
   p.like_count, p.reply_count, p.repost_count, p.view_count, p.deleted, p.created_at, p.last_activity_at,
   u.username, u.display_name, u.avatar, u.avatar_decoration, u.role, u.class_name, u.verified, u.verified_note,
-  b.slug AS board_slug, b.name AS board_name, b.icon AS board_icon,
+  b.slug AS board_slug, b.name AS board_name, b.icon AS board_icon, b.level_titles AS board_level_titles,
+  be.exp AS author_exp,
+  EXISTS(SELECT 1 FROM board_members am WHERE am.board_id = p.board_id AND am.user_id = p.author_id) AS author_member,
   pu.username AS parent_username,
   EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $me) AS liked,
   EXISTS(SELECT 1 FROM posts r WHERE r.repost_of = p.id AND r.author_id = $me) AS reposted,
@@ -76,6 +79,7 @@ SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.con
 FROM (SELECT * FROM posts WHERE (status = 'ok' OR (status = 'pending' AND author_id = $me)) AND ${visibleTo()}) p
 JOIN users u ON u.id = p.author_id
 LEFT JOIN boards b ON b.id = p.board_id
+LEFT JOIN board_exp be ON be.board_id = p.board_id AND be.user_id = p.author_id
 LEFT JOIN post_quotes q ON q.post_id = p.id
 LEFT JOIN posts pp ON pp.id = p.parent_id
 LEFT JOIN users pu ON pu.id = pp.author_id`;
@@ -95,6 +99,8 @@ export interface PostDTO {
     verifiedNote: string;
     /** 作者在这条帖子所在吧里的身份 */
     boardRole: 'owner' | 'mod' | null;
+    /** 作者在这条帖子所在吧里的等级；不在吧里的帖子、或者作者已经退出这个吧时为 null */
+    level: LevelInfo | null;
   };
   board: { slug: string; name: string; icon: string } | null;
   parentId: number | null;
@@ -154,6 +160,7 @@ function serializeRow(r: Row, quotes: Map<number, QuotePreview>): PostDTO {
       verified: !!r.verified,
       verifiedNote: r.verified_note ?? '',
       boardRole: (r.author_board_role as 'owner' | 'mod' | null) ?? null,
+      level: r.board_id && r.author_member ? levelInfo(r.author_exp ?? 0, r.board_level_titles) : null,
     },
     board: r.board_slug ? { slug: r.board_slug, name: r.board_name, icon: r.board_icon } : null,
     parentId: r.parent_id ?? null,
@@ -344,6 +351,7 @@ export function publishEffects(postId: number) {
     if (p.can_notify_quote) notify(p.quote_author_id, p.author_id, 'quote', postId);
   }
   notifyMentions(p.content, p.author_id, postId, skip);
+  grantForPost(postId);
 }
 
 /** 撤回已发布的效果（管理员把通过的帖子改判为不通过时） */
@@ -353,6 +361,7 @@ export function unpublishEffects(postId: number) {
     run('UPDATE posts SET reply_count = MAX(reply_count - 1, 0) WHERE id = $id', { id: p.parent_id });
   }
   run("DELETE FROM notifications WHERE post_id = $id AND type IN ('reply', 'mention', 'quote')", { id: postId });
+  revokeForPost(postId);
 }
 
 /* ---------------- 吧务权限 ---------------- */

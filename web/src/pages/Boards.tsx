@@ -10,6 +10,8 @@ import { Avatar, BoardMark, toneFor, Empty, Field, Modal, PostSkeleton, Tabs, to
 import { api, uploadImage, type Board, type BoardDetail, type Page, type Post, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { timeAgo } from '../lib/format';
+import { LevelBadge } from '../components/Level';
+import { CheckinAll, LevelStrip } from './BoardLevels';
 
 function JoinButton({ board }: { board: Board }) {
   const qc = useQueryClient();
@@ -248,14 +250,17 @@ export function Boards() {
         title="吧"
         sub={q.data ? `${q.data.length} 个吧` : undefined}
         right={
-          <button
-            className="btn btn-outline sm"
-            onClick={() =>
-              full ? toast(`每位同学最多创建 ${quota.data!.max} 个吧，你已经建满了`, 'error') : setCreating(true)
-            }
-          >
-            <Plus size={16} /> 新建
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {q.data && <CheckinAll boards={q.data} />}
+            <button
+              className="btn btn-outline sm"
+              onClick={() =>
+                full ? toast(`每位同学最多创建 ${quota.data!.max} 个吧，你已经建满了`, 'error') : setCreating(true)
+              }
+            >
+              <Plus size={16} /> 新建
+            </button>
+          </div>
         }
       />
       {q.isPending ? (
@@ -270,6 +275,7 @@ export function Boards() {
               <div className="name team-part">
                 {b.name}吧
                 {b.visibility === 'private' && <Lock size={13} className="muted" aria-label="私密" />}
+                {b.myLevel && <LevelBadge {...b.myLevel} board={b.name} compact />}
               </div>
               {b.description && <div className="muted ellipsis small">{b.description}</div>}
               <div className="faint small">
@@ -710,6 +716,7 @@ export function BoardPage() {
           )}
           <JoinButton board={b} />
         </div>
+        <LevelStrip b={b} />
         <TeamStrip b={b} onOpen={() => setTeam(true)} />
         {canSeeViewers && (
           <button className="board-team" onClick={() => setViewers(true)}>

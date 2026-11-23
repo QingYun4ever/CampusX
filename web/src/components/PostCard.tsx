@@ -9,6 +9,7 @@ import { markViewed, useViewTracking } from '../lib/views';
 import { useCompose } from './compose';
 import { ContentLink } from './ContentLink';
 import { MediaImage } from './MediaImage';
+import { LevelBadge } from './Level';
 import { QuoteCard } from './QuoteCard';
 import { Avatar, Emoji, emojiUrl, Empty, Modal, openGallery, Rolling, Spinner, toast, toneFor, usePopover, Verified } from './ui';
 
@@ -634,6 +635,7 @@ function Head({ post, opId }: { post: Post; opId?: number }) {
         {post.author.displayName}
       </Link>
       <Verified user={post.author} size={17} />
+      {post.author.level && <LevelBadge {...post.author.level} board={post.board?.name} compact />}
       {opId === post.author.id && <span className="tag op">楼主</span>}
       <RoleTags author={post.author} />
       <span className="muted handle" data-admin={post.author.role === 'admin' || undefined}>@{post.author.username}</span>
@@ -785,6 +787,7 @@ export function PostMain({ post: item, onDeleted }: { post: Post; onDeleted?: ()
               {post.author.displayName}
             </Link>
             <Verified user={post.author} />
+            {post.author.level && <LevelBadge {...post.author.level} board={post.board?.name} />}
             <RoleTags author={post.author} />
           </div>
           <div className="muted ellipsis">

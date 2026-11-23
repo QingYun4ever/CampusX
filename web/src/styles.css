@@ -4720,6 +4720,21 @@ img.emoji {
   }
 }
 
+/* 窄屏：等级、楼主、吧主标签都在时，名字至少留 4 个字，时间先让 */
+@media (max-width: 360px) {
+  .post-head .tag:not(.op):not(.owner):not(.mod) {
+    display: none;
+  }
+  .post-head .name {
+    flex-shrink: 0;
+    max-width: 4.5em;
+  }
+  .post-head time {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
 @media (max-width: 340px) {
   .post-head .handle,
   .post-head .dot {

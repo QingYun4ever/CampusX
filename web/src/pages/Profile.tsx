@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } fro
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Camera, GraduationCap, Mail, School, Settings } from 'lucide-react';
+import { LevelBadge } from '../components/Level';
 import { Feed } from '../components/Feed';
 import { ImageCropper } from '../components/ImageCropper';
 import { FollowButton } from '../components/FollowButton';
@@ -109,6 +110,16 @@ export function Profile() {
             <CalendarDays size={16} /> {joined.getFullYear()}年{joined.getMonth() + 1}月加入
           </span>
         </div>
+        {u.boardLevels?.length > 0 && (
+          <div className="profile-levels" aria-label="吧等级">
+            {u.boardLevels.map((b) => (
+              <Link key={b.slug} to={`/b/${b.slug}`} className="profile-level" title={`${b.name}吧 ${b.level} 级 · ${b.title} · 经验 ${b.exp}`}>
+                <LevelBadge level={b.level} title={b.title} compact />
+                <span className="ellipsis">{b.name}</span>
+              </Link>
+            ))}
+          </div>
+        )}
         <div className="profile-stats">
           <Link to={`/u/${u.username}/following`}>
             <b>{u.following}</b> 正在关注

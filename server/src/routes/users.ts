@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { all, get, now, run, tx } from '../db.ts';
-import { hydrate, notify, postSelect, unnotify, visibleTo } from '../serialize.ts';
+import { HIDDEN_BOARDS, hydrate, notify, postSelect, unnotify, visibleTo } from '../serialize.ts';
+import { levelInfo } from '../levels.ts';
 import { consumeDraftUploads, siteUploadUrl } from '../site-uploads.ts';
 import { cursorNum, escapeLike, HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
@@ -102,6 +103,15 @@ export async function userRoutes(app: FastifyInstance) {
       postsCount: stats.posts,
       followsYou: !!stats.follows_you,
       isFollowing: !!stats.is_following,
+      // 等级最高的几个吧（只列加入了、而且看的人看得到的吧）
+      boardLevels: all<{ slug: string; name: string; icon: string; avatar: string | null; exp: number; level_titles: string }>(
+        `SELECT b.slug, b.name, b.icon, b.avatar, e.exp, b.level_titles FROM board_exp e
+         JOIN boards b ON b.id = e.board_id
+         JOIN board_members m ON m.board_id = e.board_id AND m.user_id = e.user_id
+         WHERE e.user_id = $id AND e.exp > 0 AND b.id NOT IN ${HIDDEN_BOARDS}
+         ORDER BY e.exp DESC LIMIT 6`,
+        { id: u.id, me: user.id },
+      ).map((b) => ({ slug: b.slug, name: b.name, icon: b.icon, avatar: b.avatar, exp: b.exp, ...levelInfo(b.exp, b.level_titles) })),
     };
   });
 
