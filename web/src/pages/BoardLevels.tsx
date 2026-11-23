@@ -1,12 +1,58 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarCheck, ChevronRight } from 'lucide-react';
 import { LevelBadge, LevelBar, tierOf } from '../components/Level';
 import { Avatar, Empty, Modal, Spinner, Tabs, toast, Verified } from '../components/ui';
 import { api, type Board, type BoardDetail, type MyLevel, type RankingItem } from '../lib/api';
+import { useMe } from '../lib/auth';
 
 const fmt = (n: number) => n.toLocaleString('zh-CN');
+
+/** 北京时间的日期，签到按这个算 */
+const bjDay = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+
+/**
+ * 页面开着跨过北京时间零点：重新取吧和吧列表，签到按钮回到「签到」。
+ * 手机锁屏时定时器可能不准，回到前台时也看一眼。
+ */
+function useDayRollover() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    let day = bjDay();
+    const check = () => {
+      if (bjDay() === day) return;
+      day = bjDay();
+      void qc.invalidateQueries({ queryKey: ['board'] });
+      void qc.invalidateQueries({ queryKey: ['boards'] });
+      void qc.invalidateQueries({ queryKey: ['board-ranking'] });
+    };
+    const msToMidnight = 86400_000 - ((Date.now() + 8 * 3600_000) % 86400_000) + 1000;
+    let timer = setTimeout(function tick() {
+      check();
+      timer = setTimeout(tick, 86400_000);
+    }, msToMidnight);
+    const onVisible = () => document.visibilityState === 'visible' && check();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [qc]);
+}
+
+/** 等级变了：已经显示的帖子上的牌子也要换 */
+function refreshPostBadges(qc: ReturnType<typeof useQueryClient>, slug?: string) {
+  for (const k of ['feed', 'post', 'replies', 'user-posts', 'tag-posts', 'search-posts']) void qc.invalidateQueries({ queryKey: [k] });
+  void qc.invalidateQueries({ queryKey: slug ? ['board-posts', slug] : ['board-posts'] });
+  void qc.invalidateQueries({ queryKey: slug ? ['board-pinned', slug] : ['board-pinned'] });
+}
+
+/** 能改头衔：吧主或站点管理员（和后端一样，不看有没有关注） */
+function useCanEditTitles(b: BoardDetail) {
+  const me = useMe();
+  return b.myRole === 'owner' || me.role === 'admin';
+}
 
 /** 签到；成功后刷新吧详情和吧列表 */
 function useCheckin(slug: string) {
@@ -18,7 +64,9 @@ function useCheckin(slug: string) {
     setBusy(true);
     try {
       const r = await api<{ gained: number; already: boolean; me: MyLevel }>(`/boards/${slug}/checkin`, { method: 'POST', body: {} });
+      const before = qc.getQueryData<BoardDetail>(['board', slug])?.me?.level;
       qc.setQueryData<BoardDetail>(['board', slug], (b) => (b ? { ...b, me: r.me } : b));
+      if (before !== undefined && before !== r.me.level) refreshPostBadges(qc, slug);
       if (r.gained) {
         setGain({ n: r.gained, key: Date.now() });
         toast(r.me.streak > 1 ? `签到成功，经验 +${r.gained}，已连签 ${r.me.streak} 天` : `签到成功，经验 +${r.gained}`);
@@ -38,8 +86,22 @@ function useCheckin(slug: string) {
 export function LevelStrip({ b }: { b: BoardDetail }) {
   const [open, setOpen] = useState(false);
   const checkin = useCheckin(b.slug);
+  const canEdit = useCanEditTitles(b);
+  useDayRollover();
   const m = b.me;
-  if (!m) return null;
+  if (!m) {
+    // 没关注的吧主 / 管理员也要能改头衔
+    if (!canEdit) return null;
+    return (
+      <>
+        <button className="board-team" onClick={() => setOpen(true)}>
+          <span className="team-part">等级头衔</span>
+          <ChevronRight size={16} className="muted chev" aria-hidden />
+        </button>
+        {open && <LevelModal b={b} onClose={() => setOpen(false)} />}
+      </>
+    );
+  }
   return (
     <div className="level-strip">
       <button className="level-strip-main" onClick={() => setOpen(true)} aria-label="我的等级和排行">
@@ -70,12 +132,15 @@ export function LevelStrip({ b }: { b: BoardDetail }) {
 type Tab = 'rank' | 'titles' | 'rules';
 
 function LevelModal({ b, onClose }: { b: BoardDetail; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('rank');
-  const m = b.me!;
-  const toNext = m.nextExp !== null ? m.nextExp - m.exp : 0;
+  const m = b.me;
+  const [tab, setTab] = useState<Tab>(m ? 'rank' : 'titles');
+  // 头衔草稿放在这里：切到别的标签再回来不会丢
+  const [draft, setDraft] = useState<string[] | null>(null);
+  const toNext = m && m.nextExp !== null ? m.nextExp - m.exp : 0;
   return (
-    <Modal title={`${b.name}吧 · 我的等级`} onClose={onClose}>
+    <Modal title={m ? `${b.name}吧 · 我的等级` : `${b.name}吧 · 等级头衔`} onClose={onClose}>
       <div className="level-sheet">
+        {m && (
         <div className="level-sheet-head">
           <div className="row">
             <LevelBadge level={m.level} title={m.title} className="big" />
@@ -102,6 +167,7 @@ function LevelModal({ b, onClose }: { b: BoardDetail; onClose: () => void }) {
             </span>
           </div>
         </div>
+        )}
         <Tabs
           value={tab}
           onChange={setTab}
@@ -112,7 +178,7 @@ function LevelModal({ b, onClose }: { b: BoardDetail; onClose: () => void }) {
           ]}
         />
         {tab === 'rank' && <Ranking slug={b.slug} />}
-        {tab === 'titles' && <Titles b={b} />}
+        {tab === 'titles' && <Titles b={b} draft={draft} setDraft={setDraft} />}
         {tab === 'rules' && <Rules />}
       </div>
     </Modal>
@@ -159,10 +225,9 @@ function Ranking({ slug }: { slug: string }) {
   );
 }
 
-function Titles({ b }: { b: BoardDetail }) {
+function Titles({ b, draft, setDraft }: { b: BoardDetail; draft: string[] | null; setDraft: (d: string[] | null | ((d: string[] | null) => string[] | null)) => void }) {
   const qc = useQueryClient();
-  const canEdit = b.myRole === 'owner' || b.myRole === 'admin';
-  const [draft, setDraft] = useState<string[] | null>(null);
+  const canEdit = useCanEditTitles(b);
   const [busy, setBusy] = useState(false);
   const save = async () => {
     if (!draft) return;
@@ -173,7 +238,7 @@ function Titles({ b }: { b: BoardDetail }) {
         body: { levelTitles: draft.map((x, i) => x.trim() || b.levels.defaults[i]) },
       });
       qc.setQueryData(['board', b.slug], next);
-      void qc.invalidateQueries({ queryKey: ['board-posts', b.slug] });
+      refreshPostBadges(qc, b.slug);
       void qc.invalidateQueries({ queryKey: ['board-ranking', b.slug] });
       setDraft(null);
       toast('头衔已保存');
@@ -196,6 +261,7 @@ function Titles({ b }: { b: BoardDetail }) {
                 <input
                   value={draft[i]}
                   maxLength={8}
+                  readOnly={busy}
                   placeholder={b.levels.defaults[i]}
                   aria-label={`${lv} 级头衔`}
                   onChange={(e) => setDraft((d) => d!.map((x, j) => (j === i ? e.target.value : x)))}
@@ -265,6 +331,7 @@ function Rules() {
 /** 吧列表顶部：一键签到所有加入了的吧 */
 export function CheckinAll({ boards }: { boards: Board[] }) {
   const qc = useQueryClient();
+  useDayRollover();
   const [busy, setBusy] = useState(false);
   const pending = boards.filter((b) => b.myLevel && !b.myLevel.checkedIn).length;
   const joined = boards.some((b) => b.myLevel);
@@ -276,6 +343,8 @@ export function CheckinAll({ boards }: { boards: Board[] }) {
       toast(r.count ? `签到了 ${r.count} 个吧，经验一共 +${r.gained}` : '今天都签过了');
       await qc.invalidateQueries({ queryKey: ['boards'] });
       void qc.invalidateQueries({ queryKey: ['board'] });
+      void qc.invalidateQueries({ queryKey: ['board-ranking'] });
+      if (r.count) refreshPostBadges(qc);
     } catch (e) {
       toast((e as Error).message, 'error');
     } finally {

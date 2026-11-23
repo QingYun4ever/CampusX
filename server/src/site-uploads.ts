@@ -325,7 +325,7 @@ function collectExpiredUploads() {
              AND NOT EXISTS (SELECT 1 FROM post_upload_refs WHERE url = '/uploads/' || su.name)
              AND NOT EXISTS (SELECT 1 FROM users WHERE avatar = '/uploads/' || su.name OR banner = '/uploads/' || su.name)
              AND NOT EXISTS (SELECT 1 FROM boards WHERE avatar = '/uploads/' || su.name)
-             AND NOT EXISTS (SELECT 1 FROM custom_emojis WHERE file = su.name)
+             AND NOT EXISTS (SELECT 1 FROM custom_emojis WHERE file = su.name AND (removed = 0 OR sent = 1))
            ORDER BY su.name LIMIT $limit`,
           { cursor, cutoff, t, limit: gcBatchSize },
         );

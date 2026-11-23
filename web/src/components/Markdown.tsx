@@ -13,17 +13,37 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { ContentLink } from './ContentLink';
 import { CustomEmojiImg } from './CustomEmoji';
-import { EMOJI_TOKEN_ONE, emojiSrc } from '../lib/customEmoji';
+import { EMOJI_TOKEN, emojiSrc } from '../lib/customEmoji';
 
-export const TOKEN = /(\[e:[\w-]{8,40}\.webp\]|@[A-Za-z0-9_]{3,20}|#[^\s#@，。！？、；：,.!?;:()（）「」\[]{1,30})/g;
+/**
+ * 表情先换成占位符（私用区字符 + 序号）再交给 Markdown 解析：
+ * 文件名里有 _ 和 -，直接解析可能被当成斜体，表情就碎了
+ */
+const PH = /\uE000(\d+)\uE001/g;
+const PH_ONE = /^\uE000(\d+)\uE001$/;
+const TOKEN = /(\uE000\d+\uE001|@[A-Za-z0-9_]{3,20}|#[^\s#@，。！？、；：,.!?;:()（）「」[\]\uE000]{1,30})/g;
+
+function protectEmojis(text: string) {
+  const files: string[] = [];
+  return { text: text.replace(EMOJI_TOKEN, (_, file: string) => `\uE000${files.push(file) - 1}\uE001`), files };
+}
 
 type MdNode = { type: string; value?: string; url?: string; alt?: string; children?: MdNode[]; data?: Record<string, unknown> };
 const SKIP = new Set(['link', 'linkReference', 'inlineCode', 'code', 'inlineMath', 'math', 'definition']);
 
-/** 把文本里的 @提及 和 #话题 换成链接节点 */
-function remarkMentions() {
+/** 把文本里的 @提及、#话题 和表情占位符换成链接 / 图片节点；代码、公式、链接里的占位符还原成原文 */
+function remarkMentions(files: string[] = []) {
+  const restore = (s: string) => s.replace(PH, (_, i: string) => `[e:${files[Number(i)] ?? ''}]`);
+  const restoreAll = (node: MdNode) => {
+    if (typeof node.value === 'string') node.value = restore(node.value);
+    if (typeof node.url === 'string') node.url = restore(node.url);
+    if (typeof node.alt === 'string') node.alt = restore(node.alt);
+    node.children?.forEach(restoreAll);
+  };
   const walk = (node: MdNode) => {
-    if (!node.children || SKIP.has(node.type)) return;
+    if (SKIP.has(node.type)) return restoreAll(node);
+    if (typeof node.alt === 'string') node.alt = restore(node.alt);
+    if (!node.children) return;
     const out: MdNode[] = [];
     for (const child of node.children) {
       if (child.type !== 'text' || !child.value) {
@@ -34,10 +54,12 @@ function remarkMentions() {
       child.value.split(TOKEN).forEach((part, i) => {
         if (!part) return;
         if (i % 2 === 0) return out.push({ type: 'text', value: part });
-        const emoji = EMOJI_TOKEN_ONE.exec(part);
-        if (emoji) {
+        const ph = PH_ONE.exec(part);
+        if (ph) {
+          const file = files[Number(ph[1])];
+          if (!file) return;
           // 只有这里生成的图片节点带 data-emoji，用户自己写的 ![](…) 仍然显示成链接
-          return out.push({ type: 'image', url: emojiSrc(emoji[1]), alt: '[表情]', data: { hProperties: { dataEmoji: emoji[1] } } });
+          return out.push({ type: 'image', url: emojiSrc(file), alt: '[表情]', data: { hProperties: { dataEmoji: file } } });
         }
         const url = part.startsWith('@') ? `/u/${part.slice(1)}` : `/search?q=${encodeURIComponent(part)}`;
         out.push({ type: 'link', url, children: [{ type: 'text', value: part }] });
@@ -71,14 +93,15 @@ const components: Components = {
 const displayMath = (t: string) => t.replace(/^[ \t]*\$\$([^\n]+?)\$\$[ \t]*$/gm, (_, m) => `$$\n${m.trim()}\n$$`);
 
 export default function Markdown({ text }: { text: string }) {
+  const safe = protectEmojis(displayMath(text));
   return (
     <div className="content md">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkBreaks, [remarkMath, { singleDollarTextMath: true }], remarkMentions]}
+        remarkPlugins={[remarkGfm, remarkBreaks, [remarkMath, { singleDollarTextMath: true }], [remarkMentions, safe.files]]}
         rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore', maxSize: 20, maxExpand: 200 }]]}
         components={components}
       >
-        {displayMath(text)}
+        {safe.text}
       </ReactMarkdown>
     </div>
   );

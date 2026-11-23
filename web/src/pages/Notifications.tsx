@@ -23,7 +23,7 @@ const META = {
 
 /** 举报处理完成 */
 function ReportItem({ n }: { n: Notification }) {
-  let info: { targetType?: string } = {};
+  let info: { targetType?: string; status?: string } = {};
   try {
     info = JSON.parse(n.extra || '{}');
   } catch {
@@ -36,7 +36,15 @@ function ReportItem({ n }: { n: Notification }) {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div>
-          <b>举报已处理</b>：你举报的{info.targetType === 'user' ? '用户' : '帖子'}，管理员已经处理。感谢你帮校墙变得更好
+          {info.status === 'dismissed' ? (
+            <>
+              <b>举报结果</b>：你举报的{info.targetType === 'user' ? '用户' : '帖子'}，管理员看过了，暂时没有发现违规。还是谢谢你的反馈
+            </>
+          ) : (
+            <>
+              <b>举报已处理</b>：你举报的{info.targetType === 'user' ? '用户' : '帖子'}，管理员已经处理。感谢你帮校墙变得更好
+            </>
+          )}
           <span className="faint"> · {timeAgo(n.createdAt)}</span>
         </div>
       </div>

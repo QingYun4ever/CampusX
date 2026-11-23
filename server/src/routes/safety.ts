@@ -8,7 +8,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { all, get, now, run, tx } from '../db.ts';
 import { readUploadedImage } from '../image-upload.ts';
-import { unnotify } from '../serialize.ts';
+import { publicPost, unnotify, visibleTo } from '../serialize.ts';
+import { removePost } from './posts.ts';
 import { storeSiteUpload } from '../site-uploads.ts';
 import { makeEmojiImage } from '../thumbs.ts';
 import { HttpError, me, parse } from '../util.ts';
@@ -40,7 +41,15 @@ const handleSchema = z.object({
   targetType: z.enum(['post', 'user']),
   targetId: z.number().int().positive(),
   status: z.enum(['resolved', 'dismissed']),
+  /** 处理帖子举报时顺便删除这条帖子（和结案在同一个事务里） */
+  deletePost: z.boolean().default(false),
 });
+
+/** 这条举报是不是针对这位管理员本人（或他的帖子）：本人看不到举报人，也不能自己处理 */
+function involves(adminId: number, targetType: string, targetId: number) {
+  if (targetType === 'user') return targetId === adminId;
+  return !!get('SELECT 1 FROM posts WHERE id = $id AND author_id = $me', { id: targetId, me: adminId });
+}
 
 function userByName(username: string) {
   const r = get(`SELECT ${USER_COLS} FROM users u WHERE u.username = $n`, { n: username });
@@ -102,8 +111,13 @@ export async function safetyRoutes(app: FastifyInstance) {
     const user = me(req);
     const body = parse(reportSchema, req.body);
     if (body.targetType === 'post') {
-      const p = get<{ author_id: number; deleted: number }>('SELECT author_id, deleted FROM posts WHERE id = $id', { id: body.targetId });
-      if (!p || p.deleted) throw new HttpError(404, '帖子不存在');
+      // 和正常看帖同样的规则：私密吧、审核中的帖子，看不到的人也举报不了
+      const p = get<{ author_id: number }>(
+        `SELECT p.author_id FROM posts p WHERE p.id = $id AND p.deleted = 0
+           AND (p.status = 'ok' OR p.author_id = $me) AND ${visibleTo('p.')}`,
+        { id: body.targetId, me: user.id },
+      );
+      if (!p) throw new HttpError(404, '帖子不存在');
       if (p.author_id === user.id) throw new HttpError(400, '不能举报自己的帖子');
     } else {
       if (!get('SELECT 1 FROM users WHERE id = $id', { id: body.targetId })) throw new HttpError(404, '用户不存在');
@@ -130,6 +144,7 @@ export async function safetyRoutes(app: FastifyInstance) {
 
     /** 按目标聚合：同一条帖子被多人举报只显示一行 */
     admin.get('/admin/reports', async (req) => {
+      const adminId = me(req).id;
       const status = (req.query as { status?: string }).status === 'closed' ? 'closed' : 'open';
       const groups = all<{ target_type: string; target_id: number; n: number; first_at: number; last_at: number; status: string; handled_at: number | null }>(
         `SELECT target_type, target_id, COUNT(*) AS n, MIN(created_at) AS first_at, MAX(created_at) AS last_at,
@@ -139,6 +154,7 @@ export async function safetyRoutes(app: FastifyInstance) {
          ORDER BY ${status === 'open' ? 'n DESC, last_at DESC' : 'handled_at DESC'} LIMIT 100`,
       );
       return groups.map((g) => {
+        const self = involves(adminId, g.target_type, g.target_id);
         const reports = all<{ reason: string; note: string; created_at: number; username: string; display_name: string }>(
           `SELECT r.reason, r.note, r.created_at, u.username, u.display_name FROM reports r JOIN users u ON u.id = r.reporter_id
            WHERE r.target_type = $type AND r.target_id = $id AND ${status === 'open' ? "r.status = 'open'" : 'r.handled_at = $h'}
@@ -147,14 +163,15 @@ export async function safetyRoutes(app: FastifyInstance) {
         );
         let target: Record<string, unknown> | null = null;
         if (g.target_type === 'post') {
+          // 注意：USER_COLS 里也有 u.id，帖子 id 单独取别名，不然会被作者 id 覆盖
           const p = get(
-            `SELECT p.id, p.content, p.images, p.deleted, p.status, p.parent_id, p.root_id, ${USER_COLS}
+            `SELECT p.id AS post_id, p.content, p.images, p.deleted, p.status, p.parent_id, p.root_id, ${USER_COLS}
              FROM posts p JOIN users u ON u.id = p.author_id WHERE p.id = $id`,
             { id: g.target_id },
           );
           if (p) {
             target = {
-              id: p.id,
+              id: p.post_id,
               excerpt: excerpt(p.content as string, p.images as string),
               images: JSON.parse(p.images as string),
               deleted: !!p.deleted,
@@ -175,12 +192,14 @@ export async function safetyRoutes(app: FastifyInstance) {
           status: status === 'open' ? 'open' : g.status,
           handledAt: g.handled_at,
           target,
+          /** 举报的是这位管理员本人：不显示举报人和补充说明，也不能自己处理 */
+          involvesMe: self,
           reports: reports.map((r) => ({
             reason: r.reason,
             reasonText: REPORT_REASONS[r.reason as ReasonKey] ?? r.reason,
-            note: r.note,
+            note: self ? '' : r.note,
             createdAt: r.created_at,
-            reporter: { username: r.username, displayName: r.display_name },
+            reporter: self ? null : { username: r.username, displayName: r.display_name },
           })),
         };
       });
@@ -190,6 +209,8 @@ export async function safetyRoutes(app: FastifyInstance) {
     admin.post('/admin/reports/handle', async (req) => {
       const user = me(req);
       const body = parse(handleSchema, req.body);
+      if (involves(user.id, body.targetType, body.targetId)) throw new HttpError(403, '这条举报涉及你本人，请交给其他管理员处理');
+      if (body.deletePost && body.targetType !== 'post') throw new HttpError(400, '只有帖子能删除');
       const t = now();
       const reporters = tx(() => {
         const ids = all<{ reporter_id: number }>(
@@ -201,9 +222,11 @@ export async function safetyRoutes(app: FastifyInstance) {
            WHERE target_type = $type AND target_id = $id AND status = 'open'`,
           { s: body.status, by: user.id, t, type: body.targetType, id: body.targetId },
         );
-        if (body.status === 'resolved') {
-          const extra = JSON.stringify({ targetType: body.targetType });
-          // 不走 notify() 的去重：同一个人可能多次举报、多次被处理
+        if (!ids.length) throw new HttpError(409, '这条举报已经被处理过了');
+        if (body.deletePost) removePost(body.targetId, true);
+        {
+          const extra = JSON.stringify({ targetType: body.targetType, status: body.status });
+          // 处理和驳回都通知举报人。不走 notify() 的去重：同一个人可能多次举报、多次被处理
           for (const id of ids) {
             run(`INSERT INTO notifications (user_id, actor_id, type, post_id, extra, created_at) VALUES ($u, $a, 'report', NULL, $extra, $t)`, {
               u: id, a: user.id, extra, t,

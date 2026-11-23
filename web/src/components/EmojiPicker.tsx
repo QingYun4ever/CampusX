@@ -1,7 +1,7 @@
-import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { Package, Plus, Smile, Store, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { REACTIONS } from '../lib/api';
+import { getToken, REACTIONS } from '../lib/api';
 import { BUNDLED_EMOJI, EMOJI_PACKS, setEmojiPackInstalled, useInstalledEmojiPacks } from '../lib/emojiPacks';
 import { useEscape } from '../lib/escape';
 import { Emoji, Spinner, toast } from './ui';
@@ -36,10 +36,18 @@ function MyEmojis({ onPick }: { onPick: (emoji: string) => void }) {
   const limit = q.data?.limit ?? 60;
   const full = items.length >= limit;
 
+  // 删光了就退出整理，不然上传按钮一直藏着
+  useEffect(() => {
+    if (editing && !q.isPending && !items.length) setEditing(false);
+  }, [editing, q.isPending, items.length]);
+
   const onFiles = async (files: FileList | null) => {
     const list = [...(files ?? [])].slice(0, Math.max(0, limit - items.length));
     if (input.current) input.current.value = '';
+    // 一批传到一半退出或换了账号：剩下的不再传，免得传进别人的表情里
+    const token = getToken();
     for (const file of list) {
+      if (getToken() !== token) break;
       setUploading((n) => n + 1);
       try {
         await upload(file);

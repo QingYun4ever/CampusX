@@ -155,6 +155,48 @@ function storedImages(serialized: string) {
   }
 }
 
+/* ---------- 正文里的自定义表情 ---------- */
+
+const EMOJI_TOKEN = /\[e:([\w-]{8,40}\.webp)\]/g;
+/** 一条帖子或私信里最多用几种自定义表情（都要送审） */
+export const MAX_EMOJI_KINDS = 8;
+
+export const emojiFiles = (text: string) => [...new Set([...text.matchAll(EMOJI_TOKEN)].map((m) => m[1]))];
+
+/** 发帖、发私信前：正文里的表情必须是站内登记过的，种类不能太多 */
+export function assertEmojis(text: string) {
+  const files = emojiFiles(text);
+  if (files.length > MAX_EMOJI_KINDS) throw new HttpError(400, `一条最多用 ${MAX_EMOJI_KINDS} 种自定义表情`);
+  for (const file of files) {
+    if (!get('SELECT 1 FROM custom_emojis ce JOIN site_uploads su ON su.name = ce.file WHERE ce.file = $f', { f: file })) throw new HttpError(400, '有表情已经失效了，删掉再发吧');
+  }
+  return files;
+}
+
+/** 写入帖子或私信时调用（在事务里）：标记这些表情发出去过，之后不能被清理 */
+export function markEmojisSent(text: string) {
+  for (const file of emojiFiles(text)) run('UPDATE custom_emojis SET sent = 1 WHERE file = $f AND sent = 0', { f: file });
+}
+
+/** 送审用：正文里自定义表情的图片（接在帖子图片后面） */
+async function emojiImages(text: string, c: ModConfig): Promise<Img[]> {
+  if (!c.reviewImages) return [];
+  const out: Img[] = [];
+  for (const file of emojiFiles(text).slice(0, MAX_EMOJI_KINDS)) {
+    if (!get('SELECT 1 FROM custom_emojis WHERE file = $f', { f: file })) continue;
+    const image = await validateReviewImage(() => readStoredUpload(`/uploads/${file}`, MAX_REVIEW_IMAGE_BYTES));
+    out.push({ mime: image.mime, data: image.buffer.toString('base64') });
+  }
+  return out;
+}
+
+/** 有表情图时，告诉模型后面几张是表情 */
+function withEmojiNote(context: string, attachments: number, emojis: number) {
+  if (!emojis) return context;
+  const note = `正文里的 [e:文件名] 是同学自己上传的表情图片，按出现顺序放在${attachments ? `帖子的 ${attachments} 张图片之后` : '上方'}，共 ${emojis} 张，同样需要审核。`;
+  return context ? `${context}\n\n${note}` : note;
+}
+
 interface PreparedImages {
   images: Img[];
   snapshots: UploadSnapshots;
@@ -359,10 +401,11 @@ export function reviewContext(board: string | null, parentText: string | null) {
 export async function screen(text: string, urls: string[], context: string, c: ModConfig) {
   // 本地输入校验失败不是上游错误，不能被超时或 failPolicy 吞掉。
   const { images, snapshots } = await loadImages(urls, c.reviewImages ? MAX_REVIEW_IMAGE_BYTES : config.maxUploadBytes, c.reviewImages);
+  const emojis = await emojiImages(text, c);
   const deadline = new AbortController();
   try {
     const verdict = await Promise.race([
-      reviewWithImages(text, images, context, c),
+      reviewWithImages(text, [...images, ...emojis], withEmojiNote(context, images.length, emojis.length), c),
       wait(25_000, null, { signal: deadline.signal }),
     ]);
     return { verdict, snapshots };
@@ -446,7 +489,8 @@ async function handle(postId: number) {
       try {
         prepared ??= await loadImages(urls, limit, c.enabled && c.reviewImages);
         if (!c.enabled) return; // 审核关停时，有效待审帖仍交管理员处理
-        verdict = await reviewWithImages(post.content, prepared.images, context, c);
+        const emojis = await emojiImages(post.content, c);
+        verdict = await reviewWithImages(post.content, [...prepared.images, ...emojis], withEmojiNote(context, prepared.images.length, emojis.length), c);
         break;
       } catch (error) {
         if (error instanceof AttachmentError || error instanceof ImageInputError) throw error;

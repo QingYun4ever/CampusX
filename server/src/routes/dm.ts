@@ -11,6 +11,7 @@ import { config } from '../config.ts';
 import { all, get, now, run, tx, type Row } from '../db.ts';
 import { hasImageSignature, imageTypes, readUploadedImage, type UploadedImage } from '../image-upload.ts';
 import { assertCanInteract, blockState } from '../serialize.ts';
+import { assertEmojis, markEmojisSent } from '../moderation.ts';
 import { HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 
@@ -86,6 +87,9 @@ async function readImageMessage(req: FastifyRequest) {
 function storeMessage(senderId: number, recipientId: number, content: string, filenames: string[]) {
   const createdAt = now();
   const insert = () => {
+    // 写入前再查一次：上传图片的这段时间里可能被拉黑了
+    assertCanInteract(senderId, recipientId);
+    markEmojisSent(content);
     const { lastId } = run(
       'INSERT INTO dm_messages (sender_id, recipient_id, content, created_at) VALUES ($s, $r, $c, $t)',
       { s: senderId, r: recipientId, c: content, t: createdAt },
@@ -100,7 +104,7 @@ function storeMessage(senderId: number, recipientId: number, content: string, fi
       images: filenames.map((_, position) => imageUrl(lastId, position)),
     };
   };
-  return filenames.length ? tx(insert) : insert();
+  return tx(insert);
 }
 
 function visibleImage(id: number, position: number, userId: number) {
@@ -236,10 +240,12 @@ export async function dmRoutes(app: FastifyInstance) {
     assertCanInteract(user.id, peer.id);
     if (!req.isMultipart()) {
       const { content } = parse(textMessageSchema, req.body);
+      assertEmojis(content);
       return storeMessage(user.id, peer.id, content, []);
     }
 
     const { content, images } = await readImageMessage(req);
+    assertEmojis(content);
     const filenames: string[] = [];
     try {
       await fs.mkdir(dmUploads, { recursive: true, mode: 0o700 });

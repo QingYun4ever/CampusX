@@ -31,7 +31,8 @@ export const publicPost = (alias: string) => `(${alias}.status = 'ok' AND ${alia
 
 /** 通知列表、推送和未读数都以收件人当前的帖子权限为准。 */
 export const visibleNotification = `(
-  NOT EXISTS (SELECT 1 FROM blocks nb WHERE nb.blocker_id = $me AND nb.blocked_id = n.actor_id)
+  -- 举报结果是系统通知，不因为拉黑了处理的管理员就收不到
+  (n.type = 'report' OR NOT EXISTS (SELECT 1 FROM blocks nb WHERE nb.blocker_id = $me AND nb.blocked_id = n.actor_id))
   AND (n.post_id IS NULL OR EXISTS (
     SELECT 1 FROM posts vp WHERE vp.id = n.post_id AND vp.deleted = 0
       AND (vp.status = 'ok' OR (vp.status = 'pending' AND vp.author_id = $me)) AND ${visibleTo('vp.')}
@@ -147,6 +148,8 @@ interface QuotePreview {
   images: string[];
   createdAt: number;
   author: Pick<PostDTO['author'], 'id' | 'username' | 'displayName' | 'avatar' | 'avatarDecoration' | 'role' | 'verified' | 'verifiedNote'>;
+  /** 原帖作者被我拉黑了：不带正文和图片 */
+  blocked?: boolean;
 }
 
 export interface Reaction {
@@ -219,15 +222,17 @@ export function hydrate(rows: Row[], me: number): PostDTO[] {
   if (quoteIds.size) {
     for (const r of all(
       `SELECT s.id, s.content, s.images, s.created_at, s.author_id,
-         u.username, u.display_name, u.avatar, u.avatar_decoration, u.role, u.verified, u.verified_note
+         u.username, u.display_name, u.avatar, u.avatar_decoration, u.role, u.verified, u.verified_note,
+         EXISTS(SELECT 1 FROM blocks bq WHERE bq.blocker_id = $me AND bq.blocked_id = s.author_id) AS blocked
        FROM posts s JOIN users u ON u.id = s.author_id
        WHERE s.id IN (SELECT value FROM json_each($ids)) AND s.repost_of IS NULL AND ${publicPost('s')}`,
-      { ids: JSON.stringify([...quoteIds]) },
+      { ids: JSON.stringify([...quoteIds]), me },
     )) {
       quotes.set(r.id, {
         id: r.id,
-        content: r.content,
-        images: JSON.parse(r.images) as string[],
+        content: r.blocked ? '' : r.content,
+        images: r.blocked ? [] : (JSON.parse(r.images) as string[]),
+        ...(r.blocked ? { blocked: true } : {}),
         createdAt: r.created_at,
         author: {
           id: r.author_id,
@@ -317,7 +322,7 @@ export function notifyMentions(content: string, actorId: number, postId: number,
 /* ---------------- 标签 ---------------- */
 
 /** 正文里的 #话题 */
-export const HASHTAG = /#([^\s#@，。！？、；：,.!?;:()（）「」]{1,20})/g;
+export const HASHTAG = /#([^\s#@，。！？、；：,.!?;:()（）「」[\]]{1,20})/g;
 
 export function normalizeTag(t: string) {
   return t.trim().replace(/^#+/, '').toLowerCase().slice(0, 20);

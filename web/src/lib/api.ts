@@ -312,6 +312,8 @@ export interface QuotePreview {
   images: string[];
   createdAt: number;
   author: Pick<UserLite, 'id' | 'username' | 'displayName' | 'avatar' | 'avatarDecoration' | 'role' | 'verified' | 'verifiedNote'>;
+  /** 原帖作者被我拉黑了 */
+  blocked?: boolean;
 }
 
 export interface Post {
@@ -449,7 +451,9 @@ export interface ReportGroup {
     | { id: number; excerpt: string; images: string[]; deleted: boolean; isReply: boolean; author: User }
     | { user: User }
     | null;
-  reports: { reason: string; reasonText: string; note: string; createdAt: number; reporter: { username: string; displayName: string } }[];
+  /** 举报的是当前管理员本人：不显示举报人，只能交给其他管理员处理 */
+  involvesMe?: boolean;
+  reports: { reason: string; reasonText: string; note: string; createdAt: number; reporter: { username: string; displayName: string } | null }[];
 }
 
 /* ---------- 维护、公告、AI 助手 ---------- */

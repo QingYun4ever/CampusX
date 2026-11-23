@@ -170,8 +170,8 @@ export function grantForLike(post: { id: number; author_id: number; board_id: nu
 }
 
 /** 签到。返回这次加的经验；今天已经签过返回 null */
-export function checkin(boardId: number, userId: number) {
-  const t = now();
+/** t：一键签到时整批用同一个时间，跨零点也不会一半算今天、一半算昨天 */
+export function checkin(boardId: number, userId: number, t = now()) {
   const today = dayOf(t);
   const yesterday = dayOf(t - 86400_000);
   const r = get<{ checkin_day: string | null; streak: number }>(

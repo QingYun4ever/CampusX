@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, now, run, tx } from '../db.ts';
-import { enqueue, getConfig, logReview, reviewContext, screen, warnAuthor, type ReviewResult } from '../moderation.ts';
+import { assertEmojis, markEmojisSent, enqueue, getConfig, logReview, reviewContext, screen, warnAuthor, type ReviewResult } from '../moderation.ts';
 import { type PostDTO, assertCanInteract, boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publicPost, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
 import { consumeDraftUploads, holdDraftUploads, MAX_REVIEW_IMAGE_BYTES, siteUploadUrl, type UploadSnapshots } from '../site-uploads.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
@@ -55,6 +55,23 @@ export function spreadAuthors<T extends { author: { id: number } }>(items: T[]):
   return out.concat(waiting);
 }
 
+/**
+ * 软删除一条帖子（在事务里调用），保留楼中楼结构。
+ * byOther：吧务 / 管理员删的算违规，扣回这条帖子给的经验；自己删的不扣
+ */
+export function removePost(id: number, byOther: boolean) {
+  const p = get<{ parent_id: number | null; status: string; deleted: number }>('SELECT parent_id, status, deleted FROM posts WHERE id = $id', { id });
+  if (!p || p.deleted) return false;
+  if (byOther) revokeForPost(id);
+  run(`UPDATE posts SET deleted = 1, content = '', images = '[]', pinned_at = NULL WHERE id = $id`, { id });
+  run('DELETE FROM posts WHERE repost_of = $id', { id });
+  run('DELETE FROM notifications WHERE post_id = $id', { id });
+  if (p.parent_id && p.status === 'ok') {
+    run('UPDATE posts SET reply_count = MAX(reply_count - 1, 0) WHERE id = $pid', { pid: p.parent_id });
+  }
+  return true;
+}
+
 /** 如果是转发行，取它的原帖 id。审核中/未通过的帖子、看不到的私密吧里的帖子，对别人来说都不存在 */
 function resolveTarget(id: number, meId: number) {
   const p = get<{ id: number; author_id: number; repost_of: number | null; deleted: number; board_id: number | null }>(
@@ -100,6 +117,7 @@ export async function postRoutes(app: FastifyInstance) {
     const content = body.content.trim();
     if (body.parentId && body.quoteOfId) throw new HttpError(400, '引用和回复不能同时使用');
     if (!content && !body.images.length) throw new HttpError(400, '写点什么吧');
+    assertEmojis(content);
 
     let boardId: number | null = null;
     let parent: { id: number; author_id: number; root_id: number | null; board_id: number | null } | undefined;
@@ -131,7 +149,10 @@ export async function postRoutes(app: FastifyInstance) {
     const t = now();
     const tags = extractTags(content, body.tags);
     const id = tx(() => {
+      // 审核要等一会儿：写入前再查一次，这段时间里可能被楼主拉黑了
+      if (parent) assertCanInteract(user.id, parent.author_id);
       consumeDraftUploads(body.images, user.id, imageLimit, snapshots);
+      markEmojisSent(content);
       const quote = body.quoteOfId === undefined ? undefined : get<{ id: number }>(
         `SELECT s.id FROM posts p JOIN posts s ON s.id = COALESCE(p.repost_of, p.id)
          WHERE p.id = $id AND ${publicPost('p')} AND ${publicPost('s')} AND s.repost_of IS NULL`,
@@ -246,15 +267,7 @@ export async function postRoutes(app: FastifyInstance) {
         run('UPDATE posts SET repost_count = MAX(repost_count - 1, 0) WHERE id = $o', { o: p.repost_of });
         return;
       }
-      // 吧务 / 管理员删的算违规，扣回这条帖子给的经验；自己删的不扣
-      if (p.author_id !== user.id) revokeForPost(id);
-      // 软删除，保留楼中楼结构
-      run(`UPDATE posts SET deleted = 1, content = '', images = '[]', pinned_at = NULL WHERE id = $id`, { id });
-      run('DELETE FROM posts WHERE repost_of = $id', { id });
-      run('DELETE FROM notifications WHERE post_id = $id', { id });
-      if (p.parent_id && p.status === 'ok') {
-        run('UPDATE posts SET reply_count = MAX(reply_count - 1, 0) WHERE id = $pid', { pid: p.parent_id });
-      }
+      removePost(id, p.author_id !== user.id);
     });
     return { ok: true };
   });

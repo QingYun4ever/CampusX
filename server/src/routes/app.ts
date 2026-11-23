@@ -199,8 +199,8 @@ export async function appRoutes(app: FastifyInstance) {
     }
 
     if (q.interactions !== '0') {
-      const rows = all<{ id: number; type: string; post_id: number | null; display_name: string; content: string | null }>(
-        `SELECT n.id, n.type, n.post_id, u.display_name, p.content
+      const rows = all<{ id: number; type: string; post_id: number | null; display_name: string; content: string | null; extra: string | null }>(
+        `SELECT n.id, n.type, n.post_id, u.display_name, p.content, n.extra
          FROM notifications n JOIN users u ON u.id = n.actor_id LEFT JOIN posts p ON p.id = n.post_id
          WHERE n.user_id = $me AND n.read = 0 AND n.created_at > $from AND ${visibleNotification}
          ORDER BY n.id DESC LIMIT 30`,
@@ -210,12 +210,13 @@ export async function appRoutes(app: FastifyInstance) {
       const quiet = rows.filter((r) => r.type === 'like' || r.type === 'reaction');
       for (const r of rows.filter((r) => !quiet.includes(r)).slice(0, 5)) {
         const moderation = r.type === 'moderation';
+        const dismissed = r.type === 'report' && (r.extra ?? '').includes('"dismissed"');
         const text = r.type === 'reply' || r.type === 'mention' || r.type === 'quote' ? clip(r.content ?? '') : '';
         items.push({
           id: `n-${r.id}`,
           kind: 'interactions',
-          title: moderation ? '内容警告' : r.type === 'report' ? '举报已处理' : `${r.display_name} ${NOTIF_TEXT[r.type] ?? '有新动态'}`,
-          body: moderation ? '你的帖子没有通过审核，没有发布' : r.type === 'report' ? '感谢你的举报，管理员已经处理' : text,
+          title: moderation ? '内容警告' : r.type === 'report' ? (dismissed ? '举报结果' : '举报已处理') : `${r.display_name} ${NOTIF_TEXT[r.type] ?? '有新动态'}`,
+          body: moderation ? '你的帖子没有通过审核，没有发布' : r.type === 'report' ? (dismissed ? '管理员看过了，暂时没有发现违规' : '感谢你的举报，管理员已经处理') : text,
           path: r.post_id && !moderation ? `/post/${r.post_id}` : '/notifications',
         });
       }

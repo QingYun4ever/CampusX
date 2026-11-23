@@ -254,7 +254,8 @@ export function Composer({
       setShowTags(false);
       setPreview(false);
       toast(target ? '已回复' : quoteOf ? '已发布引用' : '已发布');
-      for (const k of ['feed', 'board-posts', 'replies', 'post', 'user-posts', 'boards', 'tag-posts', 'search-posts']) {
+      // board：发帖涨经验，吧首页的经验条要跟着变
+      for (const k of ['feed', 'board-posts', 'replies', 'post', 'user-posts', 'boards', 'board', 'board-ranking', 'tag-posts', 'search-posts']) {
         qc.invalidateQueries({ queryKey: [k] });
       }
       onPosted?.(post);

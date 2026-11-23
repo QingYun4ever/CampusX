@@ -9,6 +9,9 @@ export function QuoteCard({ post, preview }: { post: QuotePreview | null; previe
   if (!post) {
     return <div className="quote-card quote-card-unavailable" onClick={(e) => e.stopPropagation()}>原帖不可用</div>;
   }
+  if (post.blocked) {
+    return <div className="quote-card quote-card-unavailable" onClick={(e) => e.stopPropagation()}>你已拉黑原帖作者</div>;
+  }
   const { author, content, images, createdAt } = post;
   const body = (
     <>

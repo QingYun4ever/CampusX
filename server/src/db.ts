@@ -509,3 +509,9 @@ CREATE TABLE IF NOT EXISTS custom_emojis (
 );
 CREATE INDEX IF NOT EXISTS idx_custom_emojis_owner ON custom_emojis(owner_id, removed, id);
 `);
+// sent = 1：发到过帖子或私信里。移除了又没发过的表情，文件可以清理掉，释放图片空间
+if (addColumn('custom_emojis', 'sent', 'INTEGER NOT NULL DEFAULT 0')) {
+  // 老数据不知道发没发过，保守地都当作发过
+  run('UPDATE custom_emojis SET sent = 1');
+}
+

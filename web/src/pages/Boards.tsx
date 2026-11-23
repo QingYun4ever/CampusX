@@ -24,6 +24,10 @@ function JoinButton({ board }: { board: Board }) {
       await api(`/boards/${board.slug}/join`, { method: board.joined ? 'DELETE' : 'POST' });
       await qc.invalidateQueries({ queryKey: ['boards'] });
       await qc.invalidateQueries({ queryKey: ['board', board.slug] });
+      // 关注 / 取消关注会让帖子上的等级牌子出现或消失
+      for (const k of ['feed', 'post', 'replies', 'user-posts']) void qc.invalidateQueries({ queryKey: [k] });
+      void qc.invalidateQueries({ queryKey: ['board-posts', board.slug] });
+      void qc.invalidateQueries({ queryKey: ['board-pinned', board.slug] });
     } catch (err) {
       toast((err as Error).message, 'error');
     } finally {

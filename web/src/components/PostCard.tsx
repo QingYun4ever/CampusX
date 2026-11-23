@@ -73,7 +73,7 @@ export function ClampedText({ text }: { text: string }) {
 }
 
 /* 纯文本：@提及、#话题、链接 */
-const TOKEN = /(\[e:[\w-]{8,40}\.webp\]|@[A-Za-z0-9_]{3,20}|#[^\s#@，。！？、；：,.!?;:()（）「」\[]{1,20}|https?:\/\/[^\s[]+)/g;
+const TOKEN = /(\[e:[\w-]{8,40}\.webp\]|@[A-Za-z0-9_]{3,20}|#[^\s#@，。！？、；：,.!?;:()（）「」[\]]{1,20}|https?:\/\/[^\s[]+)/g;
 
 export function PlainText({ text }: { text: string }) {
   const parts = text.split(TOKEN);

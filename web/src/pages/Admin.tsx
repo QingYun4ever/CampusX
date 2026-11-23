@@ -1164,8 +1164,10 @@ function ReportItem({ g, onDone }: { g: ReportGroup; onDone: () => void }) {
     if (deletePost && !confirm('删除这条帖子并标记举报已处理？举报人会收到通知。')) return;
     setBusy(true);
     try {
-      if (deletePost && post && !post.deleted) await api(`/posts/${post.id}`, { method: 'DELETE' });
-      await api('/admin/reports/handle', { body: { targetType: g.targetType, targetId: g.targetId, status } });
+      // 删帖和结案在服务端一次完成，不会出现删了帖子举报却还开着
+      await api('/admin/reports/handle', {
+        body: { targetType: g.targetType, targetId: g.targetId, status, deletePost: deletePost && !!post && !post.deleted },
+      });
       toast(status === 'resolved' ? (deletePost ? '已删除并处理' : '已标记为处理完成') : '已驳回');
       onDone();
     } catch (e) {
@@ -1218,14 +1220,18 @@ function ReportItem({ g, onDone }: { g: ReportGroup; onDone: () => void }) {
         )}
         <div className="log-reason">
           {reasons.join('、')}
-          {g.reports.filter((r) => r.note).map((r, i) => (
+          {g.reports.filter((r) => r.note && r.reporter).map((r, i) => (
             <div key={i} className="report-note-line">
-              <b>{r.reporter.displayName}</b>：{r.note}
+              <b>{r.reporter!.displayName}</b>：{r.note}
             </div>
           ))}
         </div>
         <div className="log-meta muted small">
-          <span>举报人：{g.reports.map((r) => r.reporter.displayName).join('、')}{g.count > g.reports.length ? ` 等 ${g.count} 人` : ''}</span>
+          {g.involvesMe ? (
+            <span>举报涉及你本人，举报人和说明已隐藏，请交给其他管理员处理</span>
+          ) : (
+            <span>举报人：{g.reports.map((r) => r.reporter?.displayName).join('、')}{g.count > g.reports.length ? ` 等 ${g.count} 人` : ''}</span>
+          )}
           {post && !post.deleted && (
             <Link to={`/post/${post.id}`}>
               查看帖子 <ExternalLink size={12} />
@@ -1233,7 +1239,7 @@ function ReportItem({ g, onDone }: { g: ReportGroup; onDone: () => void }) {
           )}
         </div>
       </div>
-      {open && (
+      {open && !g.involvesMe && (
         <div className="log-actions">
           {post && !post.deleted && (
             <button className="btn btn-outline sm danger" disabled={busy} onClick={() => handle('resolved', true)}>
