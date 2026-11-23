@@ -29,8 +29,8 @@ export interface AssistantConfig {
 
 const DEFAULTS: AssistantConfig = {
   enabled: false,
-  username: 'xiaoqiang',
-  displayName: '小墙',
+  username: 'kirk',
+  displayName: 'Kirk',
   model: '',
   persona: '',
   dailyLimit: 20,
