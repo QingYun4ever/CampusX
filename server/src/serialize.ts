@@ -367,7 +367,11 @@ export function publishEffects(postId: number) {
   }
   notifyMentions(p.content, p.author_id, postId, skip);
   grantForPost(postId);
+  for (const hook of publishHooks) hook(postId, p.author_id, p.content, parentAuthor);
 }
+
+/** 帖子公开后要做的额外事情（AI 助手被 @ 了就去回复）。在事务里调用，钩子自己负责异步 */
+export const publishHooks: ((postId: number, authorId: number, content: string, parentAuthorId: number) => void)[] = [];
 
 /** 撤回已发布的效果（管理员把通过的帖子改判为不通过时） */
 export function unpublishEffects(postId: number) {

@@ -140,7 +140,7 @@ function systemPrompt(c: ModConfig) {
   ].join('\n\n');
 }
 
-interface Img {
+export interface Img {
   mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
   data: string;
 }
@@ -160,7 +160,7 @@ interface PreparedImages {
   snapshots: UploadSnapshots;
 }
 
-async function loadImages(urls: string[], limit: number, sendToModel: boolean): Promise<PreparedImages> {
+export async function loadImages(urls: string[], limit: number, sendToModel: boolean): Promise<PreparedImages> {
   const images: Img[] = [];
   const snapshots = new Map();
   for (const url of new Set(urls)) {
@@ -183,7 +183,7 @@ function describe(text: string, imageCount: number, context: string) {
 }
 
 // 支持服务端回退的模型：被安全策略拒绝时，API 会自动换一个模型重试
-const FALLBACK_MODELS = new Set(['claude-fable-5-2', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']);
+export const FALLBACK_MODELS = new Set(['claude-fable-5-2', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']);
 
 async function reviewAnthropic(c: ModConfig, text: string, images: Img[], context: string): Promise<Verdict & { inT: number; outT: number }> {
   const client = new Anthropic({

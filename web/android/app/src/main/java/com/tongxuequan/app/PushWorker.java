@@ -77,6 +77,12 @@ public class PushWorker extends Worker {
                 .setName("回复、提到和关注")
                 .build()
         );
+        nm.createNotificationChannel(
+            new NotificationChannelCompat.Builder("notice", NotificationManagerCompat.IMPORTANCE_DEFAULT)
+                .setName("公告")
+                .setDescription("学校和学生会的活动、校墙的重要通知")
+                .build()
+        );
     }
 
     @NonNull
@@ -96,6 +102,8 @@ public class PushWorker extends Worker {
                 .appendQueryParameter("dm", p.getBoolean("dm", true) ? "1" : "0")
                 .appendQueryParameter("posts", p.getBoolean("posts", true) ? "1" : "0")
                 .appendQueryParameter("interactions", p.getBoolean("interactions", true) ? "1" : "0")
+                // 这个版本起有单独的公告通知渠道
+                .appendQueryParameter("notice", "1")
                 .build();
             boolean debuggable = (ctx.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
             if (!"https".equals(uri.getScheme()) && !debuggable) return Result.success();

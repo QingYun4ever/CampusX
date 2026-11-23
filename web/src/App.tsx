@@ -1,5 +1,5 @@
 import { App as AndroidApp } from '@capacitor/app';
-import { lazy, Suspense, useEffect, useLayoutEffect } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
 import { matchPath, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ComposeProvider } from './components/compose';
 import { AppServices } from './components/AppServices';
@@ -8,6 +8,7 @@ import { Logo } from './components/Logo';
 import { Empty, Overlays } from './components/ui';
 import { isAndroid } from './lib/android';
 import { useAuth } from './lib/auth';
+import { getToken } from './lib/api';
 import { dismissTopOverlay } from './lib/escape';
 import { Home } from './pages/Home';
 import { Login, Register } from './pages/Auth';
@@ -15,6 +16,8 @@ import { InstallPage } from './pages/Install';
 import { PrivacyPage } from './pages/Privacy';
 import { TermsGate, TermsPage } from './pages/Terms';
 import { HelpPage } from './pages/Help';
+import { MaintenanceBanner, MaintenanceScreen, UnreachableScreen } from './components/SiteStatus';
+import { refreshStatus, useSite } from './lib/site';
 
 const Admin = lazy(() => import('./pages/Admin').then(({ Admin }) => ({ default: Admin })));
 const Boards = lazy(() => import('./pages/Boards').then(({ Boards }) => ({ default: Boards })));
@@ -50,8 +53,14 @@ function useAndroidBack() {
 
 export function App() {
   useAndroidBack();
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const loc = useLocation();
+  const site = useSite();
+  // 维护页上点了「管理员登录」：先放行到登录页
+  const [adminLogin, setAdminLogin] = useState(false);
+  useEffect(() => {
+    void refreshStatus();
+  }, []);
   const PublicPage = matchPath('/privacy', loc.pathname) ? PrivacyPage
     : matchPath('/help', loc.pathname) ? HelpPage
     : matchPath('/install', loc.pathname) ? InstallPage
@@ -67,6 +76,29 @@ export function App() {
       <div className="splash" aria-label="加载中">
         <Logo size={56} />
       </div>
+    );
+  }
+
+  if (site.maintenance && user?.role !== 'admin' && !(adminLogin && !user)) {
+    return (
+      <>
+        <MaintenanceScreen
+          onAdminLogin={async () => {
+            if (user || getToken()) await signOut();
+            setAdminLogin(true);
+          }}
+        />
+        <Overlays />
+      </>
+    );
+  }
+
+  if (!user && site.unreachable) {
+    return (
+      <>
+        <UnreachableScreen />
+        <Overlays />
+      </>
     );
   }
 
@@ -96,6 +128,7 @@ export function App() {
   return (
     <ComposeProvider>
       <AppServices />
+      {user.role === 'admin' && <MaintenanceBanner />}
       <Routes>
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/register" element={<Navigate to="/" replace />} />

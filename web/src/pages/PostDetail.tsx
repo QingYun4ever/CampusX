@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Composer } from '../components/Composer';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
@@ -45,15 +45,35 @@ export function PostDetail() {
             q={replies}
             empty={<div className="list-end">还没有回复</div>}
             getKey={(r) => r.id}
-            render={(r, i) => (
-              <PostCard
-                post={r}
-                collapseBlocked
-                floor={isRoot ? i + 2 : undefined}
-                hideReplyTo={!isRoot}
-                opId={isRoot ? q.data.post.author.id : undefined}
-              />
-            )}
+            render={(r, i) => {
+              const opId = isRoot ? q.data.post.author.id : undefined;
+              const card = (
+                <PostCard
+                  post={r}
+                  collapseBlocked
+                  threadLine={!!r.opReplies?.length}
+                  floor={isRoot ? i + 2 : undefined}
+                  hideReplyTo={!isRoot}
+                  opId={opId}
+                />
+              );
+              if (!r.opReplies?.length) return card;
+              // 像 X：楼主（和 AI 助手）的回复直接接在这条评论下面
+              const rest = r.replyCount - r.opReplies.length;
+              return (
+                <div className="op-thread">
+                  {card}
+                  {r.opReplies.map((c, j) => (
+                    <PostCard key={c.id} post={c} hideReplyTo opId={opId} threadLine={j < r.opReplies!.length - 1 || rest > 0} />
+                  ))}
+                  {rest > 0 && (
+                    <Link to={`/post/${r.id}`} className="op-more">
+                      <span>查看全部 {r.replyCount} 条回复</span>
+                    </Link>
+                  )}
+                </div>
+              );
+            }}
           />
         </>
       )}

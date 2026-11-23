@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart2, Bookmark, ChevronDown, Flag, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Quote, Repeat2, SmilePlus, Trash2, UserX } from 'lucide-react';
@@ -29,6 +29,46 @@ export function RichText({ text }: { text: string }) {
     <Suspense fallback={<PlainText text={text} />}>
       <Markdown text={text} />
     </Suspense>
+  );
+}
+
+/**
+ * 列表里的长文：超过大约 10 行就折叠，底部渐隐，加一个「展开」。
+ * 点「展开」只展开，不进详情页；点正文其他地方照常进详情页。
+ */
+const CLAMP_PX = 230;
+export function ClampedText({ text }: { text: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [long, setLong] = useState(false);
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el || open) return;
+    // 超出不多（两行以内）就不折叠，免得只藏一行
+    const check = () => setLong(el.scrollHeight > CLAMP_PX + 44);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, open]);
+  return (
+    <>
+      <div ref={box} className={long && !open ? 'post-clamp is-clamped' : 'post-clamp'} style={{ '--clamp': `${CLAMP_PX}px` } as CSSProperties}>
+        <RichText text={text} />
+      </div>
+      {long && !open && (
+        <button
+          type="button"
+          className="clamp-more"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(true);
+          }}
+        >
+          展开
+        </button>
+      )}
+    </>
   );
 }
 
@@ -648,11 +688,38 @@ function RoleTags({ author }: { author: Post['author'] }) {
       {author.boardRole === 'owner' && <span className="tag owner">吧主</span>}
       {author.boardRole === 'mod' && <span className="tag mod">吧务</span>}
       {author.role === 'admin' && <span className="tag">管理员</span>}
+      {author.role === 'bot' && <span className="tag bot">AI</span>}
     </>
   );
 }
 
-function Head({ post, opId }: { post: Post; opId?: number }) {
+/** 第二行：楼层 / 回复谁 / 所在的吧，后面跟作者在这个吧的等级和身份 */
+function SubLine({ post, opId, floor, hideReplyTo }: { post: Post; opId?: number; floor?: number; hideReplyTo?: boolean }) {
+  const replyTo = !hideReplyTo && post.parentUsername;
+  const board = !post.parentId && post.board;
+  const isOp = opId === post.author.id;
+  const role = post.author.boardRole || post.author.role === 'admin' || post.author.role === 'bot';
+  if (!floor && !replyTo && !board && !post.author.level && !isOp && !role) return null;
+  return (
+    <div className="post-sub">
+      {floor && <span className="floor">{floor}楼</span>}
+      {replyTo && (
+        <span className="reply-to">
+          回复{' '}
+          <Link to={`/u/${post.parentUsername}`} onClick={(e) => e.stopPropagation()}>
+            @{post.parentUsername}
+          </Link>
+        </span>
+      )}
+      {board && <BoardChip board={post.board} />}
+      {post.author.level && <LevelBadge {...post.author.level} board={post.board?.name} compact />}
+      {isOp && <span className="tag op">楼主</span>}
+      <RoleTags author={post.author} />
+    </div>
+  );
+}
+
+function Head({ post }: { post: Post; opId?: number }) {
   const stop = (e: MouseEvent) => e.stopPropagation();
   return (
     <div className="post-head">
@@ -660,9 +727,6 @@ function Head({ post, opId }: { post: Post; opId?: number }) {
         {post.author.displayName}
       </Link>
       <Verified user={post.author} size={17} />
-      {post.author.level && <LevelBadge {...post.author.level} board={post.board?.name} compact />}
-      {opId === post.author.id && <span className="tag op">楼主</span>}
-      <RoleTags author={post.author} />
       <span className="muted handle" data-admin={post.author.role === 'admin' || undefined}>@{post.author.username}</span>
       <span className="muted dot">·</span>
       <time className="muted" title={fullTime(post.createdAt)}>
@@ -766,22 +830,9 @@ export function PostCard({
         {threadLine && <div className="thread-line" />}
       </div>
       <div className="post-body">
-        <Head post={post} opId={opId} />
-        {(floor || (!hideReplyTo && post.parentUsername)) && (
-          <div className="reply-to">
-            {floor && <span className="floor">{floor}楼</span>}
-            {!hideReplyTo && post.parentUsername && (
-              <>
-                回复{' '}
-                <Link to={`/u/${post.parentUsername}`} onClick={(e) => e.stopPropagation()}>
-                  @{post.parentUsername}
-                </Link>
-              </>
-            )}
-          </div>
-        )}
-        {!post.parentId && <BoardChip board={post.board} />}
-        {post.content && <RichText text={post.content} />}
+        <Head post={post} />
+        <SubLine post={post} opId={opId} floor={floor} hideReplyTo={hideReplyTo} />
+        {post.content && <ClampedText text={post.content} />}
         <MediaGrid images={post.images} />
         {post.quote && <QuoteCard post={post.quote.post} />}
         <TagList tags={post.tags} />

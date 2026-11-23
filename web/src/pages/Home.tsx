@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { ArrowUp } from 'lucide-react';
 import { Composer } from '../components/Composer';
+import { Announcements } from '../components/SiteStatus';
 import { Feed } from '../components/Feed';
 import { Logo } from '../components/Logo';
 import { useAccountSheet } from '../components/Layout';
@@ -25,15 +26,17 @@ function NewPostsPill({ tab }: { tab: Tab }) {
     staleTime: 0,
   });
   const cached = qc.getQueryData<InfiniteData<Page<Post>>>(['feed', tab]);
-  const topId = cached?.pages[0]?.items[0]?.id;
+  // 首页会把同一个人连着发的帖子错开排，所以按 id 比较，不看第一条是谁
+  const firstPage = cached?.pages[0]?.items ?? [];
+  const topId = firstPage.length ? Math.max(...firstPage.map((p) => p.id)) : undefined;
   const items = peek.data?.items ?? [];
-  const idx = topId === undefined ? -1 : items.findIndex((p) => p.id === topId);
-  const fresh = idx > 0 ? items.slice(0, idx) : idx === -1 && topId !== undefined ? items : [];
-  const show = fresh.length > 0 && items[0]?.id !== seen;
+  const fresh = topId === undefined ? [] : items.filter((p) => p.id > topId);
+  const newest = items.length ? Math.max(...items.map((p) => p.id)) : null;
+  const show = fresh.length > 0 && newest !== seen;
   const authors = [...new Map(fresh.map((p) => [p.author.id, p.author])).values()].slice(0, 3);
 
   const refresh = () => {
-    setSeen(items[0]?.id ?? null);
+    setSeen(newest);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     qc.invalidateQueries({ queryKey: ['feed', tab] });
   };
@@ -97,6 +100,7 @@ export function Home() {
         />
       </TopBar>
       <NewPostsPill tab={tab} />
+      <Announcements />
       <div className="desktop-composer">
         <Composer />
       </div>

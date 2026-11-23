@@ -1,0 +1,212 @@
+/* ---------- 维护页 / 连不上服务器 ---------- */
+.site-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+.site-card {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin: auto 0;
+}
+.site-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  margin-bottom: 20px;
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: color-mix(in srgb, var(--warn) 80%, var(--text));
+}
+.site-icon.muted {
+  background: var(--bg-3);
+  color: var(--text-2);
+}
+.site-card h1 {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 0 0 10px;
+}
+.site-message {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.site-meta {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.site-card .btn {
+  margin-top: 28px;
+  min-width: 132px;
+}
+.site-hint {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.site-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-3);
+  opacity: 0.9;
+}
+.site-foot button {
+  border: 0;
+  background: none;
+  padding: 4px 8px;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .site-foot button:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
+}
+
+/* ---------- 管理员看到的维护提示条 ---------- */
+.maint-banner {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: calc(6px + env(safe-area-inset-top)) 16px 6px;
+  background: color-mix(in srgb, var(--warn) 16%, var(--bg));
+  color: color-mix(in srgb, var(--warn) 70%, var(--text));
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid color-mix(in srgb, var(--warn) 25%, transparent);
+}
+.maint-banner span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.maint-banner a {
+  flex-shrink: 0;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---------- 首页公告 ---------- */
+.ann-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.ann {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 40px 12px 12px;
+  border-radius: 16px;
+  background: var(--accent-10);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  animation: ann-in 0.28s ease-out both;
+}
+@keyframes ann-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.ann-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.ann-main {
+  min-width: 0;
+}
+.ann-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.ann-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.ann h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ann p {
+  margin: 3px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ann a {
+  text-decoration: none;
+}
+.ann-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.ann-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .ann-close:hover {
+    background: var(--hover-2);
+    color: var(--text);
+  }
+}

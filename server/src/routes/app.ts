@@ -3,6 +3,7 @@ import { config } from '../config.ts';
 import { all, get, now } from '../db.ts';
 import { HIDDEN_BOARDS, visibleNotification } from '../serialize.ts';
 import { me } from '../util.ts';
+import { announcementsSince } from './site.ts';
 
 /* ---------------- App 更新 ---------------- */
 
@@ -119,13 +120,26 @@ export async function appRoutes(app: FastifyInstance) {
   app.get('/push/poll', async (req, reply) => {
     reply.header('Cache-Control', 'private, no-store');
     const user = me(req);
-    const q = req.query as { since?: string; dm?: string; posts?: string; interactions?: string };
+    const q = req.query as { since?: string; dm?: string; posts?: string; interactions?: string; notice?: string };
     const t = now();
     const since = Number(q.since);
     if (!Number.isFinite(since) || since <= 0) return { now: t, items: [] };
     // 太久没来（关机好几天）也只看最近一天
     const from = Math.max(since, t - 86_400_000);
-    const items: { id: string; kind: 'dm' | 'posts' | 'interactions'; title: string; body: string; path: string }[] = [];
+    const items: { id: string; kind: 'dm' | 'posts' | 'interactions' | 'notice'; title: string; body: string; path: string }[] = [];
+
+    // 公告：0.15 起的 App 有单独的「公告」通知渠道（带 notice=1）；旧版没有这个渠道，借用「关注的人发帖」
+    if (q.notice === '1' || q.posts !== '0') {
+      for (const a of announcementsSince(from)) {
+        items.push({
+          id: `ann-${a.id}`,
+          kind: q.notice === '1' ? 'notice' : 'posts',
+          title: `📢 ${a.title}`,
+          body: a.body.replace(/\s+/g, ' ').slice(0, 120),
+          path: a.link.startsWith('/') ? a.link : '/',
+        });
+      }
+    }
 
     if (q.dm !== '0') {
       const rows = all<{ sender_id: number; username: string; display_name: string; n: number; content: string; images: number }>(

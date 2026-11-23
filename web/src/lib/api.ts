@@ -141,6 +141,10 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
       setToken(null);
       window.dispatchEvent(new Event('auth:expired'));
     }
+    // 服务器在维护：App 换成维护页，直到解除
+    if (res.status === 503 && data?.maintenance) {
+      window.dispatchEvent(new CustomEvent('site:maintenance', { detail: data.maintenance }));
+    }
     throw new ApiError(data?.error ?? `请求失败 (${res.status})`, res.status, data ?? {});
   }
   return data as T;
@@ -321,6 +325,8 @@ export interface Post {
   images: string[];
   likeCount: number;
   replyCount: number;
+  /** 详情页回复列表里：楼主（和 AI 助手）在这条评论下的回复，最多 2 条 */
+  opReplies?: Post[];
   repostCount: number;
   viewCount: number;
   liked: boolean;
@@ -444,4 +450,37 @@ export interface ReportGroup {
     | { user: User }
     | null;
   reports: { reason: string; reasonText: string; note: string; createdAt: number; reporter: { username: string; displayName: string } }[];
+}
+
+/* ---------- 维护、公告、AI 助手 ---------- */
+
+export interface Announcement {
+  id: number;
+  title: string;
+  body: string;
+  link: string;
+  createdAt: number;
+  expiresAt: number | null;
+  active: boolean;
+  author: string | null;
+}
+
+export interface MaintenanceConfig {
+  enabled: boolean;
+  message: string;
+  until: number | null;
+  since: number | null;
+}
+
+export interface AssistantConfig {
+  enabled: boolean;
+  username: string;
+  displayName: string;
+  model: string;
+  persona: string;
+  dailyLimit: number;
+  botId: number | null;
+  provider: 'anthropic' | 'openai';
+  defaultModel: string;
+  hasKey: boolean;
 }

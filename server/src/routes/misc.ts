@@ -8,6 +8,7 @@ import { storeSiteUpload } from '../site-uploads.ts';
 import { prepareUploadImage } from '../thumbs.ts';
 import { configSchema, describeError, getConfig, manualDecision, publicConfig, review, saveConfig, type ModConfig } from '../moderation.ts';
 import { postsByIds, visibleNotification } from '../serialize.ts';
+import { assistantSchema, publicAssistantConfig, updateAssistantConfig } from '../assistant.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
 
@@ -159,6 +160,13 @@ export async function miscRoutes(app: FastifyInstance) {
         run('UPDATE users SET verified_note = $n WHERE id = $id', { n: body.verifiedNote, id });
       }
       return userById(id);
+    });
+
+    /* ---------- AI 助手 ---------- */
+    admin.get('/admin/assistant', async () => publicAssistantConfig());
+    admin.put('/admin/assistant', async (req) => {
+      updateAssistantConfig(parse(assistantSchema, req.body));
+      return publicAssistantConfig();
     });
 
     /* ---------- AI 审核 ---------- */

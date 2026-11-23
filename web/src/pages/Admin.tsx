@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   BadgeCheck,
+  Bot,
   Check,
   Copy,
   ExternalLink,
@@ -11,6 +12,7 @@ import {
   FlaskConical,
   KeyRound,
   LayoutDashboard,
+  Megaphone,
   ScanEye,
   Search,
   Ticket,
@@ -23,7 +25,8 @@ import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Logo } from '../components/Logo';
 import { MediaImage } from '../components/MediaImage';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Spinner, Switch, toast, useModalClose, Verified } from '../components/ui';
-import { api, WEB_ORIGIN, type Invite, type ReportGroup, type User, type UserLite } from '../lib/api';
+import { api, WEB_ORIGIN, type Announcement, type AssistantConfig, type Invite, type MaintenanceConfig, type ReportGroup, type User, type UserLite } from '../lib/api';
+import { refreshStatus } from '../lib/site';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
 
@@ -817,6 +820,8 @@ export function Admin() {
     ['/admin', '概览', LayoutDashboard],
     ['/admin/moderation', '内容审核', ScanEye, stats.data?.pending],
     ['/admin/reports', '举报', Flag, reports.data?.count],
+    ['/admin/site', '站点', Megaphone],
+    ['/admin/assistant', 'AI 助手', Bot],
     ['/admin/invites', '邀请码', Ticket],
     ['/admin/users', '用户', UsersIcon],
   ];
@@ -849,6 +854,8 @@ export function Admin() {
             <Route index element={<Overview />} />
             <Route path="moderation" element={<Moderation />} />
             <Route path="reports" element={<Reports />} />
+            <Route path="site" element={<SitePage />} />
+            <Route path="assistant" element={<AssistantPage />} />
             <Route path="invites" element={<InvitesPage />} />
             <Route path="users" element={<Users />} />
             <Route path="*" element={<Navigate to="/admin" replace />} />
@@ -856,6 +863,282 @@ export function Admin() {
         </main>
       </div>
     </div>
+  );
+}
+
+/* ---------------- 站点：维护模式、公告 ---------------- */
+function SitePage() {
+  return (
+    <>
+      <PageHead title="站点" sub="维护模式和公告" />
+      <div className="admin-form">
+        <MaintenanceForm />
+        <AnnouncementsForm />
+      </div>
+    </>
+  );
+}
+
+function MaintenanceForm() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['admin-maintenance'], queryFn: () => api<MaintenanceConfig>('/admin/maintenance') });
+  const [f, setF] = useState<{ message: string; until: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (q.data && !f) setF({ message: q.data.message, until: q.data.until ? toLocalInput(q.data.until) : '' });
+  }, [q.data, f]);
+  if (!f || !q.data) return <PostSkeleton n={1} />;
+  const on = q.data.enabled;
+
+  const save = async (enabled: boolean) => {
+    if (enabled && !on && !confirm('开启后，除管理员以外的人都不能使用校墙，直到你解除。确定开启？')) return;
+    setBusy(true);
+    try {
+      const next = await api<MaintenanceConfig>('/admin/maintenance', {
+        method: 'PUT',
+        body: { enabled, message: f.message, until: f.until ? new Date(f.until).getTime() : null },
+      });
+      qc.setQueryData(['admin-maintenance'], next);
+      await refreshStatus();
+      toast(enabled ? (on ? '维护说明已更新' : '已开启维护模式') : '已解除维护，大家可以正常使用了');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={`admin-card ${on ? 'maint-on' : ''}`}>
+      <div className="setting-row">
+        <div>
+          <div className="name">
+            维护模式 {on && <span className="pill warn">开启中 · {timeAgo(q.data.since ?? Date.now())}开始</span>}
+          </div>
+          <div className="muted small">开启后普通用户打开校墙只会看到下面这段说明，接口也都暂停；管理员照常使用。解除后会自动恢复，不用刷新。</div>
+        </div>
+      </div>
+      <Field
+        label="维护说明"
+        multiline
+        value={f.message}
+        onChange={(v) => setF({ ...f, message: v })}
+        maxLength={500}
+        counter
+        style={{ minHeight: '5em', resize: 'vertical' }}
+      />
+      <Field
+        label="预计恢复时间（选填）"
+        type="datetime-local"
+        value={f.until}
+        onChange={(v) => setF({ ...f, until: v })}
+        hint="只用来显示给大家看，到点不会自动解除"
+      />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {on ? (
+          <>
+            <button className="btn btn-primary" disabled={busy} onClick={() => save(false)}>
+              解除维护
+            </button>
+            <button className="btn btn-outline" disabled={busy} onClick={() => save(true)}>
+              更新说明
+            </button>
+          </>
+        ) : (
+          <button className="btn btn-danger" disabled={busy} onClick={() => save(true)}>
+            开启维护模式
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function toLocalInput(ts: number) {
+  const d = new Date(ts - new Date().getTimezoneOffset() * 60_000);
+  return d.toISOString().slice(0, 16);
+}
+
+function AnnouncementsForm() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['admin-announcements'], queryFn: () => api<Announcement[]>('/admin/announcements') });
+  const blank = { title: '', body: '', link: '', days: '7' };
+  const [f, setF] = useState(blank);
+  const [busy, setBusy] = useState(false);
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['admin-announcements'] });
+    qc.invalidateQueries({ queryKey: ['announcements'] });
+  };
+
+  const create = async () => {
+    if (!f.title.trim()) return toast('请填写标题', 'error');
+    setBusy(true);
+    try {
+      await api('/admin/announcements', { body: { title: f.title, body: f.body, link: f.link, days: Number(f.days) || 7 } });
+      setF(blank);
+      refresh();
+      toast('已发布。大家打开首页就能看到，App 会推送一次');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const end = async (a: Announcement) => {
+    if (!confirm(`结束公告「${a.title}」？首页上不再显示。`)) return;
+    await api(`/admin/announcements/${a.id}/end`, { method: 'POST' }).catch((e) => toast(e.message, 'error'));
+    refresh();
+  };
+  const remove = async (a: Announcement) => {
+    if (!confirm(`删除公告「${a.title}」？`)) return;
+    await api(`/admin/announcements/${a.id}`, { method: 'DELETE' }).catch((e) => toast(e.message, 'error'));
+    refresh();
+  };
+
+  return (
+    <>
+      <div className="admin-card">
+        <div className="name">发布公告</div>
+        <p className="muted small">比如学生会活动、放假通知。显示在首页顶部，每个人可以自己关掉；不是置顶帖，不占帖子列表。App 打开了通知的同学会收到一条推送。</p>
+        <Field label="标题" value={f.title} onChange={(v) => setF({ ...f, title: v })} maxLength={40} counter />
+        <Field label="内容（选填）" multiline value={f.body} onChange={(v) => setF({ ...f, body: v })} maxLength={500} counter style={{ minHeight: '4em', resize: 'vertical' }} />
+        <div className="row">
+          <Field label="链接（选填）" value={f.link} onChange={(v) => setF({ ...f, link: v })} placeholder="/post/123 或 https://…" hint="站内帖子、吧或外部网页" />
+          <Field label="显示天数" inputMode="numeric" value={f.days} onChange={(v) => setF({ ...f, days: v.replace(/\D/g, '').slice(0, 2) })} hint="1–60 天，到期自动下线" />
+        </div>
+        <div>
+          <button className="btn btn-primary" disabled={busy} onClick={create}>
+            发布
+          </button>
+        </div>
+      </div>
+      {q.data?.map((a) => (
+        <div key={a.id} className="table-row">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <b className="ellipsis">{a.title}</b>
+              <span className={`pill ${a.active ? 'ok' : ''}`}>{a.active ? '显示中' : '已结束'}</span>
+            </div>
+            <div className="faint ellipsis" style={{ fontSize: 13 }}>
+              {a.author ?? '已注销'} · {fullTime(a.createdAt)} 发布{a.expiresAt && a.active ? ` · ${fullTime(a.expiresAt)} 下线` : ''}
+            </div>
+          </div>
+          {a.active && (
+            <button className="btn btn-outline sm" onClick={() => end(a)}>
+              结束
+            </button>
+          )}
+          <button className="icon-btn" onClick={() => remove(a)} aria-label="删除">
+            <Trash2 size={18} />
+          </button>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/* ---------------- AI 助手 ---------------- */
+function AssistantPage() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['admin-assistant'], queryFn: () => api<AssistantConfig>('/admin/assistant') });
+  const [f, setF] = useState<AssistantConfig | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (q.data && !f) setF(q.data);
+  }, [q.data, f]);
+  if (!f) return <PostSkeleton n={2} />;
+  const set = (patch: Partial<AssistantConfig>) => setF({ ...f, ...patch });
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const next = await api<AssistantConfig>('/admin/assistant', {
+        method: 'PUT',
+        body: { enabled: f.enabled, username: f.username, displayName: f.displayName, model: f.model, persona: f.persona, dailyLimit: f.dailyLimit },
+      });
+      setF(next);
+      qc.setQueryData(['admin-assistant'], next);
+      toast(next.enabled ? `已保存。在帖子里 @${next.username} 试试` : '已保存');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <PageHead title="AI 助手" sub={<>在帖子或回复里 @{f.username}，它会在下面简短地回一条。没有单独的聊天界面</>} />
+      <div className="admin-form">
+        <div className="admin-card setting-row">
+          <div>
+            <div className="name">开启 AI 助手</div>
+            <div className="muted small">
+              使用「内容审核」里配置的接口和密钥
+              {f.hasKey ? '。' : '，但那里还没有设置密钥，请先去填写。'}
+              直接回复它的帖子也会被当作在问它。
+            </div>
+          </div>
+          <Switch on={f.enabled} onChange={(v) => set({ enabled: v })} label="开启 AI 助手" />
+        </div>
+
+        <div className="admin-card">
+          <div className="name">账号</div>
+          <p className="muted small">助手是一个不能登录的账号，带「AI」标签。第一次保存时自动创建，改名字不会丢掉它以前的回复。</p>
+          <div className="row">
+            <Field label="昵称" value={f.displayName} onChange={(v) => set({ displayName: v })} maxLength={20} />
+            <Field label="用户名" value={f.username} onChange={(v) => set({ username: v.replace(/[^A-Za-z0-9_]/g, '') })} prefix="@" maxLength={20} hint="大家 @ 的就是这个" />
+          </div>
+          {f.botId && f.username === q.data?.username && (
+            <div>
+              <Link to={`/u/${f.username}`} className="btn btn-outline sm">
+                查看主页
+              </Link>
+            </div>
+          )}
+        </div>
+
+        <div className="admin-card">
+          <div className="name">回复</div>
+          <Field
+            label="模型（选填）"
+            value={f.model}
+            onChange={(v) => set({ model: v })}
+            placeholder={f.defaultModel}
+            hint={`留空使用审核用的模型（${f.defaultModel}）`}
+            list="assistant-model-hints"
+          />
+          <datalist id="assistant-model-hints">
+            {MODEL_HINTS[f.provider].map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+          <Field
+            label="每人每天最多问几次"
+            inputMode="numeric"
+            value={String(f.dailyLimit)}
+            onChange={(v) => set({ dailyLimit: Math.min(200, Number(v.replace(/\D/g, '')) || 1) })}
+          />
+          <Field
+            label="补充设定（选填）"
+            multiline
+            value={f.persona}
+            onChange={(v) => set({ persona: v })}
+            maxLength={1000}
+            counter
+            placeholder="例如：学校在杭州；周三下午是社团时间；说话可以活泼一点。"
+            hint="回复简短、不写长段落、不帮忙抄作业这些是固定的，这里写学校的背景或者语气"
+            style={{ minHeight: '6em', resize: 'vertical' }}
+          />
+        </div>
+
+        <div>
+          <button className="btn btn-primary" disabled={busy} onClick={save}>
+            保存
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 

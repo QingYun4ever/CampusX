@@ -8,6 +8,7 @@ import { type SessionUser, touchSeen, userFromToken } from './auth.ts';
 import { config } from './config.ts';
 import { get, now } from './db.ts';
 import { resumePending } from './moderation.ts';
+import { resumeAssistant } from './assistant.ts';
 import { registerSiteUploadRoutes, startSiteUploads } from './site-uploads.ts';
 import { appRoutes } from './routes/app.ts';
 import { authRoutes } from './routes/auth.ts';
@@ -16,6 +17,7 @@ import { dmRoutes } from './routes/dm.ts';
 import { miscRoutes } from './routes/misc.ts';
 import { postRoutes } from './routes/posts.ts';
 import { safetyRoutes } from './routes/safety.ts';
+import { checkMaintenance, siteRoutes } from './routes/site.ts';
 import { securityRoutes } from './routes/security.ts';
 import { userRoutes } from './routes/users.ts';
 import { HttpError } from './util.ts';
@@ -67,12 +69,15 @@ const PUBLIC_API = [
   '/api/auth/logout',
   '/api/health',
   '/api/app/latest',
+  '/api/status',
 ];
 app.addHook('preHandler', async (req) => {
   const url = req.url.split('?')[0];
   if (url.startsWith('/api/') && !PUBLIC_API.includes(url) && !req.user) {
     throw new HttpError(401, '请先登录');
   }
+  // 维护中：只有管理员能用
+  checkMaintenance(req);
 });
 
 app.setErrorHandler((err: FastifyError | HttpError, req, reply) => {
@@ -98,6 +103,7 @@ await app.register(
     await api.register(miscRoutes);
     await api.register(dmRoutes);
     await api.register(safetyRoutes);
+    await api.register(siteRoutes);
     await api.register(appRoutes);
   },
   { prefix: '/api' },
@@ -137,3 +143,4 @@ if (!get('SELECT 1 FROM users LIMIT 1')) {
 
 await app.listen({ port: config.port, host: config.host });
 resumePending();
+resumeAssistant();

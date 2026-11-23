@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, getToken, setToken, type User } from './api';
+import { api, ApiError, getToken, setToken, type User } from './api';
+import { setUnreachable } from './site';
 import { stopPush, syncPush } from './push';
 
 interface AuthCtx {
@@ -9,6 +10,8 @@ interface AuthCtx {
   signIn: (token: string, user: User) => void;
   signOut: () => Promise<void>;
   setUser: (u: User) => void;
+  /** 重新取自己的信息（连不上服务器 / 维护结束后重试） */
+  reload: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx>(null!);
@@ -18,13 +21,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(!!getToken());
   const qc = useQueryClient();
 
-  useEffect(() => {
+  const reload = useCallback(async () => {
     if (!getToken()) return;
-    api<User>('/auth/me')
-      .then(setUser)
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
+    try {
+      setUser(await api<User>('/auth/me'));
+      setUnreachable(false);
+    } catch (e) {
+      // 在维护时（503）先当作没登录，显示维护页；解除后（site:recovered）再取一次
+      // 网络不通时别把人踢回登录页，显示「连不上服务器」，等恢复了再进来
+      if (e instanceof ApiError && e.status === 0 && getToken()) setUnreachable(true);
+      else setUnreachable(false);
+      setUser(null);
+    }
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    void reload();
+    const onRecovered = () => {
+      if (!getToken()) return;
+      setLoading(true);
+      void reload();
+    };
+    window.addEventListener('site:recovered', onRecovered);
+    return () => window.removeEventListener('site:recovered', onRecovered);
+  }, [reload]);
 
   useEffect(() => {
     const onExpired = () => {
@@ -50,13 +71,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     stopPush();
+    setUnreachable(false);
     await api('/auth/logout', { method: 'POST' }).catch(() => {});
     setToken(null);
     qc.clear();
     setUser(null);
+    setLoading(false);
   }, [qc]);
 
-  return <Ctx.Provider value={{ user, loading, signIn, signOut, setUser }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, loading, signIn, signOut, setUser, reload }}>{children}</Ctx.Provider>;
 }
 
 export const useAuth = () => useContext(Ctx);

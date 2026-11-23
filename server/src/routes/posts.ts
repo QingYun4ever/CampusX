@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, now, run, tx } from '../db.ts';
 import { enqueue, getConfig, logReview, reviewContext, screen, warnAuthor, type ReviewResult } from '../moderation.ts';
-import { assertCanInteract, boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publicPost, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
+import { type PostDTO, assertCanInteract, boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publicPost, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
 import { consumeDraftUploads, holdDraftUploads, MAX_REVIEW_IMAGE_BYTES, siteUploadUrl, type UploadSnapshots } from '../site-uploads.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 import { grantForLike, revokeForPost } from '../levels.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
+import { getAssistantConfig } from '../assistant.ts';
 
 const PAGE = 20;
 
@@ -25,6 +26,33 @@ const createSchema = z.object({
 
 function page<T extends { id: number }>(items: T[], cursorOf: (x: T) => string = (x) => String(x.id)) {
   return { items, nextCursor: items.length >= PAGE ? cursorOf(items[items.length - 1]) : null };
+}
+
+/**
+ * 首页穿插：同一个人连着发的几条帖子（常见是一口气发好几条带图的）不挨在一起，
+ * 中间插进别人的帖子。只在一页之内调整，整体仍然按时间倒序；分页游标用这一页里最小的 id。
+ */
+export function spreadAuthors<T extends { author: { id: number } }>(items: T[]): T[] {
+  const out: T[] = [];
+  const waiting: T[] = [];
+  const last = () => out[out.length - 1]?.author.id;
+  const flush = () => {
+    for (let i = 0; i < waiting.length; i++) {
+      if (waiting[i].author.id !== last()) {
+        out.push(waiting.splice(i, 1)[0]);
+        i = -1;
+      }
+    }
+  };
+  for (const item of items) {
+    if (item.author.id === last()) waiting.push(item);
+    else {
+      out.push(item);
+      flush();
+    }
+  }
+  // 剩下的实在没有别人可以插，按原顺序放在最后
+  return out.concat(waiting);
 }
 
 /** 如果是转发行，取它的原帖 id。审核中/未通过的帖子、看不到的私密吧里的帖子，对别人来说都不存在 */
@@ -60,7 +88,9 @@ export async function postRoutes(app: FastifyInstance) {
        ORDER BY p.id DESC LIMIT $limit`,
       { me: user.id, cursor: cursorNum(q.cursor), limit: PAGE },
     );
-    return page(hydrate(rows, user.id));
+    const items = spreadAuthors(hydrate(rows, user.id));
+    const minId = rows.reduce((m, r) => Math.min(m, r.id as number), Infinity);
+    return { items, nextCursor: rows.length >= PAGE ? String(minId) : null };
   });
 
   /* ---------- 发帖 / 回复 ---------- */
@@ -168,8 +198,34 @@ export async function postRoutes(app: FastifyInstance) {
        ORDER BY p.id ASC LIMIT $limit`,
       { me: user.id, id, cursor: cursorNum(q.cursor), limit: PAGE },
     );
-    return page(hydrate(rows, user.id));
+    const items = hydrate(rows, user.id);
+    return { ...page(items), items: withOpReplies(items, id, user.id) };
   });
+
+  /**
+   * 像 X 一样：楼主（和 AI 助手）在别人评论下面的回复，直接跟在那条评论下面显示，
+   * 不用点进评论才看得到。每条评论最多带 2 条。
+   */
+  function withOpReplies(items: PostDTO[], postId: number, meId: number) {
+    const root = get<{ author_id: number }>('SELECT author_id FROM posts WHERE id = (SELECT COALESCE(root_id, id) FROM posts WHERE id = $id)', { id: postId });
+    if (!root || !items.length) return items;
+    const bot = getAssistantConfig().botId ?? 0;
+    const parents = items.filter((r) => r.replyCount > 0 && r.author.id !== root.author_id && !r.author.blocked).map((r) => r.id);
+    if (!parents.length) return items;
+    const rows = all(
+      `${postSelect('', { showBlocked: true })}
+       WHERE p.parent_id IN (SELECT value FROM json_each($ids)) AND p.deleted = 0 AND p.author_id IN ($op, $bot)
+       ORDER BY p.id ASC LIMIT 200`,
+      { me: meId, ids: JSON.stringify(parents), op: root.author_id, bot },
+    );
+    const by = new Map<number, PostDTO[]>();
+    for (const r of hydrate(rows, meId)) {
+      const list = by.get(r.parentId!) ?? [];
+      if (list.length < 2) list.push(r);
+      by.set(r.parentId!, list);
+    }
+    return items.map((r) => (by.has(r.id) ? { ...r, opReplies: by.get(r.id) } : r));
+  }
 
   /* ---------- 删除 ---------- */
   app.delete('/posts/:id', async (req) => {
