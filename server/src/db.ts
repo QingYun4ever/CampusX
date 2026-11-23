@@ -467,3 +467,45 @@ CREATE INDEX IF NOT EXISTS idx_exp_log_day ON exp_log(board_id, user_id, day, ki
 `);
 // 吧主自定义的 18 个等级头衔（JSON 数组，空字符串的位置用默认头衔）
 addColumn('boards', 'level_titles', "TEXT NOT NULL DEFAULT '[]'");
+
+/* ---------------- 拉黑、举报、自定义表情 ---------------- */
+db.exec(`
+-- blocker 拉黑了 blocked：互相取关；blocked 不能回复、赞、转发 blocker 的帖子，不能关注、私信 blocker；
+-- blocker 的时间线、吧、搜索里看不到 blocked 的帖子，也收不到 blocked 的通知
+CREATE TABLE IF NOT EXISTS blocks (
+  blocker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (blocker_id, blocked_id)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON blocks(blocked_id);
+
+-- 举报：target_type 为 post 或 user。同一个人对同一个目标只能有一条待处理的举报
+CREATE TABLE IF NOT EXISTS reports (
+  id          INTEGER PRIMARY KEY,
+  reporter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  target_type TEXT NOT NULL,
+  target_id   INTEGER NOT NULL,
+  reason      TEXT NOT NULL,
+  note        TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL DEFAULT 'open',
+  handled_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  handled_at  INTEGER,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, target_type, target_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_open ON reports(reporter_id, target_type, target_id) WHERE status = 'open';
+
+-- 自定义表情：图片存在 site_uploads 里（file 是不带 /uploads/ 的文件名）。
+-- 删除只是从自己的表情里移除（removed = 1），文件保留，已经发出去的帖子和私信还能显示
+CREATE TABLE IF NOT EXISTS custom_emojis (
+  id         INTEGER PRIMARY KEY,
+  owner_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  file       TEXT NOT NULL UNIQUE,
+  name       TEXT NOT NULL DEFAULT '',
+  animated   INTEGER NOT NULL DEFAULT 0,
+  removed    INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_custom_emojis_owner ON custom_emojis(owner_id, removed, id);
+`);

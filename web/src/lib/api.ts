@@ -208,6 +208,8 @@ export interface UserLite {
   boardRole?: 'owner' | 'mod' | null;
   /** 作者在帖子所在吧的等级（只在帖子里有；退出了吧或不在吧里时为 null） */
   level?: LevelInfo | null;
+  /** 我拉黑了作者（只在帖子里有） */
+  blocked?: boolean;
 }
 
 export interface LevelInfo {
@@ -243,6 +245,8 @@ export interface Profile extends User {
   postsCount: number;
   followsYou: boolean;
   isFollowing: boolean;
+  /** 我拉黑了他 */
+  blocked: boolean;
   /** 等级最高的几个吧 */
   boardLevels: (LevelInfo & { slug: string; name: string; icon: string; avatar: string | null; exp: number })[];
 }
@@ -382,6 +386,7 @@ export interface ChatPage {
   hasMore: boolean;
   peerReadUpTo: number;
   deletedIds: number[];
+  block: { iBlocked: boolean; blockedMe: boolean };
 }
 
 export interface Page<T> {
@@ -391,7 +396,7 @@ export interface Page<T> {
 
 export interface Notification {
   id: number;
-  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation';
+  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation' | 'report';
   read: boolean;
   /** reaction：用的哪个表情；moderation：JSON { reason, excerpt, warnings } */
   extra?: string;
@@ -408,4 +413,35 @@ export interface Invite {
   expiresAt: number | null;
   createdAt: number;
   creator: string | null;
+}
+
+/* ---------- 拉黑、举报、自定义表情 ---------- */
+
+export interface BlockedUser extends User {
+  blockedAt: number;
+}
+
+export interface CustomEmoji {
+  id: number;
+  /** 文件名，正文里写成 [e:文件名] */
+  file: string;
+  url: string;
+  name: string;
+  animated: boolean;
+  createdAt: number;
+}
+
+export interface ReportGroup {
+  targetType: 'post' | 'user';
+  targetId: number;
+  count: number;
+  firstAt: number;
+  lastAt: number;
+  status: 'open' | 'resolved' | 'dismissed';
+  handledAt: number | null;
+  target:
+    | { id: number; excerpt: string; images: string[]; deleted: boolean; isReply: boolean; author: User }
+    | { user: User }
+    | null;
+  reports: { reason: string; reasonText: string; note: string; createdAt: number; reporter: { username: string; displayName: string } }[];
 }

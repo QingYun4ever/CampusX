@@ -86,7 +86,7 @@ async function fetchLatest(): Promise<Latest | null> {
 /* ---------------- 后台推送（App 定时来取） ---------------- */
 
 const clip = (s: string, n = 80) => {
-  const t = s.replace(/\s+/g, ' ').trim();
+  const t = s.replace(/\[e:[\w-]+\.webp\]/g, '[表情]').replace(/\s+/g, ' ').trim();
   return t.length > n ? t.slice(0, n) + '…' : t;
 };
 
@@ -200,8 +200,8 @@ export async function appRoutes(app: FastifyInstance) {
         items.push({
           id: `n-${r.id}`,
           kind: 'interactions',
-          title: moderation ? '内容警告' : `${r.display_name} ${NOTIF_TEXT[r.type] ?? '有新动态'}`,
-          body: moderation ? '你的帖子没有通过审核，没有发布' : text,
+          title: moderation ? '内容警告' : r.type === 'report' ? '举报已处理' : `${r.display_name} ${NOTIF_TEXT[r.type] ?? '有新动态'}`,
+          body: moderation ? '你的帖子没有通过审核，没有发布' : r.type === 'report' ? '感谢你的举报，管理员已经处理' : text,
           path: r.post_id && !moderation ? `/post/${r.post_id}` : '/notifications',
         });
       }

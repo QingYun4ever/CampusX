@@ -12,10 +12,12 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { ContentLink } from './ContentLink';
+import { CustomEmojiImg } from './CustomEmoji';
+import { EMOJI_TOKEN_ONE, emojiSrc } from '../lib/customEmoji';
 
-export const TOKEN = /(@[A-Za-z0-9_]{3,20}|#[^\s#@，。！？、；：,.!?;:()（）「」]{1,30})/g;
+export const TOKEN = /(\[e:[\w-]{8,40}\.webp\]|@[A-Za-z0-9_]{3,20}|#[^\s#@，。！？、；：,.!?;:()（）「」\[]{1,30})/g;
 
-type MdNode = { type: string; value?: string; url?: string; children?: MdNode[] };
+type MdNode = { type: string; value?: string; url?: string; alt?: string; children?: MdNode[]; data?: Record<string, unknown> };
 const SKIP = new Set(['link', 'linkReference', 'inlineCode', 'code', 'inlineMath', 'math', 'definition']);
 
 /** 把文本里的 @提及 和 #话题 换成链接节点 */
@@ -32,6 +34,11 @@ function remarkMentions() {
       child.value.split(TOKEN).forEach((part, i) => {
         if (!part) return;
         if (i % 2 === 0) return out.push({ type: 'text', value: part });
+        const emoji = EMOJI_TOKEN_ONE.exec(part);
+        if (emoji) {
+          // 只有这里生成的图片节点带 data-emoji，用户自己写的 ![](…) 仍然显示成链接
+          return out.push({ type: 'image', url: emojiSrc(emoji[1]), alt: '[表情]', data: { hProperties: { dataEmoji: emoji[1] } } });
+        }
         const url = part.startsWith('@') ? `/u/${part.slice(1)}` : `/search?q=${encodeURIComponent(part)}`;
         out.push({ type: 'link', url, children: [{ type: 'text', value: part }] });
       });
@@ -44,8 +51,10 @@ function remarkMentions() {
 const components: Components = {
   a: ({ href, children }) => <ContentLink href={href}>{children}</ContentLink>,
   // 外链图片不直接加载（避免被追踪、版面被撑乱），显示成链接；帖子图片请用上传
-  img: ({ src, alt }) =>
-    typeof src === 'string' && src ? (
+  img: ({ src, alt, node }) =>
+    typeof node?.properties?.dataEmoji === 'string' ? (
+      <CustomEmojiImg file={node.properties.dataEmoji} />
+    ) : typeof src === 'string' && src ? (
       <ContentLink href={src} image>
         [图片{alt ? `：${alt}` : ''}]
       </ContentLink>

@@ -1,11 +1,15 @@
 import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { Package, Smile, Store, X } from 'lucide-react';
+import { Package, Plus, Smile, Store, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { REACTIONS } from '../lib/api';
 import { BUNDLED_EMOJI, EMOJI_PACKS, setEmojiPackInstalled, useInstalledEmojiPacks } from '../lib/emojiPacks';
 import { useEscape } from '../lib/escape';
-import { Emoji, toast } from './ui';
+import { Emoji, Spinner, toast } from './ui';
+import { MediaImage } from './MediaImage';
+import { EMOJI_TYPES, emojiToken, useEmojiActions, useMyEmojis } from '../lib/customEmoji';
 import './EmojiPicker.css';
+
+const MINE = '__mine';
 
 const MODES = [
   { id: 'picker', label: '表情', icon: Smile },
@@ -18,6 +22,96 @@ export function EmojiGlyph({ emoji }: { emoji: string }) {
     <span className="emoji-picker-glyph" aria-hidden="true">
       {BUNDLED_EMOJI.has(emoji) ? <Emoji e={emoji} size={24} /> : emoji}
     </span>
+  );
+}
+
+/** 「我的」：自己上传的表情。第一格是上传；「整理」模式下点表情就是删除 */
+function MyEmojis({ onPick }: { onPick: (emoji: string) => void }) {
+  const q = useMyEmojis();
+  const { upload, remove } = useEmojiActions();
+  const [uploading, setUploading] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const items = q.data?.items ?? [];
+  const limit = q.data?.limit ?? 60;
+  const full = items.length >= limit;
+
+  const onFiles = async (files: FileList | null) => {
+    const list = [...(files ?? [])].slice(0, Math.max(0, limit - items.length));
+    if (input.current) input.current.value = '';
+    for (const file of list) {
+      setUploading((n) => n + 1);
+      try {
+        await upload(file);
+      } catch (e) {
+        toast((e as Error).message, 'error');
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
+  };
+
+  return (
+    <>
+      <div className="my-emoji-head">
+        <h3>
+          我的表情 <small>{items.length}/{limit}</small>
+        </h3>
+        {items.length > 0 && (
+          <button type="button" className="emoji-picker-action" aria-pressed={editing} onClick={() => setEditing(!editing)}>
+            {editing ? '完成' : '整理'}
+          </button>
+        )}
+      </div>
+      {q.isPending ? (
+        <Spinner inline />
+      ) : (
+        <div className="my-emoji-grid">
+          {!editing && (
+            <button
+              type="button"
+              className="my-emoji-add"
+              disabled={full}
+              title={full ? `最多 ${limit} 个，先删掉一些吧` : '上传表情（图片或 GIF）'}
+              aria-label="上传表情"
+              onClick={() => input.current?.click()}
+            >
+              <Plus size={22} />
+              <span>{full ? '已满' : '上传'}</span>
+            </button>
+          )}
+          {Array.from({ length: uploading }, (_, i) => (
+            <span key={`u${i}`} className="my-emoji-tile uploading" aria-label="正在上传">
+              <Spinner size={20} inline />
+            </span>
+          ))}
+          {items.map((e) => (
+            <button
+              type="button"
+              key={e.id}
+              className={`my-emoji-tile ${editing ? 'editing' : ''}`}
+              aria-label={editing ? '删除这个表情' : '插入表情'}
+              onMouseDown={(ev) => ev.preventDefault()}
+              onClick={async () => {
+                if (!editing) return onPick(emojiToken(e.file));
+                try {
+                  await remove(e.id);
+                } catch (err) {
+                  toast((err as Error).message, 'error');
+                }
+              }}
+            >
+              <MediaImage src={e.url} alt="" loading="lazy" draggable={false} />
+              {editing && <i aria-hidden="true"><X size={12} strokeWidth={3} /></i>}
+            </button>
+          ))}
+        </div>
+      )}
+      {!q.isPending && !items.length && !uploading && (
+        <p className="emoji-picker-hint">支持图片和 GIF 动图，会压缩成小图保存，最多 {limit} 个。删掉不影响已经发出去的内容。</p>
+      )}
+      <input ref={input} type="file" accept={EMOJI_TYPES} multiple hidden onChange={(e) => void onFiles(e.target.files)} />
+    </>
   );
 }
 
@@ -54,9 +148,10 @@ function EmojiPanel({ id, style, onPick, onClose }: {
           <X size={18} />
         </button>
       </header>
-      {mode === 'picker' && packs.length > 0 && (
+      {mode === 'picker' && (
         <nav className="emoji-picker-packs" aria-label="选择表情包">
-          <button type="button" aria-pressed={!activePack} onClick={() => setActiveId(null)}>常用</button>
+          <button type="button" aria-pressed={!activePack && activeId !== MINE} onClick={() => setActiveId(null)}>常用</button>
+          <button type="button" aria-pressed={activeId === MINE} onClick={() => setActiveId(MINE)}>我的</button>
           {packs.map((pack) => (
             <button type="button" key={pack.id} aria-pressed={activePack?.id === pack.id} onClick={() => setActiveId(pack.id)}>
               {pack.name}
@@ -64,8 +159,9 @@ function EmojiPanel({ id, style, onPick, onClose }: {
           ))}
         </nav>
       )}
-      <div className="emoji-picker-content" key={mode === 'picker' ? activePack?.id ?? 'basic' : mode}>
-        {mode === 'picker' && (
+      <div className="emoji-picker-content" key={mode === 'picker' ? activeId === MINE ? MINE : activePack?.id ?? 'basic' : mode}>
+        {mode === 'picker' && activeId === MINE && <MyEmojis onPick={onPick} />}
+        {mode === 'picker' && activeId !== MINE && (
           <>
             <h3>{activePack?.name ?? '常用表情'}</h3>
             <div className="emoji-menu">

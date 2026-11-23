@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Camera, GraduationCap, Mail, School, Settings } from 'lucide-react';
+import { CalendarDays, Camera, Flag, GraduationCap, Mail, MoreHorizontal, School, Settings, UserX } from 'lucide-react';
 import { LevelBadge } from '../components/Level';
 import { Feed } from '../components/Feed';
 import { ImageCropper } from '../components/ImageCropper';
 import { FollowButton } from '../components/FollowButton';
 import { useMediaResource } from '../components/MediaImage';
-import { Avatar, Empty, Field, Modal, PostSkeleton, Tabs, toast, toneFor, TopBar, useModalClose, Verified } from '../components/ui';
+import { ReportDialog, useBlockToggle } from '../components/Safety';
+import { Avatar, Empty, Field, Modal, PostSkeleton, Tabs, toast, toneFor, TopBar, useModalClose, usePopover, Verified } from '../components/ui';
 import { api, uploadImage, type Profile as ProfileT, type User } from '../lib/api';
 import { DECORATIONS } from '../lib/decorations';
 import { useAuth, useMe } from '../lib/auth';
@@ -15,11 +16,39 @@ import { useAuth, useMe } from '../lib/auth';
 type Tab = 'posts' | 'replies' | 'likes';
 
 
+/** 别人主页右上角的 ⋯：举报、拉黑 */
+function ProfileMenu({ u }: { u: ProfileT }) {
+  const { open, setOpen, ref } = usePopover();
+  const [reporting, setReporting] = useState(false);
+  const toggleBlock = useBlockToggle();
+  return (
+    <div ref={ref} className="post-menu profile-menu">
+      <button className="icon-btn outlined" onClick={() => setOpen((o) => !o)} aria-label="更多" aria-expanded={open} title="更多">
+        <MoreHorizontal size={19} />
+      </button>
+      {open && (
+        <div className="menu" role="menu">
+          <button role="menuitem" onClick={() => { setOpen(false); setReporting(true); }}>
+            <Flag size={18} /> 举报 @{u.username}
+          </button>
+          <button role="menuitem" className={u.blocked ? '' : 'danger'} onClick={() => { setOpen(false); void toggleBlock(u, u.blocked); }}>
+            <UserX size={18} /> {u.blocked ? '取消拉黑' : `拉黑 @${u.username}`}
+          </button>
+        </div>
+      )}
+      {reporting && <ReportDialog targetType="user" targetId={u.id} onClose={() => setReporting(false)} />}
+    </div>
+  );
+}
+
 export function Profile() {
   const { username = '' } = useParams();
   const me = useMe();
   const [tab, setTab] = useState<Tab>('posts');
   const [editing, setEditing] = useState(false);
+  // 拉黑了也想看他的帖子时，点「仍然查看」
+  const [peek, setPeek] = useState(false);
+  const toggleBlock = useBlockToggle();
   const q = useQuery({ queryKey: ['profile', username], queryFn: () => api<ProfileT>(`/users/${username}`) });
   const { url: banner } = useMediaResource(q.data?.banner);
   // 名字滚出视野后，顶栏才显示名字
@@ -70,10 +99,20 @@ export function Profile() {
             </button>
           ) : (
             <>
-              <Link to={`/messages/${u.username}`} className="icon-btn outlined" aria-label="发私信" title="发私信">
-                <Mail size={19} />
-              </Link>
-              <FollowButton username={u.username} initial={u.isFollowing} />
+              <ProfileMenu u={u} />
+              {u.blocked ? (
+                <button className="btn btn-outline blocked-btn" onClick={() => void toggleBlock(u, true)} aria-label="已拉黑，点击取消拉黑">
+                  <span>已拉黑</span>
+                  <span>取消拉黑</span>
+                </button>
+              ) : (
+                <>
+                  <Link to={`/messages/${u.username}`} className="icon-btn outlined" aria-label="发私信" title="发私信">
+                    <Mail size={19} />
+                  </Link>
+                  <FollowButton username={u.username} initial={u.isFollowing} />
+                </>
+              )}
             </>
           )}
         </div>
@@ -140,12 +179,18 @@ export function Profile() {
           ]}
         />
       </div>
-      <Feed
-        key={`${username}-${tab}`}
-        queryKey={['user-posts', username, tab]}
-        path={`/users/${username}/posts?tab=${tab}`}
-        empty={<Empty title={tab === 'likes' ? '还没有喜欢过帖子' : tab === 'replies' ? '还没有回复过' : '还没有发过帖子'} />}
-      />
+      {u.blocked && !peek && tab !== 'likes' ? (
+        <Empty title={`你已拉黑 @${u.username}`} action={<button className="btn btn-outline" onClick={() => setPeek(true)}>仍然查看帖子</button>}>
+          对方不能回复、赞你的帖子，也不能关注你、给你发私信；你在时间线里也不会再看到他。
+        </Empty>
+      ) : (
+        <Feed
+          key={`${username}-${tab}-${peek}`}
+          queryKey={['user-posts', username, tab, peek]}
+          path={`/users/${username}/posts?tab=${tab}${peek ? '&blocked=1' : ''}`}
+          empty={<Empty title={tab === 'likes' ? '还没有喜欢过帖子' : tab === 'replies' ? '还没有回复过' : '还没有发过帖子'} />}
+        />
+      )}
       {isMe && editing && <EditProfile user={u} onClose={() => setEditing(false)} />}
     </>
   );

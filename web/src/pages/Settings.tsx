@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, ChevronRight, Download, FileText, LogOut, Plus, Shield, Trash2 } from 'lucide-react';
+import { Check, ChevronRight, CircleHelp, Download, FileText, LogOut, Plus, Shield, Trash2 } from 'lucide-react';
 import { Switch, TopBar } from '../components/ui';
 import { isAndroid } from '../lib/android';
 import { useAuth, useMe } from '../lib/auth';
@@ -27,6 +27,7 @@ import {
   type Mode,
 } from '../lib/theme';
 import { AccountSecurity } from './AccountSecurity';
+import { BlockListRow } from './BlockList';
 import { PushSettings, UpdateRow } from './AppSettings';
 
 const MODES: { id: Mode; name: string }[] = [
@@ -277,7 +278,16 @@ export function Settings() {
         </Link>
       )}
 
+      <BlockListRow />
       <UpdateRow />
+      <Link to="/help" className="list-link">
+        <CircleHelp size={20} />
+        <span className="grow">
+          帮助
+          <span className="muted small">等级和经验、表情、拉黑和举报</span>
+        </span>
+        <ChevronRight size={18} className="muted" />
+      </Link>
       <Link to="/terms" className="list-link">
         <FileText size={20} />
         <span className="grow">用户协议</span>

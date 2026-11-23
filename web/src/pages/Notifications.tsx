@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AtSign, Heart, MessageCircle, Quote, Repeat2, ShieldAlert, UserPlus } from 'lucide-react';
+import { AtSign, Heart, MessageCircle, Quote, Repeat2, ShieldAlert, ShieldCheck, UserPlus } from 'lucide-react';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { PostCard } from '../components/PostCard';
 import { Avatar, Emoji, Empty, TopBar } from '../components/ui';
@@ -18,7 +18,31 @@ const META = {
   mention: { icon: <AtSign size={24} color="var(--accent)" />, text: '提到了你' },
   reaction: { icon: null, text: '回应了你的帖子' },
   moderation: { icon: null, text: '' },
+  report: { icon: null, text: '' },
 };
+
+/** 举报处理完成 */
+function ReportItem({ n }: { n: Notification }) {
+  let info: { targetType?: string } = {};
+  try {
+    info = JSON.parse(n.extra || '{}');
+  } catch {
+    /* 忽略 */
+  }
+  return (
+    <div className={`notif notif-system ${n.read ? '' : 'unread'}`}>
+      <div className="notif-icon">
+        <ShieldCheck size={24} color="var(--accent)" />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div>
+          <b>举报已处理</b>：你举报的{info.targetType === 'user' ? '用户' : '帖子'}，管理员已经处理。感谢你帮校墙变得更好
+          <span className="faint"> · {timeAgo(n.createdAt)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** 内容没通过审核：系统通知，带理由和警告次数 */
 function ModerationItem({ n }: { n: Notification }) {
@@ -49,6 +73,7 @@ function ModerationItem({ n }: { n: Notification }) {
 function Item({ n }: { n: Notification }) {
   const nav = useNavigate();
   if (n.type === 'moderation') return <ModerationItem n={n} />;
+  if (n.type === 'report') return <ReportItem n={n} />;
   // 回复和 @ 直接展示完整帖子，可以就地互动
   if ((n.type === 'reply' || n.type === 'mention') && n.post) {
     return (

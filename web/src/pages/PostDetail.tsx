@@ -35,7 +35,7 @@ export function PostDetail() {
       ) : (
         <>
           {q.data.ancestors.map((a) => (
-            <PostCard key={a.id} post={a} threadLine />
+            <PostCard key={a.id} post={a} threadLine collapseBlocked />
           ))}
           <div ref={mainRef} style={{ scrollMarginTop: 60 }}>
             <PostMain post={q.data.post} onDeleted={() => nav(-1)} />
@@ -48,6 +48,7 @@ export function PostDetail() {
             render={(r, i) => (
               <PostCard
                 post={r}
+                collapseBlocked
                 floor={isRoot ? i + 2 : undefined}
                 hideReplyTo={!isRoot}
                 opId={isRoot ? q.data.post.author.id : undefined}

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, now, run, tx } from '../db.ts';
 import { enqueue, getConfig, logReview, reviewContext, screen, warnAuthor, type ReviewResult } from '../moderation.ts';
-import { boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publicPost, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
+import { assertCanInteract, boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publicPost, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
 import { consumeDraftUploads, holdDraftUploads, MAX_REVIEW_IMAGE_BYTES, siteUploadUrl, type UploadSnapshots } from '../site-uploads.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 import { grantForLike, revokeForPost } from '../levels.ts';
@@ -75,6 +75,7 @@ export async function postRoutes(app: FastifyInstance) {
     let parent: { id: number; author_id: number; root_id: number | null; board_id: number | null } | undefined;
     if (body.parentId) {
       const target = resolveTarget(body.parentId, user.id);
+      assertCanInteract(user.id, target.author_id);
       parent = get('SELECT id, author_id, root_id, board_id FROM posts WHERE id = $id', { id: target.id }) as typeof parent;
       boardId = parent!.board_id;
     } else if (body.boardSlug) {
@@ -107,6 +108,7 @@ export async function postRoutes(app: FastifyInstance) {
         { id: body.quoteOfId },
       );
       if (body.quoteOfId !== undefined && !quote) throw new HttpError(404, '原帖不可引用');
+      if (quote) assertCanInteract(user.id, get<{ author_id: number }>('SELECT author_id FROM posts WHERE id = $id', { id: quote.id })!.author_id);
       const { lastId } = run(
         `INSERT INTO posts (author_id, board_id, parent_id, root_id, content, images, status, last_activity_at, created_at)
          VALUES ($a, $b, $parent, $root, $c, $img, $status, $t, $t)`,
@@ -160,7 +162,7 @@ export async function postRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const q = req.query as { cursor?: string };
     const rows = all(
-      `${postSelect()}
+      `${postSelect('', { showBlocked: true })}
        WHERE p.parent_id = $id AND (p.deleted = 0 OR p.reply_count > 0)
          AND ($cursor IS NULL OR p.id > $cursor)
        ORDER BY p.id ASC LIMIT $limit`,
@@ -244,6 +246,7 @@ export async function postRoutes(app: FastifyInstance) {
   app.post('/posts/:id/like', async (req) => {
     const user = me(req);
     const target = resolveTarget(Number((req.params as { id: string }).id), user.id);
+    assertCanInteract(user.id, target.author_id);
     tx(() => {
       const r = run('INSERT OR IGNORE INTO likes (user_id, post_id, created_at) VALUES ($u, $p, $t)', {
         u: user.id,
@@ -276,6 +279,7 @@ export async function postRoutes(app: FastifyInstance) {
   app.post('/posts/:id/repost', async (req) => {
     const user = me(req);
     const target = resolveTarget(Number((req.params as { id: string }).id), user.id);
+    assertCanInteract(user.id, target.author_id);
     if (target.board_id && get("SELECT 1 FROM boards WHERE id = $b AND visibility = 'private'", { b: target.board_id })) {
       throw new HttpError(400, '私密吧里的帖子不能转发');
     }
@@ -315,6 +319,7 @@ export async function postRoutes(app: FastifyInstance) {
     const params = req.params as { id: string; key: string };
     const emoji = reactionKey(params.key);
     const target = resolveTarget(Number(params.id), user.id);
+    assertCanInteract(user.id, target.author_id);
     tx(() => {
       run('DELETE FROM reactions WHERE post_id = $p AND user_id = $u', { p: target.id, u: user.id });
       run('INSERT INTO reactions (post_id, user_id, emoji, created_at) VALUES ($p, $u, $e, $t)', {

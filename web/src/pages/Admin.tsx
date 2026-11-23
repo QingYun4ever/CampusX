@@ -7,6 +7,7 @@ import {
   Check,
   Copy,
   ExternalLink,
+  Flag,
   FlaskConical,
   KeyRound,
   LayoutDashboard,
@@ -22,7 +23,7 @@ import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Logo } from '../components/Logo';
 import { MediaImage } from '../components/MediaImage';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Spinner, Switch, toast, useModalClose, Verified } from '../components/ui';
-import { api, WEB_ORIGIN, type Invite, type User, type UserLite } from '../lib/api';
+import { api, WEB_ORIGIN, type Invite, type ReportGroup, type User, type UserLite } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
 
@@ -791,6 +792,12 @@ export function Admin() {
     enabled: me.role === 'admin',
     refetchInterval: 30_000,
   });
+  const reports = useQuery({
+    queryKey: ['admin-reports-count'],
+    queryFn: () => api<{ count: number }>('/admin/reports/count'),
+    enabled: me.role === 'admin',
+    refetchInterval: 60_000,
+  });
   useEffect(() => {
     document.title = '管理后台 · 校墙';
     return () => {
@@ -809,6 +816,7 @@ export function Admin() {
   const nav: [string, string, typeof LayoutDashboard, number?][] = [
     ['/admin', '概览', LayoutDashboard],
     ['/admin/moderation', '内容审核', ScanEye, stats.data?.pending],
+    ['/admin/reports', '举报', Flag, reports.data?.count],
     ['/admin/invites', '邀请码', Ticket],
     ['/admin/users', '用户', UsersIcon],
   ];
@@ -840,6 +848,7 @@ export function Admin() {
           <Routes>
             <Route index element={<Overview />} />
             <Route path="moderation" element={<Moderation />} />
+            <Route path="reports" element={<Reports />} />
             <Route path="invites" element={<InvitesPage />} />
             <Route path="users" element={<Users />} />
             <Route path="*" element={<Navigate to="/admin" replace />} />
@@ -856,6 +865,140 @@ function InvitesPage() {
       <PageHead title="邀请码" sub="只有拿到邀请码的人才能注册。生成后会自动复制注册链接" />
       <div className="admin-list">
         <Invites />
+      </div>
+    </>
+  );
+}
+
+/* ---------------- 举报 ---------------- */
+function ReportItem({ g, onDone }: { g: ReportGroup; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const open = g.status === 'open';
+  const post = g.targetType === 'post' && g.target && 'excerpt' in g.target ? g.target : null;
+  const user = g.targetType === 'user' && g.target && 'user' in g.target ? g.target.user : post?.author;
+
+  const handle = async (status: 'resolved' | 'dismissed', deletePost = false) => {
+    if (deletePost && !confirm('删除这条帖子并标记举报已处理？举报人会收到通知。')) return;
+    setBusy(true);
+    try {
+      if (deletePost && post && !post.deleted) await api(`/posts/${post.id}`, { method: 'DELETE' });
+      await api('/admin/reports/handle', { body: { targetType: g.targetType, targetId: g.targetId, status } });
+      toast(status === 'resolved' ? (deletePost ? '已删除并处理' : '已标记为处理完成') : '已驳回');
+      onDone();
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reasons = [...new Set(g.reports.map((r) => r.reasonText))];
+  return (
+    <div className="log-item">
+      {user ? (
+        <Avatar src={user.avatar} name={user.displayName} size={36} decoration={user.avatarDecoration} />
+      ) : (
+        <span className="avatar" style={{ width: 36, height: 36 }} />
+      )}
+      <div className="log-body">
+        <div className="log-head">
+          <span className="pill">{g.targetType === 'post' ? (post?.isReply ? '回复' : '帖子') : '用户'}</span>
+          {user && (
+            <>
+              <span className="name">{user.displayName}</span>
+              <Link to={`/u/${user.username}`} className="muted">@{user.username}</Link>
+            </>
+          )}
+          <span className="muted">·</span>
+          <time className="muted" title={fullTime(g.lastAt)}>{timeAgo(g.lastAt)}</time>
+          <span className={`pill ${g.count > 1 ? 'warn' : ''}`}>{g.count} 人举报</span>
+          {!open && <span className={`pill ${g.status === 'resolved' ? 'ok' : ''}`}>{g.status === 'resolved' ? '已处理' : '已驳回'}</span>}
+        </div>
+        {!g.target && <div className="log-content muted">目标已经不存在</div>}
+        {post && (
+          <>
+            {post.deleted ? (
+              <div className="log-content muted">（帖子已删除）</div>
+            ) : (
+              post.excerpt && <div className="log-content">{post.excerpt}</div>
+            )}
+            {!post.deleted && post.images.length > 0 && (
+              <div className="log-thumbs">
+                {post.images.map((src) => (
+                  <ContentLink key={src} href={src} image>
+                    <MediaImage src={src} alt="查看被举报的图片" loading="lazy" />
+                  </ContentLink>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        <div className="log-reason">
+          {reasons.join('、')}
+          {g.reports.filter((r) => r.note).map((r, i) => (
+            <div key={i} className="report-note-line">
+              <b>{r.reporter.displayName}</b>：{r.note}
+            </div>
+          ))}
+        </div>
+        <div className="log-meta muted small">
+          <span>举报人：{g.reports.map((r) => r.reporter.displayName).join('、')}{g.count > g.reports.length ? ` 等 ${g.count} 人` : ''}</span>
+          {post && !post.deleted && (
+            <Link to={`/post/${post.id}`}>
+              查看帖子 <ExternalLink size={12} />
+            </Link>
+          )}
+        </div>
+      </div>
+      {open && (
+        <div className="log-actions">
+          {post && !post.deleted && (
+            <button className="btn btn-outline sm danger" disabled={busy} onClick={() => handle('resolved', true)}>
+              <Trash2 size={15} /> 删除帖子
+            </button>
+          )}
+          <button className="btn btn-outline sm" disabled={busy} onClick={() => handle('resolved')}>
+            <Check size={15} /> 已处理
+          </button>
+          <button className="btn btn-outline sm" disabled={busy} onClick={() => handle('dismissed')}>
+            <X size={15} /> 驳回
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Reports() {
+  const [status, setStatus] = useState<'open' | 'closed'>('open');
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['admin-reports', status], queryFn: () => api<ReportGroup[]>(`/admin/reports?status=${status}`) });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['admin-reports'] });
+    qc.invalidateQueries({ queryKey: ['admin-reports-count'] });
+  };
+  return (
+    <>
+      <PageHead
+        title="举报"
+        sub="同学举报的帖子和用户。处理后举报人会收到通知，被举报的人不知道是谁举报的"
+        right={
+          <div className="seg">
+            <button className={status === 'open' ? 'on' : ''} onClick={() => setStatus('open')}>待处理</button>
+            <button className={status === 'closed' ? 'on' : ''} onClick={() => setStatus('closed')}>已处理</button>
+          </div>
+        }
+      />
+      <div className="admin-list">
+        {q.isPending ? (
+          <PostSkeleton n={2} />
+        ) : q.isError ? (
+          <Empty title="加载失败">{(q.error as Error).message}</Empty>
+        ) : !q.data.length ? (
+          <Empty title={status === 'open' ? '没有待处理的举报' : '还没有处理过举报'} />
+        ) : (
+          q.data.map((g) => <ReportItem key={`${g.targetType}-${g.targetId}-${g.handledAt ?? ''}`} g={g} onDone={refresh} />)
+        )}
       </div>
     </>
   );

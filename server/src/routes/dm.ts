@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, now, run, tx, type Row } from '../db.ts';
 import { hasImageSignature, imageTypes, readUploadedImage, type UploadedImage } from '../image-upload.ts';
+import { assertCanInteract, blockState } from '../serialize.ts';
 import { HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 
@@ -225,12 +226,14 @@ export async function dmRoutes(app: FastifyInstance) {
       hasMore: !after && rows.length >= PAGE,
       peerReadUpTo: peerReadUpTo(user.id, peer.id),
       deletedIds,
+      block: blockState(user.id, peer.id),
     };
   });
 
   app.post('/dm/with/:username', { config: { rateLimit: { max: 40, timeWindow: '1 minute' } } }, async (req) => {
     const user = me(req);
     const peer = peerOf((req.params as { username: string }).username, user.id);
+    assertCanInteract(user.id, peer.id);
     if (!req.isMultipart()) {
       const { content } = parse(textMessageSchema, req.body);
       return storeMessage(user.id, peer.id, content, []);

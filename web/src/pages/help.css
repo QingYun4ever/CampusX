@@ -1,0 +1,80 @@
+.help-page h2 {
+  margin: 30px 0 8px;
+  font-size: 19px;
+  font-weight: 800;
+  scroll-margin-top: calc(64px + env(safe-area-inset-top));
+}
+.help-page section {
+  scroll-margin-top: calc(64px + env(safe-area-inset-top));
+}
+.help-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+.help-toc a {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  transition: background-color 0.15s;
+}
+.help-toc a:hover {
+  background: var(--hover-2);
+  text-decoration: none;
+}
+.help-table {
+  display: grid;
+  margin: 6px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.help-table > div {
+  display: grid;
+  grid-template-columns: minmax(5.5em, auto) 3em 1fr;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 10px 14px;
+}
+.help-table > div + div {
+  border-top: 1px solid var(--line);
+}
+.help-table span {
+  font-weight: 600;
+}
+.help-table b {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.help-table small {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+@media (max-width: 420px) {
+  .help-table > div {
+    grid-template-columns: 1fr auto;
+  }
+  .help-table small {
+    grid-column: 1 / -1;
+  }
+}
+.help-levels {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px 16px;
+  margin: 10px 0 8px;
+}
+.help-level {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

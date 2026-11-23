@@ -19,6 +19,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, ArrowLeft, Check, CheckCheck, Clock, Copy, ImagePlus, MessageSquarePlus, Search, Send, Trash2, Undo2 } from 'lucide-react';
 import { EmojiPicker } from '../components/EmojiPicker';
 import { PlainText } from '../components/PostCard';
+import { useBlockToggle } from '../components/Safety';
+import { emojiText } from '../lib/customEmoji';
 import { Avatar, Empty, Modal, Spinner, toast, Verified } from '../components/ui';
 import { isAndroid } from '../lib/android';
 import { api, type ChatPage, type Conversation, type DmMessage, type DmUser, type Page, type User } from '../lib/api';
@@ -197,7 +199,7 @@ function ChatList({ active }: { active?: string }) {
                   <span className="dm-item-bottom">
                     <span className="dm-preview">
                       {mine && <span className="dm-you">你：</span>}
-                      {c.last.deleted ? <i>消息已撤回</i> : c.last.content || (c.last.images?.length ? '[图片]' : '')}
+                      {c.last.deleted ? <i>消息已撤回</i> : emojiText(c.last.content) || (c.last.images?.length ? '[图片]' : '')}
                     </span>
                     {c.unread > 0 && <span className="dm-unread">{c.unread > 99 ? '99+' : c.unread}</span>}
                   </span>
@@ -239,6 +241,8 @@ function ChatView({ username }: { username: string }) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const [peer, setPeer] = useState<DmUser | null>(null);
+  const [block, setBlock] = useState<ChatPage['block'] | null>(null);
+  const toggleBlock = useBlockToggle();
   const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [readUpTo, setReadUpTo] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -276,6 +280,7 @@ function ChatView({ username }: { username: string }) {
         if (!alive) return;
         pollCursor.current = r.messages.at(-1)?.id ?? 0;
         setPeer(r.peer);
+        setBlock(r.block);
         setMsgs(r.messages);
         setHasMore(r.hasMore);
         setReadUpTo(r.peerReadUpTo);
@@ -301,6 +306,7 @@ function ChatView({ username }: { username: string }) {
         if (!alive) return;
         pollCursor.current = r.messages.at(-1)?.id ?? pollCursor.current;
         setPeer(r.peer);
+        setBlock(r.block);
         setReadUpTo(r.peerReadUpTo);
         if (r.messages.length) {
           setMsgs((m) => merge(m, r.messages));
@@ -594,6 +600,26 @@ function ChatView({ username }: { username: string }) {
         )}
       </div>
 
+      {block?.iBlocked || block?.blockedMe ? (
+        <div className="dm-compose dm-blocked">
+          {block.iBlocked ? (
+            <>
+              <span>你已拉黑对方，不能互发消息</span>
+              <button
+                type="button"
+                className="btn btn-outline sm"
+                onClick={async () => {
+                  if (peer && (await toggleBlock(peer, true)) === false) setBlock({ iBlocked: false, blockedMe: block.blockedMe });
+                }}
+              >
+                解除拉黑
+              </button>
+            </>
+          ) : (
+            <span>对方设置了不接受你的消息</span>
+          )}
+        </div>
+      ) : (
       <form
         className="dm-compose"
         onSubmit={(e) => {
@@ -642,6 +668,7 @@ function ChatView({ username }: { username: string }) {
           </button>
         </div>
       </form>
+      )}
 
       {ctx && contextMessage && (
         <div className="menu dm-ctx" style={{ left: ctx.x, top: ctx.y }} onPointerDown={(e) => e.stopPropagation()} role="menu">

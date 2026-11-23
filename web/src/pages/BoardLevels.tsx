@@ -255,6 +255,9 @@ function Rules() {
       <p className="level-note">
         牌子颜色：1–3 级绿牌，4–9 级蓝牌，10–15 级黄牌，16–18 级橙牌。每天都来的话，大概半年到一学年能拿到黄牌。
       </p>
+      <p className="level-note">
+        <Link to="/help#levels">在帮助里查看完整等级表</Link>
+      </p>
     </div>
   );
 }

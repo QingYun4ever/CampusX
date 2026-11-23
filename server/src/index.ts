@@ -15,6 +15,7 @@ import { boardRoutes } from './routes/boards.ts';
 import { dmRoutes } from './routes/dm.ts';
 import { miscRoutes } from './routes/misc.ts';
 import { postRoutes } from './routes/posts.ts';
+import { safetyRoutes } from './routes/safety.ts';
 import { securityRoutes } from './routes/security.ts';
 import { userRoutes } from './routes/users.ts';
 import { HttpError } from './util.ts';
@@ -96,6 +97,7 @@ await app.register(
     await api.register(boardRoutes);
     await api.register(miscRoutes);
     await api.register(dmRoutes);
+    await api.register(safetyRoutes);
     await api.register(appRoutes);
   },
   { prefix: '/api' },

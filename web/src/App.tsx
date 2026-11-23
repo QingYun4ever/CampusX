@@ -14,6 +14,7 @@ import { Login, Register } from './pages/Auth';
 import { InstallPage } from './pages/Install';
 import { PrivacyPage } from './pages/Privacy';
 import { TermsGate, TermsPage } from './pages/Terms';
+import { HelpPage } from './pages/Help';
 
 const Admin = lazy(() => import('./pages/Admin').then(({ Admin }) => ({ default: Admin })));
 const Boards = lazy(() => import('./pages/Boards').then(({ Boards }) => ({ default: Boards })));
@@ -52,6 +53,7 @@ export function App() {
   const { user, loading } = useAuth();
   const loc = useLocation();
   const PublicPage = matchPath('/privacy', loc.pathname) ? PrivacyPage
+    : matchPath('/help', loc.pathname) ? HelpPage
     : matchPath('/install', loc.pathname) ? InstallPage
     : null;
   useLayoutEffect(() => {

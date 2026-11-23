@@ -1,0 +1,185 @@
+/* ---------- 举报 ---------- */
+.report-modal .modal-body {
+  padding: 4px 16px 16px;
+}
+.report-form > p {
+  margin: 4px 0 10px;
+}
+.report-reasons {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.report-reason {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  text-align: left;
+  transition: background-color 0.15s;
+}
+.report-reason + .report-reason {
+  border-top: 1px solid var(--line);
+}
+@media (hover: hover) {
+  .report-reason:hover {
+    background: var(--hover-2);
+  }
+}
+.report-reason[aria-checked='true'] {
+  background: var(--accent-10);
+}
+.report-reason > span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.report-reason b {
+  font-weight: 700;
+}
+.report-reason small {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.report-reason > i {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.report-reason[aria-checked='true'] > i {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.report-note {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  resize: vertical;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: transparent;
+  line-height: 1.5;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.report-note:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.report-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+.report-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 28px 24px 24px !important;
+}
+.report-done > svg {
+  color: var(--accent);
+}
+.report-done h3 {
+  margin: 4px 0 0;
+  font-size: 19px;
+}
+.report-done p {
+  margin: 0 0 12px;
+  max-width: 300px;
+}
+
+/* ---------- 拉黑 ---------- */
+.profile-menu {
+  margin-left: 0;
+}
+.blocked-btn {
+  color: var(--danger) !important;
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent) !important;
+  display: inline-grid;
+  justify-items: center;
+}
+.blocked-btn > span {
+  grid-area: 1 / 1;
+  transition: opacity 0.15s;
+}
+.blocked-btn > span + span,
+.blocked-btn:hover > span:first-child {
+  opacity: 0;
+}
+.blocked-btn:hover > span + span {
+  opacity: 1;
+}
+.blocked-btn:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent) !important;
+}
+
+/* 楼层里被拉黑的人：折叠成一行 */
+.blocked-reply {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 14px;
+}
+.blocked-reply > svg {
+  flex: none;
+}
+.blocked-reply button {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 14px;
+}
+.blocked-reply button:hover {
+  text-decoration: underline;
+}
+
+/* 设置里的拉黑名单 */
+.block-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.block-row > a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.block-row .who {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 私信：拉黑后输入框换成提示 */
+.dm-blocked {
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-2);
+  font-size: 14px;
+  border-top: 1px solid var(--line);
+  min-height: 60px;
+}

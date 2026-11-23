@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart2, Bookmark, ChevronDown, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Quote, Repeat2, SmilePlus, Trash2 } from 'lucide-react';
+import { BarChart2, Bookmark, ChevronDown, Flag, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Quote, Repeat2, SmilePlus, Trash2, UserX } from 'lucide-react';
 import { api, thumb, QUICK_REACTIONS, REACTIONS, WEB_ORIGIN, type Post, type Reaction, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
@@ -11,6 +11,9 @@ import { ContentLink } from './ContentLink';
 import { MediaImage } from './MediaImage';
 import { LevelBadge } from './Level';
 import { QuoteCard } from './QuoteCard';
+import { CustomEmojiImg } from './CustomEmoji';
+import { EMOJI_TOKEN, EMOJI_TOKEN_ONE, onlyEmoji } from '../lib/customEmoji';
+import { ReportDialog, useBlockToggle } from './Safety';
 import { Avatar, Emoji, emojiUrl, Empty, Modal, openGallery, Rolling, Spinner, toast, toneFor, usePopover, Verified } from './ui';
 
 /* ---------- 正文 ---------- */
@@ -20,7 +23,8 @@ export const preloadMarkdown = () => import('./Markdown');
 const NEEDS_MD = /[*_`~$|>[\]]|^\s{0,3}(#{1,6}\s|[-+*]\s|\d+[.)]\s|-{3,}\s*$)/m;
 
 export function RichText({ text }: { text: string }) {
-  if (!NEEDS_MD.test(text)) return <PlainText text={text} />;
+  // [e:表情] 本身带方括号，不算 Markdown
+  if (!NEEDS_MD.test(text.replace(EMOJI_TOKEN, ''))) return <PlainText text={text} />;
   return (
     <Suspense fallback={<PlainText text={text} />}>
       <Markdown text={text} />
@@ -29,15 +33,18 @@ export function RichText({ text }: { text: string }) {
 }
 
 /* 纯文本：@提及、#话题、链接 */
-const TOKEN = /(@[A-Za-z0-9_]{3,20}|#[^\s#@，。！？、；：,.!?;:()（）「」]{1,20}|https?:\/\/[^\s]+)/g;
+const TOKEN = /(\[e:[\w-]{8,40}\.webp\]|@[A-Za-z0-9_]{3,20}|#[^\s#@，。！？、；：,.!?;:()（）「」\[]{1,20}|https?:\/\/[^\s[]+)/g;
 
 export function PlainText({ text }: { text: string }) {
   const parts = text.split(TOKEN);
   const stop = (e: MouseEvent) => e.stopPropagation();
+  const big = onlyEmoji(text);
   return (
-    <div className="content">
+    <div className={big ? `content emoji-only n${big}` : 'content'}>
       {parts.map((p, i) => {
-        if (i % 2 === 0) return p;
+        if (i % 2 === 0) return big ? null : p;
+        const emoji = EMOJI_TOKEN_ONE.exec(p);
+        if (emoji) return <CustomEmojiImg key={i} file={emoji[1]} />;
         if (p.startsWith('@')) {
           return (
             <Link key={i} to={`/u/${p.slice(1)}`} onClick={stop}>
@@ -570,8 +577,10 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
   const mine = post.author.id === me.id;
   const admin = me.role === 'admin';
   const mod = post.canModerate || admin;
-  if (!mine && !mod) return null;
+  const [reporting, setReporting] = useState(false);
+  const toggleBlock = useBlockToggle();
   const canPin = mod && !!post.board && !post.parentId;
+  const canDelete = mine || mod;
   const del = async () => {
     setOpen(false);
     if (!confirm('删除这条帖子？删除后不能恢复。')) return;
@@ -607,11 +616,27 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
               {post.pinned ? '取消置顶' : `在${post.board!.name}吧置顶`}
             </button>
           )}
-          <button className="danger" onClick={del} role="menuitem">
-            <Trash2 size={18} /> 删除{mine ? '' : post.canModerate ? '（吧务）' : '（管理员）'}
-          </button>
+          {!mine && (
+            <>
+              <button onClick={() => { setOpen(false); setReporting(true); }} role="menuitem">
+                <Flag size={18} /> 举报帖子
+              </button>
+              <button
+                onClick={() => { setOpen(false); void toggleBlock(post.author, !!post.author.blocked); }}
+                role="menuitem"
+              >
+                <UserX size={18} /> {post.author.blocked ? '取消拉黑' : '拉黑'} @{post.author.username}
+              </button>
+            </>
+          )}
+          {canDelete && (
+            <button className="danger" onClick={del} role="menuitem">
+              <Trash2 size={18} /> 删除{mine ? '' : post.canModerate ? '（吧务）' : '（管理员）'}
+            </button>
+          )}
         </div>
       )}
+      {reporting && <ReportDialog targetType="post" targetId={post.id} onClose={() => setReporting(false)} />}
     </div>
   );
 }
@@ -666,8 +691,11 @@ export function PostCard({
   hideReplyTo,
   opId,
   pinnedContext,
+  collapseBlocked,
 }: {
   post: Post;
+  /** 楼层里：拉黑的人的回复折叠成一行 */
+  collapseBlocked?: boolean;
   threadLine?: boolean;
   floor?: number;
   hideReplyTo?: boolean;
@@ -680,11 +708,23 @@ export function PostCard({
   const post = item.repostOf ?? item;
   const rx = useReactions(post);
   const el = useRef<HTMLElement>(null);
-  useViewTracking(el, post.id, !post.deleted);
+  const [revealed, setRevealed] = useState(false);
+  const hidden = !!collapseBlocked && !!post.author.blocked && !post.deleted && !revealed;
+  useViewTracking(el, post.id, !post.deleted && !hidden);
   const open = () => {
     if (window.getSelection()?.toString()) return;
     nav(`/post/${post.id}`);
   };
+
+  if (hidden) {
+    return (
+      <div className="blocked-reply">
+        <UserX size={16} />
+        {floor ? `${floor} 楼 · ` : ''}你已拉黑这位同学，回复已隐藏
+        <button onClick={() => setRevealed(true)}>显示</button>
+      </div>
+    );
+  }
 
   if (post.deleted) {
     return (

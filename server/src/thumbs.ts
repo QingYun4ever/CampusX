@@ -108,3 +108,36 @@ export async function makeThumb(read: () => Promise<Buffer>, avatar: boolean) {
     else makingThumbnail = false;
   }
 }
+
+const emojiEdge = 160;
+const emojiMaxFrames = 150;
+export const EMOJI_MAX_BYTES = 600 * 1024;
+
+/**
+ * 自定义表情：长边压到 160，统一存成 WebP（动图保留动画）。
+ * 动图压缩后还超过 600 KB 就拒绝，避免一个表情拖慢整页。
+ */
+export function makeEmojiImage(buffer: Buffer, ext: string) {
+  return useSharp(async (sharp) => {
+    let animated = false;
+    let out: Buffer;
+    try {
+      const probe = sharp(buffer, { ...sharpOptions, animated: ext === 'gif' || ext === 'webp' }).timeout({ seconds: 15 });
+      const { format, width, height, pageHeight, pages = 1 } = await probe.metadata();
+      if (format !== (ext === 'jpg' ? 'jpeg' : ext) || !width || !height ||
+          width * (pageHeight ?? height) * pages > maxInputPixels) throw new ImageInputError();
+      if (pages > emojiMaxFrames) throw new HttpError(400, `动图最多 ${emojiMaxFrames} 帧`);
+      animated = pages > 1;
+      out = await probe
+        .rotate()
+        .resize({ width: emojiEdge, height: emojiEdge, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: animated ? 70 : 82, effort: 4, ...(animated ? { loop: 0 } : {}) })
+        .toBuffer();
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      throw new ImageInputError();
+    }
+    if (out.length > EMOJI_MAX_BYTES) throw new HttpError(413, '动图压缩后还是太大了，换一个短一点的吧');
+    return { buffer: out, ext: 'webp', animated };
+  });
+}

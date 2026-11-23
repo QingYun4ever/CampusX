@@ -1,5 +1,6 @@
 import { all, get, now, run, type Row } from './db.ts';
 import { grantForPost, levelInfo, revokeForPost, type LevelInfo } from './levels.ts';
+import { HttpError } from './util.ts';
 
 /** 表情回应（Telegram 式）：每人每帖一个，换一个会替换掉之前的。前端的列表要和这里一致 */
 export const REACTIONS = [
@@ -30,7 +31,8 @@ export const publicPost = (alias: string) => `(${alias}.status = 'ok' AND ${alia
 
 /** 通知列表、推送和未读数都以收件人当前的帖子权限为准。 */
 export const visibleNotification = `(
-  (n.post_id IS NULL OR EXISTS (
+  NOT EXISTS (SELECT 1 FROM blocks nb WHERE nb.blocker_id = $me AND nb.blocked_id = n.actor_id)
+  AND (n.post_id IS NULL OR EXISTS (
     SELECT 1 FROM posts vp WHERE vp.id = n.post_id AND vp.deleted = 0
       AND (vp.status = 'ok' OR (vp.status = 'pending' AND vp.author_id = $me)) AND ${visibleTo('vp.')}
   ))
@@ -40,12 +42,18 @@ export const visibleNotification = `(
   ))
 )`;
 
+/** 我拉黑的人发的帖子、以及转发了他们帖子的转发行（SQL 条件，作用在 posts 表上，要绑定 $me） */
+const NOT_BLOCKED = `author_id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = $me)
+  AND (repost_of IS NULL OR repost_of NOT IN (
+    SELECT bp.id FROM posts bp JOIN blocks bb ON bb.blocked_id = bp.author_id AND bb.blocker_id = $me))`;
+
 /**
  * 帖子查询的公共 SELECT。$me 为当前用户 id，用于计算 liked / reposted。
  * 审核中、未通过的帖子只对作者本人可见（作者看起来和正常发出一样）。
  * 私密吧里的帖子只对能看到这个吧的人可见；转发了这种帖子的转发行会在 hydrate 里被丢掉。
+ * 列表默认不出现我拉黑的人；showBlocked 时照样返回（楼层里显示成折叠的占位，按 id 取帖子也一样）。
  */
-export function postSelect(extraCols = '') {
+export function postSelect(extraCols = '', { showBlocked = false } = {}) {
   return `
 SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.content, p.images,
   p.like_count, p.reply_count, p.repost_count, p.view_count, p.deleted, p.created_at, p.last_activity_at,
@@ -74,9 +82,11 @@ SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.con
        WHEN EXISTS(SELECT 1 FROM board_mods bm WHERE bm.board_id = p.board_id AND bm.user_id = p.author_id) THEN 'mod'
   END AS author_board_role,
   (p.board_id IS NOT NULL AND (b.owner_id = $me
-     OR EXISTS(SELECT 1 FROM board_mods bm WHERE bm.board_id = p.board_id AND bm.user_id = $me))) AS board_manager
+     OR EXISTS(SELECT 1 FROM board_mods bm WHERE bm.board_id = p.board_id AND bm.user_id = $me))) AS board_manager,
+  EXISTS(SELECT 1 FROM blocks ab WHERE ab.blocker_id = $me AND ab.blocked_id = p.author_id) AS author_blocked
   ${extraCols}
-FROM (SELECT * FROM posts WHERE (status = 'ok' OR (status = 'pending' AND author_id = $me)) AND ${visibleTo()}) p
+FROM (SELECT * FROM posts WHERE (status = 'ok' OR (status = 'pending' AND author_id = $me)) AND ${visibleTo()}
+  ${showBlocked ? '' : `AND ${NOT_BLOCKED}`}) p
 JOIN users u ON u.id = p.author_id
 LEFT JOIN boards b ON b.id = p.board_id
 LEFT JOIN board_exp be ON be.board_id = p.board_id AND be.user_id = p.author_id
@@ -101,6 +111,8 @@ export interface PostDTO {
     boardRole: 'owner' | 'mod' | null;
     /** 作者在这条帖子所在吧里的等级；不在吧里的帖子、或者作者已经退出这个吧时为 null */
     level: LevelInfo | null;
+    /** 我拉黑了作者（楼层里折叠显示） */
+    blocked: boolean;
   };
   board: { slug: string; name: string; icon: string } | null;
   parentId: number | null;
@@ -161,6 +173,7 @@ function serializeRow(r: Row, quotes: Map<number, QuotePreview>): PostDTO {
       verifiedNote: r.verified_note ?? '',
       boardRole: (r.author_board_role as 'owner' | 'mod' | null) ?? null,
       level: r.board_id && r.author_member ? levelInfo(r.author_exp ?? 0, r.board_level_titles) : null,
+      blocked: !!r.author_blocked,
     },
     board: r.board_slug ? { slug: r.board_slug, name: r.board_name, icon: r.board_icon } : null,
     parentId: r.parent_id ?? null,
@@ -249,7 +262,7 @@ export function hydrate(rows: Row[], me: number): PostDTO[] {
 
 function loadPostRows(ids: number[], me: number): Row[] {
   if (!ids.length) return [];
-  return all(`${postSelect()} WHERE p.id IN (SELECT value FROM json_each($ids))`, {
+  return all(`${postSelect('', { showBlocked: true })} WHERE p.id IN (SELECT value FROM json_each($ids))`, {
     ids: JSON.stringify(ids),
     me,
   });
@@ -267,6 +280,8 @@ export function postById(id: number, me: number): PostDTO | undefined {
 
 export function notify(userId: number, actorId: number, type: string, postId: number | null = null, extra = '') {
   if (userId === actorId) return;
+  // 被收件人拉黑的人不会给他发出通知（@、回复、赞……）
+  if (get('SELECT 1 FROM blocks WHERE blocker_id = $u AND blocked_id = $a', { u: userId, a: actorId })) return;
   // 同一事件不重复通知
   if (
     get(
@@ -362,6 +377,25 @@ export function unpublishEffects(postId: number) {
   }
   run("DELETE FROM notifications WHERE post_id = $id AND type IN ('reply', 'mention', 'quote')", { id: postId });
   revokeForPost(postId);
+}
+
+/* ---------------- 拉黑 ---------------- */
+
+export function blockState(meId: number, otherId: number) {
+  const r = get<{ mine: number; theirs: number }>(
+    `SELECT EXISTS(SELECT 1 FROM blocks WHERE blocker_id = $me AND blocked_id = $o) AS mine,
+            EXISTS(SELECT 1 FROM blocks WHERE blocker_id = $o AND blocked_id = $me) AS theirs`,
+    { me: meId, o: otherId },
+  );
+  return { iBlocked: !!r?.mine, blockedMe: !!r?.theirs };
+}
+
+/** 任何一方拉黑了另一方，就不能回复、赞、回应、转发、引用、关注、私信 */
+export function assertCanInteract(meId: number, otherId: number) {
+  if (meId === otherId) return;
+  const s = blockState(meId, otherId);
+  if (s.iBlocked) throw new HttpError(403, '你已拉黑这位同学，解除拉黑后才能互动');
+  if (s.blockedMe) throw new HttpError(403, '对方设置了不接受你的互动');
 }
 
 /* ---------------- 吧务权限 ---------------- */

@@ -1634,6 +1634,36 @@ a.card-row:hover {
   word-break: break-word;
   overflow-wrap: anywhere;
 }
+/* 自定义表情：行内和文字一样高一点；只发表情时放大成贴纸 */
+img.cemoji {
+  display: inline-block;
+  height: 1.9em;
+  width: auto;
+  max-width: 5em;
+  margin: 0 1px;
+  vertical-align: -0.55em;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.content.emoji-only {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0;
+}
+.content.emoji-only img.cemoji {
+  height: 96px;
+  max-width: 128px;
+  margin: 0;
+}
+.content.emoji-only.n1 img.cemoji {
+  height: 120px;
+  max-width: 160px;
+}
+.bubble .content.emoji-only img.cemoji {
+  height: 88px;
+}
 .content a,
 .content .media-link {
   color: var(--accent);

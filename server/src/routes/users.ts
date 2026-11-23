@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { all, get, now, run, tx } from '../db.ts';
-import { HIDDEN_BOARDS, hydrate, notify, postSelect, unnotify, visibleTo } from '../serialize.ts';
+import { assertCanInteract, blockState, HIDDEN_BOARDS, hydrate, notify, postSelect, unnotify, visibleTo } from '../serialize.ts';
 import { levelInfo } from '../levels.ts';
 import { consumeDraftUploads, siteUploadUrl } from '../site-uploads.ts';
 import { cursorNum, escapeLike, HttpError, me, parse } from '../util.ts';
@@ -103,6 +103,8 @@ export async function userRoutes(app: FastifyInstance) {
       postsCount: stats.posts,
       followsYou: !!stats.follows_you,
       isFollowing: !!stats.is_following,
+      /** 我拉黑了他 */
+      blocked: blockState(user.id, u.id).iBlocked,
       // 等级最高的几个吧（只列加入了、而且看的人看得到的吧）
       boardLevels: all<{ slug: string; name: string; icon: string; avatar: string | null; exp: number; level_titles: string }>(
         `SELECT b.slug, b.name, b.icon, b.avatar, e.exp, b.level_titles FROM board_exp e
@@ -136,8 +138,9 @@ export async function userRoutes(app: FastifyInstance) {
     }
 
     const replies = q.tab === 'replies';
+    // 拉黑了这个人还想看他的主页时，带上 blocked=1
     const rows = all(
-      `${postSelect()}
+      `${postSelect('', { showBlocked: (q as { blocked?: string }).blocked === '1' })}
        WHERE p.author_id = $uid AND p.deleted = 0 AND p.parent_id IS ${replies ? 'NOT NULL' : 'NULL'}
          AND ($cursor IS NULL OR p.id < $cursor)
        ORDER BY p.id DESC LIMIT $limit`,
@@ -166,6 +169,7 @@ export async function userRoutes(app: FastifyInstance) {
     const user = me(req);
     const u = findUser((req.params as { username: string }).username);
     if (u.id === user.id) throw new HttpError(400, '不能关注自己');
+    assertCanInteract(user.id, u.id);
     tx(() => {
       const r = run('INSERT OR IGNORE INTO follows (follower_id, followee_id, created_at) VALUES ($a, $b, $t)', {
         a: user.id,
