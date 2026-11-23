@@ -1322,6 +1322,67 @@ a.card-row:hover {
 .composer textarea::placeholder {
   color: var(--text-2);
 }
+
+/* ---------- @ 补全 ---------- */
+.mention-menu {
+  margin: -4px 0 8px;
+  max-height: 264px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+  padding: 4px 0;
+  animation: mention-in 0.12s ease-out both;
+}
+@keyframes mention-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 14px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mention-item.active {
+  background: var(--hover-2);
+}
+.mention-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+.mention-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 15px;
+}
+.mention-name .tag {
+  flex-shrink: 0;
+}
+.mention-sub {
+  font-size: 13px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .composer.reply-context {
   border-bottom: 0;
   padding-bottom: 0;

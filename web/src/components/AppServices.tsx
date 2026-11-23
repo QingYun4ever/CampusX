@@ -1,3 +1,4 @@
+import { App } from '@capacitor/app';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Download, RefreshCw } from 'lucide-react';
@@ -47,13 +48,23 @@ export function AppServices() {
 
   useEffect(() => {
     if (!isAndroid) return;
-    // 等首页加载完再查，不跟正经请求抢网络
-    const t = window.setTimeout(() => {
+    // 启动时查一次；App 常驻后台不一定会重启，所以回到前台时距上次超过 6 小时也再查
+    let last = 0;
+    const check = () => {
+      last = Date.now();
       checkUpdate()
-        .then((u) => u && shouldPrompt(u.latest.version) && setUpdate(u))
+        .then((u) => u && shouldPrompt(u.latest.version) && setUpdate((cur) => cur ?? u))
         .catch(() => {});
-    }, 4000);
-    return () => clearTimeout(t);
+    };
+    // 等首页加载完再查，不跟正经请求抢网络
+    const t = window.setTimeout(check, 4000);
+    const h = App.addListener('resume', () => {
+      if (Date.now() - last > 6 * 3600_000) window.setTimeout(check, 2000);
+    }).catch(() => null);
+    return () => {
+      clearTimeout(t);
+      void h.then((x) => x?.remove());
+    };
   }, []);
 
   return update ? <UpdateModal info={update} onClose={() => setUpdate(null)} auto /> : null;

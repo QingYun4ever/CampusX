@@ -7,6 +7,7 @@ import { useMe } from '../lib/auth';
 import type { ComposeOpts } from './compose';
 import { EmojiPicker } from './EmojiPicker';
 import { MediaImage } from './MediaImage';
+import { useMention } from './MentionMenu';
 import { RichText } from './PostCard';
 import { QuoteCard } from './QuoteCard';
 import { Avatar, BoardMark, Modal, Spinner, toast, usePopover } from './ui';
@@ -223,6 +224,17 @@ export function Composer({
   const len = text.length;
   const canPost = (text.trim() || images.length) && len <= MAX && !uploading && !busy;
   const target = replyTo?.repostOf ?? replyTo;
+  const mention = useMention({
+    ta,
+    text,
+    postId: target?.id ?? quoteOf?.id,
+    onInsert: (next, caret) => {
+      if (next.length > MAX) return toast(`正文最多 ${MAX} 字`, 'error');
+      selection.current = [caret, caret];
+      pendingSelection.current = [caret, caret];
+      setText(next);
+    },
+  });
 
   const [blocked, setBlocked] = useState<Blocked | null>(null);
   const submit = async () => {
@@ -329,16 +341,29 @@ export function Composer({
             ref={ta}
             value={text}
             autoFocus={autoFocus}
-            onChange={(e) => setText(e.target.value)}
-            onSelect={rememberSelection}
-            onBlur={rememberSelection}
+            onChange={(e) => {
+              setText(e.target.value);
+              mention.detect();
+            }}
+            onSelect={() => {
+              rememberSelection();
+              mention.detect();
+            }}
+            onBlur={() => {
+              rememberSelection();
+              mention.onBlur();
+            }}
             onPaste={onPaste}
-            onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && submit()}
+            onKeyDown={(e) => {
+              if (mention.onKeyDown(e)) return;
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit();
+            }}
             placeholder={placeholder ?? (target ? '发布你的回复' : quoteOf ? '说说你对原帖的看法' : '有什么新鲜事？')}
             aria-label="帖子内容"
             rows={2}
           />
           )}
+          {!preview && mention.menu}
           {(showTags || tags.length > 0) && <TagInput tags={tags} onChange={setTags} />}
           {(images.length > 0 || uploading > 0) && (
             <div className={`thumbs n${Math.min(images.length + uploading, 4)}`}>

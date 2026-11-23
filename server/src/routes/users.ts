@@ -6,6 +6,7 @@ import { levelInfo } from '../levels.ts';
 import { consumeDraftUploads, siteUploadUrl } from '../site-uploads.ts';
 import { cursorNum, escapeLike, HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
+import { getAssistantConfig } from '../assistant.ts';
 
 const PAGE = 20;
 const imagePath = z
@@ -69,6 +70,63 @@ export async function userRoutes(app: FastifyInstance) {
       if (sets.length) run(`UPDATE users SET ${sets.join(', ')} WHERE id = $id`, params);
     });
     return userById(user.id);
+  });
+
+  /**
+   * 输入 @ 时的候选人。
+   * q 为空：当前楼里说过话的人、我关注的人、关注我的人；有 q：按用户名前缀、昵称、用户名包含来搜。
+   * 排序：用户名前缀匹配 > 楼里的人 > 互相关注 > 我关注的 > 关注我的 > 最近活跃。
+   * 不列出自己、拉黑关系里的人；AI 助手只在开启时出现。
+   */
+  app.get('/mentions/suggest', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req) => {
+    const user = me(req);
+    const query = req.query as { q?: string; postId?: string };
+    const q = String(query.q ?? '').trim().replace(/^@/, '').slice(0, 20).toLowerCase();
+    const postId = Number(query.postId) || 0;
+
+    // 当前楼里的人：主帖作者 + 最近在这串里发言的人（按最近发言排）
+    let thread: number[] = [];
+    if (postId) {
+      const p = get<{ id: number; root_id: number | null }>(
+        `SELECT p.id, p.root_id FROM posts p WHERE p.id = $id AND p.deleted = 0 AND ${visibleTo('p.')}`,
+        { id: postId, me: user.id },
+      );
+      if (p) {
+        const root = p.root_id ?? p.id;
+        thread = all<{ author_id: number }>(
+          `SELECT author_id FROM posts
+           WHERE (id = $root OR root_id = $root OR id = $id) AND deleted = 0 AND status = 'ok'
+           GROUP BY author_id ORDER BY MAX(id = $id) DESC, MAX(id = $root) DESC, MAX(created_at) DESC LIMIT 20`,
+          { root, id: p.id },
+        ).map((r) => r.author_id);
+      }
+    }
+    const bot = getAssistantConfig();
+    const like = `%${escapeLike(q)}%`;
+    const prefix = `${escapeLike(q)}%`;
+    const rows = all(
+      `SELECT ${USER_COLS},
+         COALESCE((SELECT 30 - key FROM json_each($thread) WHERE value = u.id), 0) AS in_thread,
+         EXISTS(SELECT 1 FROM follows WHERE follower_id = $me AND followee_id = u.id) AS i_follow,
+         EXISTS(SELECT 1 FROM follows WHERE follower_id = u.id AND followee_id = $me) AS follows_me,
+         ($q <> '' AND u.username LIKE $prefix ESCAPE '\\') AS prefix_hit
+       FROM users u
+       WHERE u.id <> $me
+         AND (u.role <> 'bot' OR u.id = $bot)
+         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $me AND b.blocked_id = u.id) OR (b.blocker_id = u.id AND b.blocked_id = $me))
+         AND (
+           ($q = '' AND (u.id IN (SELECT value FROM json_each($thread))
+                         OR EXISTS(SELECT 1 FROM follows WHERE follower_id = $me AND followee_id = u.id)
+                         OR EXISTS(SELECT 1 FROM follows WHERE follower_id = u.id AND followee_id = $me)
+                         OR u.id = $bot))
+           OR ($q <> '' AND (u.username LIKE $like ESCAPE '\\' OR u.display_name LIKE $like ESCAPE '\\'))
+         )
+       ORDER BY prefix_hit DESC, in_thread DESC, (i_follow AND follows_me) DESC, i_follow DESC, follows_me DESC,
+         u.id = $bot DESC, COALESCE(u.last_seen_at, 0) DESC, u.id
+       LIMIT 8`,
+      { me: user.id, q, like, prefix, thread: JSON.stringify(thread), bot: bot.enabled && bot.botId ? bot.botId : -1 },
+    );
+    return rows.map((r) => ({ ...userPublic(r), inThread: !!r.in_thread, following: !!r.i_follow }));
   });
 
   /** 右侧栏「可能认识的同学」 */

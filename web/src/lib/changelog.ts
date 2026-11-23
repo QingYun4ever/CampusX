@@ -9,6 +9,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.15.2',
+    date: '2026-11-23',
+    title: '@ 补全',
+    changes: [
+      ['new', '发帖和回复时输入 @ 会弹出同学列表：先列这条帖子里的人和你关注的人，接着打字可以按用户名或昵称找，点一下就填好。电脑上可以用方向键和回车选。'],
+      ['improve', 'App 一直开在后台时，切回来也会检查更新（每 6 小时最多一次），不用重启才能收到新版本提示。'],
+    ],
+  },
+  {
     version: '0.15.1',
     date: '2026-11-23',
     title: '举报、表情和等级的修复',
