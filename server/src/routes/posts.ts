@@ -224,25 +224,30 @@ export async function postRoutes(app: FastifyInstance) {
   });
 
   /**
-   * 像 X 一样：楼主（和 AI 助手）在别人评论下面的回复，直接跟在那条评论下面显示，
-   * 不用点进评论才看得到。每条评论最多带 2 条。
+   * 楼中楼预览：每条一级评论下面直接带最多 2 条回复（字段名沿用 opReplies，旧版 App 也能显示）。
+   * 楼主和 AI 助手的回复优先，其余按时间先后；显示时按时间排。拉黑的人的回复不带。
    */
   function withOpReplies(items: PostDTO[], postId: number, meId: number) {
     const root = get<{ author_id: number }>('SELECT author_id FROM posts WHERE id = (SELECT COALESCE(root_id, id) FROM posts WHERE id = $id)', { id: postId });
     if (!root || !items.length) return items;
     const bot = getAssistantConfig().botId ?? 0;
-    const parents = items.filter((r) => r.replyCount > 0 && r.author.id !== root.author_id && !r.author.blocked).map((r) => r.id);
+    const parents = items.filter((r) => r.replyCount > 0 && !r.author.blocked).map((r) => r.id);
     if (!parents.length) return items;
-    const rows = all(
-      `${postSelect('', { showBlocked: true })}
-       WHERE p.parent_id IN (SELECT value FROM json_each($ids)) AND p.deleted = 0 AND p.author_id IN ($op, $bot)
-       ORDER BY p.id ASC LIMIT 200`,
+    const ids = all<{ id: number }>(
+      `SELECT id FROM (
+         SELECT id, ROW_NUMBER() OVER (PARTITION BY parent_id ORDER BY (author_id IN ($op, $bot)) DESC, id ASC) AS n
+         FROM posts
+         WHERE parent_id IN (SELECT value FROM json_each($ids)) AND deleted = 0 AND status = 'ok' AND repost_of IS NULL
+           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.blocker_id = $me AND b.blocked_id = posts.author_id)
+       ) WHERE n <= 2`,
       { me: meId, ids: JSON.stringify(parents), op: root.author_id, bot },
-    );
+    ).map((r) => r.id);
+    if (!ids.length) return items;
+    const rows = all(`${postSelect()} WHERE p.id IN (SELECT value FROM json_each($ids)) ORDER BY p.id ASC`, { me: meId, ids: JSON.stringify(ids) });
     const by = new Map<number, PostDTO[]>();
     for (const r of hydrate(rows, meId)) {
       const list = by.get(r.parentId!) ?? [];
-      if (list.length < 2) list.push(r);
+      list.push(r);
       by.set(r.parentId!, list);
     }
     return items.map((r) => (by.has(r.id) ? { ...r, opReplies: by.get(r.id) } : r));

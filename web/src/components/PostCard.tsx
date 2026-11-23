@@ -681,12 +681,20 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
   );
 }
 
-/** 作者身份标签：吧主 / 吧务 / 管理员 */
-function RoleTags({ author }: { author: Post['author'] }) {
+/** 吧里的身份：吧主 / 吧务（放在第二行，跟着吧名和等级） */
+function BoardRoleTags({ author }: { author: Post['author'] }) {
   return (
     <>
       {author.boardRole === 'owner' && <span className="tag owner">吧主</span>}
       {author.boardRole === 'mod' && <span className="tag mod">吧务</span>}
+    </>
+  );
+}
+
+/** 全站身份：管理员 / AI（放在名字那一行） */
+function SiteRoleTags({ author }: { author: Post['author'] }) {
+  return (
+    <>
       {author.role === 'admin' && <span className="tag">管理员</span>}
       {author.role === 'bot' && <span className="tag bot">AI</span>}
     </>
@@ -698,7 +706,7 @@ function SubLine({ post, opId, floor, hideReplyTo }: { post: Post; opId?: number
   const replyTo = !hideReplyTo && post.parentUsername;
   const board = !post.parentId && post.board;
   const isOp = opId === post.author.id;
-  const role = post.author.boardRole || post.author.role === 'admin' || post.author.role === 'bot';
+  const role = !!post.author.boardRole;
   if (!floor && !replyTo && !board && !post.author.level && !isOp && !role) return null;
   return (
     <div className="post-sub">
@@ -714,7 +722,7 @@ function SubLine({ post, opId, floor, hideReplyTo }: { post: Post; opId?: number
       {board && <BoardChip board={post.board} />}
       {post.author.level && <LevelBadge {...post.author.level} board={post.board?.name} compact />}
       {isOp && <span className="tag op">楼主</span>}
-      <RoleTags author={post.author} />
+      <BoardRoleTags author={post.author} />
     </div>
   );
 }
@@ -727,6 +735,7 @@ function Head({ post }: { post: Post; opId?: number }) {
         {post.author.displayName}
       </Link>
       <Verified user={post.author} size={17} />
+      <SiteRoleTags author={post.author} />
       <span className="muted handle" data-admin={post.author.role === 'admin' || undefined}>@{post.author.username}</span>
       <span className="muted dot">·</span>
       <time className="muted" title={fullTime(post.createdAt)}>
@@ -878,8 +887,9 @@ export function PostMain({ post: item, onDeleted }: { post: Post; onDeleted?: ()
               {post.author.displayName}
             </Link>
             <Verified user={post.author} />
+            <SiteRoleTags author={post.author} />
             {post.author.level && <LevelBadge {...post.author.level} board={post.board?.name} />}
-            <RoleTags author={post.author} />
+            <BoardRoleTags author={post.author} />
           </div>
           <div className="muted ellipsis">
             <span data-admin={post.author.role === 'admin' || undefined}>@{post.author.username}</span>

@@ -53,12 +53,13 @@ export function PostDetail() {
                   collapseBlocked
                   threadLine={!!r.opReplies?.length}
                   floor={isRoot ? i + 2 : undefined}
-                  hideReplyTo={!isRoot}
+                  // 这里列的都是直接回复当前帖子的，「回复 @楼主」不用再写
+                  hideReplyTo
                   opId={opId}
                 />
               );
               if (!r.opReplies?.length) return card;
-              // 像 X：楼主（和 AI 助手）的回复直接接在这条评论下面
+              // 楼中楼：最多两条回复直接接在这条评论下面（楼主和 AI 优先），竖线连起来
               const rest = r.replyCount - r.opReplies.length;
               return (
                 <div className="op-thread">
