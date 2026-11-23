@@ -12,7 +12,7 @@ import { MediaImage } from './MediaImage';
 import { LevelBadge } from './Level';
 import { QuoteCard } from './QuoteCard';
 import { CustomEmojiImg } from './CustomEmoji';
-import { EMOJI_TOKEN, EMOJI_TOKEN_ONE, onlyEmoji } from '../lib/customEmoji';
+import { EMOJI_TOKEN_ONE, isPostSticker, onlyEmoji, PLAIN_TEXT_TOKEN } from '../../../server/src/emoji-tokens';
 import { ReportDialog, useBlockToggle } from './Safety';
 import { Avatar, Emoji, emojiUrl, Empty, Modal, openGallery, Rolling, Spinner, toast, toneFor, usePopover, Verified } from './ui';
 
@@ -23,10 +23,9 @@ export const preloadMarkdown = () => import('./Markdown');
 const NEEDS_MD = /[*_`~$|>[\]]|^\s{0,3}(#{1,6}\s|[-+*]\s|\d+[.)]\s|-{3,}\s*$)/m;
 
 export function RichText({ text }: { text: string }) {
-  // [e:表情] 本身带方括号，不算 Markdown
-  if (!NEEDS_MD.test(text.replace(EMOJI_TOKEN, ''))) return <PlainText text={text} />;
+  if (!NEEDS_MD.test(text) || isPostSticker(text)) return <PlainText text={text} />;
   return (
-    <Suspense fallback={<PlainText text={text} />}>
+    <Suspense fallback={<div className="content">{text}</div>}>
       <Markdown text={text} />
     </Suspense>
   );
@@ -73,10 +72,9 @@ export function ClampedText({ text }: { text: string }) {
 }
 
 /* 纯文本：@提及、#话题、链接 */
-const TOKEN = /(\[e:[\w-]{8,40}\.webp\]|@[A-Za-z0-9_]{3,20}|#[^\s#@，。！？、；：,.!?;:()（）「」[\]]{1,20}|https?:\/\/[^\s[]+)/g;
 
 export function PlainText({ text }: { text: string }) {
-  const parts = text.split(TOKEN);
+  const parts = text.split(PLAIN_TEXT_TOKEN);
   const stop = (e: MouseEvent) => e.stopPropagation();
   const big = onlyEmoji(text);
   return (

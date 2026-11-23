@@ -372,8 +372,6 @@ export async function boardRoutes(app: FastifyInstance) {
     const b = findBoard(slugOf(req), user.id);
     requireOwner(b.id, user);
     const n = tx(() => {
-      // 帖子是硬删除，id 以后可能被新帖复用：先把指向这些帖子的举报删掉，免得旧举报对上无关的新帖子
-      run(`DELETE FROM reports WHERE target_type = 'post' AND target_id IN (SELECT id FROM posts WHERE board_id = $b)`, { b: b.id });
       const r = run('DELETE FROM posts WHERE board_id = $b', { b: b.id });
       run('DELETE FROM boards WHERE id = $b', { b: b.id });
       return r.changes as number;

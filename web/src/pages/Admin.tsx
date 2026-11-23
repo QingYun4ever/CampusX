@@ -25,7 +25,7 @@ import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Logo } from '../components/Logo';
 import { MediaImage } from '../components/MediaImage';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Spinner, Switch, toast, useModalClose, Verified } from '../components/ui';
-import { api, WEB_ORIGIN, type Announcement, type AssistantConfig, type Invite, type MaintenanceConfig, type ReportGroup, type User, type UserLite } from '../lib/api';
+import { api, ApiError, WEB_ORIGIN, type Announcement, type AssistantConfig, type Invite, type MaintenanceConfig, type ReportGroup, type User, type UserLite } from '../lib/api';
 import { refreshStatus } from '../lib/site';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
@@ -1154,24 +1154,26 @@ function InvitesPage() {
 }
 
 /* ---------------- 举报 ---------------- */
-function ReportItem({ g, onDone }: { g: ReportGroup; onDone: () => void }) {
+function ReportItem({ g, onDone }: { g: ReportGroup; onDone: (deleted?: boolean) => void }) {
   const [busy, setBusy] = useState(false);
   const open = g.status === 'open';
+  const versioned = g.batchId != null && g.revision != null;
   const post = g.targetType === 'post' && g.target && 'excerpt' in g.target ? g.target : null;
   const user = g.targetType === 'user' && g.target && 'user' in g.target ? g.target.user : post?.author;
 
   const handle = async (status: 'resolved' | 'dismissed', deletePost = false) => {
-    if (deletePost && !confirm('删除这条帖子并标记举报已处理？举报人会收到通知。')) return;
+    if (!versioned) return;
+    if (deletePost && !confirm(`删除这条${post?.isRepost ? '转发' : '帖子'}并标记举报已处理？举报人会收到通知。`)) return;
     setBusy(true);
     try {
-      // 删帖和结案在服务端一次完成，不会出现删了帖子举报却还开着
-      await api('/admin/reports/handle', {
-        body: { targetType: g.targetType, targetId: g.targetId, status, deletePost: deletePost && !!post && !post.deleted },
+      await api('/admin/reports/settle', {
+        body: { batchId: g.batchId, revision: g.revision, status, deletePost },
       });
       toast(status === 'resolved' ? (deletePost ? '已删除并处理' : '已标记为处理完成') : '已驳回');
-      onDone();
+      onDone(deletePost);
     } catch (e) {
       toast((e as Error).message, 'error');
+      if (e instanceof ApiError && e.status === 409) onDone();
     } finally {
       setBusy(false);
     }
@@ -1187,7 +1189,7 @@ function ReportItem({ g, onDone }: { g: ReportGroup; onDone: () => void }) {
       )}
       <div className="log-body">
         <div className="log-head">
-          <span className="pill">{g.targetType === 'post' ? (post?.isReply ? '回复' : '帖子') : '用户'}</span>
+          <span className="pill">{g.targetType === 'post' ? (post?.isRepost ? '转发' : post?.isReply ? '回复' : '帖子') : '用户'}</span>
           {user && (
             <>
               <span className="name">{user.displayName}</span>
@@ -1199,7 +1201,7 @@ function ReportItem({ g, onDone }: { g: ReportGroup; onDone: () => void }) {
           <span className={`pill ${g.count > 1 ? 'warn' : ''}`}>{g.count} 人举报</span>
           {!open && <span className={`pill ${g.status === 'resolved' ? 'ok' : ''}`}>{g.status === 'resolved' ? '已处理' : '已驳回'}</span>}
         </div>
-        {!g.target && <div className="log-content muted">目标已经不存在</div>}
+        {!g.target && <div className="log-content muted">{g.identityUnknown ? '无法确认原举报对象' : '目标已经不存在'}</div>}
         {post && (
           <>
             {post.deleted ? (
@@ -1227,7 +1229,9 @@ function ReportItem({ g, onDone }: { g: ReportGroup; onDone: () => void }) {
           ))}
         </div>
         <div className="log-meta muted small">
-          {g.involvesMe ? (
+          {g.identityUnknown ? (
+            <span>原举报对象无法确认，举报人和说明已隐藏，不能处理这批举报</span>
+          ) : g.involvesMe ? (
             <span>举报涉及你本人，举报人和说明已隐藏，请交给其他管理员处理</span>
           ) : (
             <span>举报人：{g.reports.map((r) => r.reporter?.displayName).join('、')}{g.count > g.reports.length ? ` 等 ${g.count} 人` : ''}</span>
@@ -1237,13 +1241,14 @@ function ReportItem({ g, onDone }: { g: ReportGroup; onDone: () => void }) {
               查看帖子 <ExternalLink size={12} />
             </Link>
           )}
+          {open && !versioned && <span>服务器版本过旧，升级后才能处理举报</span>}
         </div>
       </div>
-      {open && !g.involvesMe && (
+      {open && versioned && !g.involvesMe && (
         <div className="log-actions">
           {post && !post.deleted && (
             <button className="btn btn-outline sm danger" disabled={busy} onClick={() => handle('resolved', true)}>
-              <Trash2 size={15} /> 删除帖子
+              <Trash2 size={15} /> {post.isRepost ? '删除转发' : '删除帖子'}
             </button>
           )}
           <button className="btn btn-outline sm" disabled={busy} onClick={() => handle('resolved')}>
@@ -1259,10 +1264,15 @@ function ReportItem({ g, onDone }: { g: ReportGroup; onDone: () => void }) {
 }
 
 function Reports() {
-  const [status, setStatus] = useState<'open' | 'closed'>('open');
+  const [status, setStatus] = useState<'open' | 'closed' | 'archived'>('open');
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ['admin-reports', status], queryFn: () => api<ReportGroup[]>(`/admin/reports?status=${status}`) });
-  const refresh = () => {
+  const q = useQuery({ queryKey: ['admin-reports', status], queryFn: () => api<ReportGroup[]>(`/admin/reports?status=${status}&batch=1`) });
+  const refresh = (deleted = false) => {
+    if (deleted) {
+      // 删除可能同时影响转发、原帖计数、回复、引用和通知，与普通删帖一致。
+      void qc.invalidateQueries();
+      return;
+    }
     qc.invalidateQueries({ queryKey: ['admin-reports'] });
     qc.invalidateQueries({ queryKey: ['admin-reports-count'] });
   };
@@ -1275,6 +1285,7 @@ function Reports() {
           <div className="seg">
             <button className={status === 'open' ? 'on' : ''} onClick={() => setStatus('open')}>待处理</button>
             <button className={status === 'closed' ? 'on' : ''} onClick={() => setStatus('closed')}>已处理</button>
+            <button className={status === 'archived' ? 'on' : ''} onClick={() => setStatus('archived')}>归档</button>
           </div>
         }
       />
@@ -1284,9 +1295,9 @@ function Reports() {
         ) : q.isError ? (
           <Empty title="加载失败">{(q.error as Error).message}</Empty>
         ) : !q.data.length ? (
-          <Empty title={status === 'open' ? '没有待处理的举报' : '还没有处理过举报'} />
+          <Empty title={status === 'open' ? '没有待处理的举报' : status === 'closed' ? '还没有处理过举报' : '没有归档的举报'} />
         ) : (
-          q.data.map((g) => <ReportItem key={`${g.targetType}-${g.targetId}-${g.handledAt ?? ''}`} g={g} onDone={refresh} />)
+          q.data.map((g) => <ReportItem key={g.batchId ?? `${g.targetType}-${g.targetId}-${g.handledAt ?? ''}`} g={g} onDone={refresh} />)
         )}
       </div>
     </>

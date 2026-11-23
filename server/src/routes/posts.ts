@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, now, run, tx } from '../db.ts';
 import { assertEmojis, markEmojisSent, enqueue, getConfig, logReview, reviewContext, screen, warnAuthor, type ReviewResult } from '../moderation.ts';
+import { postEmojiFiles } from '../post-markdown.ts';
 import { type PostDTO, assertCanInteract, boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publicPost, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
 import { consumeDraftUploads, holdDraftUploads, MAX_REVIEW_IMAGE_BYTES, siteUploadUrl, type UploadSnapshots } from '../site-uploads.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
@@ -56,12 +57,18 @@ export function spreadAuthors<T extends { author: { id: number } }>(items: T[]):
 }
 
 /**
- * 软删除一条帖子（在事务里调用），保留楼中楼结构。
+ * 删除一条帖子（在事务里调用）。普通帖子软删除，保留楼中楼结构；转发行硬删除。
  * byOther：吧务 / 管理员删的算违规，扣回这条帖子给的经验；自己删的不扣
  */
 export function removePost(id: number, byOther: boolean) {
-  const p = get<{ parent_id: number | null; status: string; deleted: number }>('SELECT parent_id, status, deleted FROM posts WHERE id = $id', { id });
+  const p = get<{ parent_id: number | null; repost_of: number | null; status: string; deleted: number }>(
+    'SELECT parent_id, repost_of, status, deleted FROM posts WHERE id = $id', { id },
+  );
   if (!p || p.deleted) return false;
+  if (p.repost_of !== null) {
+    run('DELETE FROM posts WHERE id = $id', { id });
+    return true;
+  }
   if (byOther) revokeForPost(id);
   run(`UPDATE posts SET deleted = 1, content = '', images = '[]', pinned_at = NULL WHERE id = $id`, { id });
   run('DELETE FROM posts WHERE repost_of = $id', { id });
@@ -117,7 +124,8 @@ export async function postRoutes(app: FastifyInstance) {
     const content = body.content.trim();
     if (body.parentId && body.quoteOfId) throw new HttpError(400, '引用和回复不能同时使用');
     if (!content && !body.images.length) throw new HttpError(400, '写点什么吧');
-    assertEmojis(content);
+    const emojis = postEmojiFiles(content);
+    assertEmojis(emojis);
 
     let boardId: number | null = null;
     let parent: { id: number; author_id: number; root_id: number | null; board_id: number | null } | undefined;
@@ -142,7 +150,7 @@ export async function postRoutes(app: FastifyInstance) {
       holdDraftUploads(body.images, user.id, imageLimit);
       const board = boardId ? (get<{ name: string }>('SELECT name FROM boards WHERE id = $id', { id: boardId })?.name ?? null) : null;
       const parentText = parent ? (get<{ content: string }>('SELECT content FROM posts WHERE id = $id', { id: parent.id })?.content ?? '') : null;
-      ({ verdict, snapshots } = await screen(content, body.images, reviewContext(board, parentText), moderation));
+      ({ verdict, snapshots } = await screen(content, body.images, emojis, reviewContext(board, parentText), moderation));
       status = !verdict ? 'pending' : verdict.verdict === 'pass' ? 'ok' : 'rejected';
     }
 
@@ -152,7 +160,7 @@ export async function postRoutes(app: FastifyInstance) {
       // 审核要等一会儿：写入前再查一次，这段时间里可能被楼主拉黑了
       if (parent) assertCanInteract(user.id, parent.author_id);
       consumeDraftUploads(body.images, user.id, imageLimit, snapshots);
-      markEmojisSent(content);
+      markEmojisSent(emojis);
       const quote = body.quoteOfId === undefined ? undefined : get<{ id: number }>(
         `SELECT s.id FROM posts p JOIN posts s ON s.id = COALESCE(p.repost_of, p.id)
          WHERE p.id = $id AND ${publicPost('p')} AND ${publicPost('s')} AND s.repost_of IS NULL`,
@@ -257,21 +265,14 @@ export async function postRoutes(app: FastifyInstance) {
   app.delete('/posts/:id', async (req) => {
     const user = me(req);
     const id = Number((req.params as { id: string }).id);
-    const p = get<{ author_id: number; repost_of: number | null; parent_id: number | null; board_id: number | null; deleted: number; status: string }>(
-      'SELECT author_id, repost_of, parent_id, board_id, deleted, status FROM posts WHERE id = $id',
-      { id },
-    );
-    if (!p || p.deleted) throw new HttpError(404, '帖子不存在');
-    // 作者本人、站点管理员、这个吧的吧主 / 吧务可以删除（转发行只有本人能删）
-    const allowed =
-      p.author_id === user.id || (!p.repost_of && (user.role === 'admin' || !!boardRole(p.board_id, user)));
-    if (!allowed) throw new HttpError(403, '没有权限');
     tx(() => {
-      if (p.repost_of) {
-        run('DELETE FROM posts WHERE id = $id', { id });
-        run('UPDATE posts SET repost_count = MAX(repost_count - 1, 0) WHERE id = $o', { o: p.repost_of });
-        return;
-      }
+      const p = get<{ author_id: number; repost_of: number | null; board_id: number | null; deleted: number }>(
+        'SELECT author_id, repost_of, board_id, deleted FROM posts WHERE id = $id', { id },
+      );
+      if (!p || p.deleted) throw new HttpError(404, '帖子不存在');
+      // 作者本人、站点管理员、这个吧的吧主 / 吧务可以删除（转发行在此只能由本人删除）。
+      const allowed = p.author_id === user.id || (p.repost_of === null && (user.role === 'admin' || !!boardRole(p.board_id, user)));
+      if (!allowed) throw new HttpError(403, '没有权限');
       removePost(id, p.author_id !== user.id);
     });
     return { ok: true };
@@ -372,13 +373,11 @@ export async function postRoutes(app: FastifyInstance) {
 
   app.delete('/posts/:id/repost', async (req) => {
     const user = me(req);
-    const target = resolveTarget(Number((req.params as { id: string }).id), user.id);
+    const params = req.params as { id: string };
     tx(() => {
-      const r = run('DELETE FROM posts WHERE repost_of = $p AND author_id = $u', { p: target.id, u: user.id });
-      if (r.changes) {
-        run('UPDATE posts SET repost_count = MAX(repost_count - 1, 0) WHERE id = $p', { p: target.id });
-        unnotify(target.author_id, user.id, 'repost', target.id);
-      }
+      const target = resolveTarget(Number(params.id), user.id);
+      const repost = get<{ id: number }>('SELECT id FROM posts WHERE repost_of = $p AND author_id = $u', { p: target.id, u: user.id });
+      if (repost) removePost(repost.id, false);
     });
     return { ok: true };
   });

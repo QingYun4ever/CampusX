@@ -440,6 +440,9 @@ export interface CustomEmoji {
 }
 
 export interface ReportGroup {
+  /** 老服务器不提供批次版本，不能从后台处理。 */
+  batchId?: number;
+  revision?: number;
   targetType: 'post' | 'user';
   targetId: number;
   count: number;
@@ -448,11 +451,12 @@ export interface ReportGroup {
   status: 'open' | 'resolved' | 'dismissed';
   handledAt: number | null;
   target:
-    | { id: number; excerpt: string; images: string[]; deleted: boolean; isReply: boolean; author: User }
+    | { id: number; excerpt: string; images: string[]; deleted: boolean; isReply: boolean; isRepost?: boolean; author: User }
     | { user: User }
     | null;
-  /** 举报的是当前管理员本人：不显示举报人，只能交给其他管理员处理 */
+  /** 当前管理员无权查看举报人、说明或处理这批举报。 */
   involvesMe?: boolean;
+  identityUnknown?: boolean;
   reports: { reason: string; reasonText: string; note: string; createdAt: number; reporter: { username: string; displayName: string } | null }[];
 }
 

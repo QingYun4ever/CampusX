@@ -9,6 +9,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, now, run, tx, type Row } from '../db.ts';
+import { plainEmojiFiles } from '../emoji-tokens.ts';
 import { hasImageSignature, imageTypes, readUploadedImage, type UploadedImage } from '../image-upload.ts';
 import { assertCanInteract, blockState } from '../serialize.ts';
 import { assertEmojis, markEmojisSent } from '../moderation.ts';
@@ -84,12 +85,12 @@ async function readImageMessage(req: FastifyRequest) {
   return { content: parse(contentSchema, content ?? ''), images };
 }
 
-function storeMessage(senderId: number, recipientId: number, content: string, filenames: string[]) {
+function storeMessage(senderId: number, recipientId: number, content: string, filenames: string[], emojis: readonly string[]) {
   const createdAt = now();
   const insert = () => {
     // 写入前再查一次：上传图片的这段时间里可能被拉黑了
     assertCanInteract(senderId, recipientId);
-    markEmojisSent(content);
+    markEmojisSent(emojis);
     const { lastId } = run(
       'INSERT INTO dm_messages (sender_id, recipient_id, content, created_at) VALUES ($s, $r, $c, $t)',
       { s: senderId, r: recipientId, c: content, t: createdAt },
@@ -240,12 +241,14 @@ export async function dmRoutes(app: FastifyInstance) {
     assertCanInteract(user.id, peer.id);
     if (!req.isMultipart()) {
       const { content } = parse(textMessageSchema, req.body);
-      assertEmojis(content);
-      return storeMessage(user.id, peer.id, content, []);
+      const emojis = plainEmojiFiles(content);
+      assertEmojis(emojis);
+      return storeMessage(user.id, peer.id, content, [], emojis);
     }
 
     const { content, images } = await readImageMessage(req);
-    assertEmojis(content);
+    const emojis = plainEmojiFiles(content);
+    assertEmojis(emojis);
     const filenames: string[] = [];
     try {
       await fs.mkdir(dmUploads, { recursive: true, mode: 0o700 });
@@ -259,7 +262,7 @@ export async function dmRoutes(app: FastifyInstance) {
           await handle.close();
         }
       }
-      return storeMessage(user.id, peer.id, content, filenames);
+      return storeMessage(user.id, peer.id, content, filenames, emojis);
     } catch (err) {
       const cleanup = await Promise.allSettled(filenames.map(removeImage));
       for (const result of cleanup) {

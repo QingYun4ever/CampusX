@@ -2,23 +2,14 @@
  * 自定义表情：正文里写成 [e:文件名]，文件在 /uploads/ 下（服务器压成 160px 的 WebP）。
  * 只认这个格式的文件名，渲染时一律指向本站 /uploads/，不会加载外部图片。
  */
+import { EMOJI_TOKEN } from '../../../server/src/emoji-tokens';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CustomEmoji } from './api';
 
-export const EMOJI_TOKEN = /\[e:([\w-]{8,40}\.webp)\]/g;
-export const EMOJI_TOKEN_ONE = /^\[e:([\w-]{8,40}\.webp)\]$/;
-export const emojiToken = (file: string) => `[e:${file}]`;
-export const emojiSrc = (file: string) => `/uploads/${file}`;
+export { emojiSrc, emojiToken } from '../../../server/src/emoji-tokens';
 
 /** 预览、推送等纯文字场景：表情显示成 [表情] */
 export const emojiText = (s: string) => s.replace(EMOJI_TOKEN, '[表情]');
-
-/** 正文只有 1～3 个表情（没有别的字）时放大显示 */
-export function onlyEmoji(text: string) {
-  const rest = text.replace(EMOJI_TOKEN, '').trim();
-  if (rest) return 0;
-  return (text.match(EMOJI_TOKEN) ?? []).length <= 3 ? (text.match(EMOJI_TOKEN) ?? []).length : 0;
-}
 
 export const MAX_EMOJI_UPLOAD = 8 * 1024 * 1024;
 export const EMOJI_TYPES = 'image/png,image/jpeg,image/webp,image/gif';

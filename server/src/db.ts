@@ -480,22 +480,89 @@ CREATE TABLE IF NOT EXISTS blocks (
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON blocks(blocked_id);
 
--- 举报：target_type 为 post 或 user。同一个人对同一个目标只能有一条待处理的举报
-CREATE TABLE IF NOT EXISTS reports (
-  id          INTEGER PRIMARY KEY,
-  reporter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+`);
+
+/* ---------------- 举报 ---------------- */
+tx(() => {
+  const legacy = all<{ name: string }>('PRAGMA table_info(reports)').some((c) => c.name === 'target_type');
+  if (legacy) db.exec('ALTER TABLE reports RENAME TO legacy_reports');
+
+  db.exec(`
+CREATE TABLE IF NOT EXISTS report_batches (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
   target_type TEXT NOT NULL,
   target_id   INTEGER NOT NULL,
-  reason      TEXT NOT NULL,
-  note        TEXT NOT NULL DEFAULT '',
+  author_id   INTEGER, -- 原目标作者；硬删除后仍用来限制管理员权限。NULL 表示原目标无法确认
+  detached    INTEGER NOT NULL DEFAULT 0,
+  revision    INTEGER NOT NULL DEFAULT 0,
   status      TEXT NOT NULL DEFAULT 'open',
   handled_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  handled_at  INTEGER,
+  handled_at  INTEGER
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_report_batches_open
+  ON report_batches(target_type, target_id) WHERE status = 'open' AND detached = 0;
+CREATE INDEX IF NOT EXISTS idx_report_batches_target ON report_batches(target_type, target_id);
+
+CREATE TABLE IF NOT EXISTS reports (
+  id          INTEGER PRIMARY KEY,
+  batch_id    INTEGER NOT NULL REFERENCES report_batches(id),
+  reporter_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  reason      TEXT NOT NULL,
+  note        TEXT NOT NULL DEFAULT '',
   created_at  INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, target_type, target_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_open ON reports(reporter_id, target_type, target_id) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS idx_reports_batch_reporter ON reports(batch_id, reporter_id);
+`);
 
+  if (legacy) {
+    // 老举报只保存了可复用的数字 ID，不能安全地关联到当前同 ID 的用户或帖子。
+    db.exec(`
+INSERT INTO report_batches (target_type, target_id, detached, status, handled_by, handled_at)
+  SELECT target_type, target_id, 1, status, handled_by, handled_at FROM legacy_reports
+  GROUP BY target_type, target_id, status, handled_by, handled_at;
+INSERT INTO reports (id, batch_id, reporter_id, reason, note, created_at)
+  SELECT r.id, b.id, r.reporter_id, r.reason, r.note, r.created_at
+  FROM legacy_reports r JOIN report_batches b ON b.target_type = r.target_type AND b.target_id = r.target_id
+    AND b.status = r.status AND b.handled_by IS r.handled_by AND b.handled_at IS r.handled_at;
+DROP TABLE legacy_reports;
+`);
+  }
+
+  db.exec(`
+CREATE TRIGGER IF NOT EXISTS report_added AFTER INSERT ON reports BEGIN
+  UPDATE report_batches SET revision = revision + 1 WHERE id = NEW.batch_id;
+END;
+CREATE TRIGGER IF NOT EXISTS report_removed AFTER DELETE ON reports BEGIN
+  UPDATE report_batches SET revision = revision + 1 WHERE id = OLD.batch_id;
+END;
+CREATE TRIGGER IF NOT EXISTS report_reporter_removed AFTER UPDATE OF reporter_id ON reports BEGIN
+  UPDATE report_batches SET revision = revision + 1 WHERE id = NEW.batch_id;
+END;
+
+-- 硬删不仅来自路由，也可能来自外键级联（例如原帖被硬删时的转发行）。
+CREATE TRIGGER IF NOT EXISTS report_post_detached AFTER DELETE ON posts BEGIN
+  UPDATE report_batches SET detached = 1, revision = revision + 1
+    WHERE target_type = 'post' AND target_id = OLD.id AND detached = 0;
+END;
+CREATE TRIGGER IF NOT EXISTS report_post_soft_deleted AFTER UPDATE OF deleted ON posts WHEN NEW.deleted <> OLD.deleted BEGIN
+  UPDATE report_batches SET revision = revision + 1
+    WHERE target_type = 'post' AND target_id = OLD.id AND detached = 0 AND status = 'open';
+END;
+CREATE TRIGGER IF NOT EXISTS report_user_detached AFTER DELETE ON users BEGIN
+  UPDATE report_batches SET detached = 1, revision = revision + 1
+    WHERE target_type = 'user' AND target_id = OLD.id AND detached = 0;
+END;
+
+-- 转发行删除后，清掉它在原帖上的计数与通知；原帖若也被硬删，通知由外键清理。
+CREATE TRIGGER IF NOT EXISTS repost_removed AFTER DELETE ON posts WHEN OLD.repost_of IS NOT NULL BEGIN
+  UPDATE posts SET repost_count = MAX(repost_count - 1, 0) WHERE id = OLD.repost_of;
+  DELETE FROM notifications WHERE type = 'repost' AND post_id = OLD.repost_of AND actor_id = OLD.author_id
+    AND user_id = (SELECT author_id FROM posts WHERE id = OLD.repost_of);
+END;
+`);
+});
+
+db.exec(`
 -- 自定义表情：图片存在 site_uploads 里（file 是不带 /uploads/ 的文件名）。
 -- 删除只是从自己的表情里移除（removed = 1），文件保留，已经发出去的帖子和私信还能显示
 CREATE TABLE IF NOT EXISTS custom_emojis (

@@ -9,8 +9,9 @@ import { useMe } from '../lib/auth';
 
 const fmt = (n: number) => n.toLocaleString('zh-CN');
 
-/** 北京时间的日期，签到按这个算 */
-const bjDay = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+const DAY_MS = 86_400_000;
+const BEIJING_OFFSET_MS = 8 * 3_600_000;
+const bjDay = (time: number) => Math.floor((time + BEIJING_OFFSET_MS) / DAY_MS);
 
 /**
  * 页面开着跨过北京时间零点：重新取吧和吧列表，签到按钮回到「签到」。
@@ -19,20 +20,26 @@ const bjDay = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 1
 function useDayRollover() {
   const qc = useQueryClient();
   useEffect(() => {
-    let day = bjDay();
-    const check = () => {
-      if (bjDay() === day) return;
-      day = bjDay();
-      void qc.invalidateQueries({ queryKey: ['board'] });
-      void qc.invalidateQueries({ queryKey: ['boards'] });
-      void qc.invalidateQueries({ queryKey: ['board-ranking'] });
+    const refresh = () => {
+      const day = bjDay(Date.now());
+      void qc.invalidateQueries({
+        predicate: ({ queryKey: [key, detail], state: { dataUpdatedAt } }) =>
+          (key === 'board' || key === 'board-ranking' || (key === 'boards' && detail === undefined)) &&
+          dataUpdatedAt > 0 && bjDay(dataUpdatedAt) !== day,
+      }, { cancelRefetch: false });
     };
-    const msToMidnight = 86400_000 - ((Date.now() + 8 * 3600_000) % 86400_000) + 1000;
-    let timer = setTimeout(function tick() {
-      check();
-      timer = setTimeout(tick, 86400_000);
-    }, msToMidnight);
-    const onVisible = () => document.visibilityState === 'visible' && check();
+    const schedule = () => setTimeout(() => {
+      refresh();
+      timer = schedule();
+    }, DAY_MS - ((Date.now() + BEIJING_OFFSET_MS) % DAY_MS));
+    refresh();
+    let timer = schedule();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      refresh();
+      clearTimeout(timer);
+      timer = schedule();
+    };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearTimeout(timer);
@@ -136,6 +143,28 @@ function LevelModal({ b, onClose }: { b: BoardDetail; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>(m ? 'rank' : 'titles');
   // 头衔草稿放在这里：切到别的标签再回来不会丢
   const [draft, setDraft] = useState<string[] | null>(null);
+  const qc = useQueryClient();
+  const [saving, setSaving] = useState(false);
+  const saveTitles = async () => {
+    if (!draft || saving) return;
+    setSaving(true);
+    try {
+      const next = await api<BoardDetail>(`/boards/${b.slug}`, {
+        method: 'PATCH',
+        body: { levelTitles: draft.map((x, i) => x.trim() || b.levels.defaults[i]) },
+      });
+      qc.setQueryData(['board', b.slug], next);
+      refreshPostBadges(qc, b.slug);
+      void qc.invalidateQueries({ queryKey: ['boards'], exact: true });
+      void qc.invalidateQueries({ queryKey: ['board-ranking', b.slug] });
+      setDraft(null);
+      toast('头衔已保存');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
   const toNext = m && m.nextExp !== null ? m.nextExp - m.exp : 0;
   return (
     <Modal title={m ? `${b.name}吧 · 我的等级` : `${b.name}吧 · 等级头衔`} onClose={onClose}>
@@ -178,7 +207,7 @@ function LevelModal({ b, onClose }: { b: BoardDetail; onClose: () => void }) {
           ]}
         />
         {tab === 'rank' && <Ranking slug={b.slug} />}
-        {tab === 'titles' && <Titles b={b} draft={draft} setDraft={setDraft} />}
+        {tab === 'titles' && <Titles b={b} draft={draft} setDraft={setDraft} busy={saving} save={saveTitles} />}
         {tab === 'rules' && <Rules />}
       </div>
     </Modal>
@@ -225,29 +254,14 @@ function Ranking({ slug }: { slug: string }) {
   );
 }
 
-function Titles({ b, draft, setDraft }: { b: BoardDetail; draft: string[] | null; setDraft: (d: string[] | null | ((d: string[] | null) => string[] | null)) => void }) {
-  const qc = useQueryClient();
+function Titles({ b, draft, setDraft, busy, save }: {
+  b: BoardDetail;
+  draft: string[] | null;
+  setDraft: React.Dispatch<React.SetStateAction<string[] | null>>;
+  busy: boolean;
+  save: () => Promise<void>;
+}) {
   const canEdit = useCanEditTitles(b);
-  const [busy, setBusy] = useState(false);
-  const save = async () => {
-    if (!draft) return;
-    setBusy(true);
-    try {
-      const next = await api<BoardDetail>(`/boards/${b.slug}`, {
-        method: 'PATCH',
-        body: { levelTitles: draft.map((x, i) => x.trim() || b.levels.defaults[i]) },
-      });
-      qc.setQueryData(['board', b.slug], next);
-      refreshPostBadges(qc, b.slug);
-      void qc.invalidateQueries({ queryKey: ['board-ranking', b.slug] });
-      setDraft(null);
-      toast('头衔已保存');
-    } catch (e) {
-      toast((e as Error).message, 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
   return (
     <div>
       {b.levels.titles.map((t, i) => {

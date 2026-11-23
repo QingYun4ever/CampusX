@@ -17,6 +17,8 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod/v4';
 import { config } from './config.ts';
 import { all, get, now, run, tx } from './db.ts';
+import { emojiSrc } from './emoji-tokens.ts';
+import { postEmojiFiles } from './post-markdown.ts';
 import { publishEffects, unpublishEffects } from './serialize.ts';
 import { AttachmentError, checkStoredUploads, MAX_REVIEW_IMAGE_BYTES, readStoredUpload, siteUploadUrl, type UploadSnapshots } from './site-uploads.ts';
 import { ImageInputError, validateReviewImage } from './thumbs.ts';
@@ -157,34 +159,37 @@ function storedImages(serialized: string) {
 
 /* ---------- 正文里的自定义表情 ---------- */
 
-const EMOJI_TOKEN = /\[e:([\w-]{8,40}\.webp)\]/g;
 /** 一条帖子或私信里最多用几种自定义表情（都要送审） */
-export const MAX_EMOJI_KINDS = 8;
+const MAX_EMOJI_KINDS = 8;
 
-export const emojiFiles = (text: string) => [...new Set([...text.matchAll(EMOJI_TOKEN)].map((m) => m[1]))];
-
-/** 发帖、发私信前：正文里的表情必须是站内登记过的，种类不能太多 */
-export function assertEmojis(text: string) {
-  const files = emojiFiles(text);
-  if (files.length > MAX_EMOJI_KINDS) throw new HttpError(400, `一条最多用 ${MAX_EMOJI_KINDS} 种自定义表情`);
-  for (const file of files) {
-    if (!get('SELECT 1 FROM custom_emojis ce JOIN site_uploads su ON su.name = ce.file WHERE ce.file = $f', { f: file })) throw new HttpError(400, '有表情已经失效了，删掉再发吧');
-  }
-  return files;
+function registeredEmoji(file: string) {
+  const row = get<{ sent: number }>(
+    'SELECT ce.sent FROM custom_emojis ce JOIN site_uploads su ON su.name = ce.file WHERE ce.file = $f', { f: file },
+  );
+  if (!row) throw new AttachmentError('有表情已经失效了，删掉再发吧');
+  return row;
 }
 
-/** 写入帖子或私信时调用（在事务里）：标记这些表情发出去过，之后不能被清理 */
-export function markEmojisSent(text: string) {
-  for (const file of emojiFiles(text)) run('UPDATE custom_emojis SET sent = 1 WHERE file = $f AND sent = 0', { f: file });
+/** 发帖、发私信前：正文里的表情必须是站内登记过的，种类不能太多 */
+export function assertEmojis(files: readonly string[]) {
+  if (files.length > MAX_EMOJI_KINDS) throw new HttpError(400, `一条最多用 ${MAX_EMOJI_KINDS} 种自定义表情`);
+  for (const file of files) registeredEmoji(file);
+}
+
+/** 在写入事务中复查并锁定引用：异步审核或上传期间，未使用的表情可能已被清理。 */
+export function markEmojisSent(files: readonly string[]) {
+  for (const file of files) {
+    if (!registeredEmoji(file).sent) run('UPDATE custom_emojis SET sent = 1 WHERE file = $f', { f: file });
+  }
 }
 
 /** 送审用：正文里自定义表情的图片（接在帖子图片后面） */
-async function emojiImages(text: string, c: ModConfig): Promise<Img[]> {
+async function emojiImages(files: readonly string[], c: ModConfig): Promise<Img[]> {
   if (!c.reviewImages) return [];
   const out: Img[] = [];
-  for (const file of emojiFiles(text).slice(0, MAX_EMOJI_KINDS)) {
-    if (!get('SELECT 1 FROM custom_emojis WHERE file = $f', { f: file })) continue;
-    const image = await validateReviewImage(() => readStoredUpload(`/uploads/${file}`, MAX_REVIEW_IMAGE_BYTES));
+  for (const file of files) {
+    registeredEmoji(file);
+    const image = await validateReviewImage(() => readStoredUpload(emojiSrc(file), MAX_REVIEW_IMAGE_BYTES));
     out.push({ mime: image.mime, data: image.buffer.toString('base64') });
   }
   return out;
@@ -371,13 +376,16 @@ function log(postId: number | null, c: ModConfig, verdict: string, extra: Partia
 }
 
 /** 改变帖子的审核状态，并处理通知、回复数等副作用 */
-function setStatus(postId: number, status: 'ok' | 'rejected', limit: number, pendingOnly = false, snapshots?: UploadSnapshots) {
+function setStatus(postId: number, status: 'ok' | 'rejected', limit: number, pendingOnly = false, snapshots?: UploadSnapshots, emojis: readonly string[] = []) {
   return tx(() => {
     const p = get<{ status: string; deleted: number; images: string }>(
       'SELECT status, deleted, images FROM posts WHERE id = $id', { id: postId },
     );
     if (!p || p.deleted || (pendingOnly && p.status !== 'pending')) return false;
-    if (status === 'ok') checkStoredUploads(storedImages(p.images), limit, snapshots);
+    if (status === 'ok') {
+      checkStoredUploads(storedImages(p.images), limit, snapshots);
+      markEmojisSent(emojis);
+    }
     if (p.status !== status) {
       run('UPDATE posts SET status = $s WHERE id = $id', { s: status, id: postId });
       if (status === 'ok') publishEffects(postId);
@@ -398,10 +406,10 @@ export function reviewContext(board: string | null, parentText: string | null) {
 }
 
 /** 发帖时的同步审核；上游超时或出错时将已校验的附件交给后台队列。 */
-export async function screen(text: string, urls: string[], context: string, c: ModConfig) {
+export async function screen(text: string, urls: string[], emojiFiles: readonly string[], context: string, c: ModConfig) {
   // 本地输入校验失败不是上游错误，不能被超时或 failPolicy 吞掉。
   const { images, snapshots } = await loadImages(urls, c.reviewImages ? MAX_REVIEW_IMAGE_BYTES : config.maxUploadBytes, c.reviewImages);
-  const emojis = await emojiImages(text, c);
+  const emojis = await emojiImages(emojiFiles, c);
   const deadline = new AbortController();
   try {
     const verdict = await Promise.race([
@@ -410,7 +418,7 @@ export async function screen(text: string, urls: string[], context: string, c: M
     ]);
     return { verdict, snapshots };
   } catch (error) {
-    if (images.length && isProviderInputError(error)) throw new AttachmentError('审核服务不接受这些图片，请更换图片后重试');
+    if ((images.length || emojis.length) && isProviderInputError(error)) throw new AttachmentError('审核服务不接受这些图片，请更换图片后重试');
     return { verdict: null, snapshots };
   } finally {
     deadline.abort();
@@ -472,6 +480,11 @@ async function handle(postId: number) {
   );
   if (!post || post.status !== 'pending' || post.deleted) return;
   const c = getConfig();
+  const emojiFiles = postEmojiFiles(post.content);
+  if (emojiFiles.length > MAX_EMOJI_KINDS) {
+    log(postId, c, 'error', { reason: `正文有 ${emojiFiles.length} 种自定义表情，超过自动审核上限 ${MAX_EMOJI_KINDS} 种，需人工审核` });
+    return;
+  }
   const limit = c.reviewImages ? MAX_REVIEW_IMAGE_BYTES : config.maxUploadBytes;
 
   const parentText = post.parent_id
@@ -489,7 +502,7 @@ async function handle(postId: number) {
       try {
         prepared ??= await loadImages(urls, limit, c.enabled && c.reviewImages);
         if (!c.enabled) return; // 审核关停时，有效待审帖仍交管理员处理
-        const emojis = await emojiImages(post.content, c);
+        const emojis = await emojiImages(emojiFiles, c);
         verdict = await reviewWithImages(post.content, [...prepared.images, ...emojis], withEmojiNote(context, prepared.images.length, emojis.length), c);
         break;
       } catch (error) {
@@ -501,12 +514,12 @@ async function handle(postId: number) {
     }
 
     if (verdict) {
-      if (!setStatus(postId, verdict.verdict === 'pass' ? 'ok' : 'rejected', limit, true, prepared?.snapshots)) return;
+      if (!setStatus(postId, verdict.verdict === 'pass' ? 'ok' : 'rejected', limit, true, prepared?.snapshots, emojiFiles)) return;
       log(postId, c, verdict.verdict, verdict);
       if (verdict.verdict === 'block') warnAuthor(postId, verdict.reason);
       return;
     }
-    if (prepared && !isProviderInputError(lastErr) && c.failPolicy === 'pass' && !setStatus(postId, 'ok', limit, true, prepared.snapshots)) return;
+    if (prepared && !isProviderInputError(lastErr) && c.failPolicy === 'pass' && !setStatus(postId, 'ok', limit, true, prepared.snapshots, emojiFiles)) return;
     if (get(`SELECT 1 FROM posts WHERE id = $id AND deleted = 0 AND status IN ('pending', 'ok')`, { id: postId })) {
       log(postId, c, 'error', { reason: describeError(lastErr).slice(0, 300) });
     }
@@ -518,12 +531,13 @@ async function handle(postId: number) {
 
 /** 管理员人工改判 */
 export async function manualDecision(postId: number, action: 'approve' | 'reject', actorId: number, note = '') {
-  const before = get<{ status: string; images: string }>('SELECT status, images FROM posts WHERE id = $id AND deleted = 0', { id: postId });
+  const before = get<{ status: string; images: string; content: string }>('SELECT status, images, content FROM posts WHERE id = $id AND deleted = 0', { id: postId });
   if (!before) throw new HttpError(404, '帖子不存在');
   const c = getConfig();
   const limit = c.reviewImages ? MAX_REVIEW_IMAGE_BYTES : config.maxUploadBytes;
   const prepared = action === 'approve' ? await loadImages(storedImages(before.images), limit, false) : undefined;
-  if (!setStatus(postId, action === 'approve' ? 'ok' : 'rejected', limit, false, prepared?.snapshots)) throw new HttpError(404, '帖子不存在');
+  const emojiFiles = action === 'approve' ? postEmojiFiles(before.content) : [];
+  if (!setStatus(postId, action === 'approve' ? 'ok' : 'rejected', limit, false, prepared?.snapshots, emojiFiles)) throw new HttpError(404, '帖子不存在');
   if (action === 'reject' && before.status !== 'rejected') warnAuthor(postId, note || '管理员判定这条内容不适合发布');
   log(postId, c, action === 'approve' ? 'manual_pass' : 'manual_block', { actorId, reason: note });
 }

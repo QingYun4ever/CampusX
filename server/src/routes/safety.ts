@@ -6,9 +6,10 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { sessionTokenHash } from '../auth.ts';
 import { all, get, now, run, tx } from '../db.ts';
 import { readUploadedImage } from '../image-upload.ts';
-import { publicPost, unnotify, visibleTo } from '../serialize.ts';
+import { postById, unnotify } from '../serialize.ts';
 import { removePost } from './posts.ts';
 import { storeSiteUpload } from '../site-uploads.ts';
 import { makeEmojiImage } from '../thumbs.ts';
@@ -37,18 +38,58 @@ const reportSchema = z.object({
   note: z.string().trim().max(300, '补充说明最多 300 字').default(''),
 });
 
+const reportStatus = z.enum(['resolved', 'dismissed']);
+
 const handleSchema = z.object({
   targetType: z.enum(['post', 'user']),
   targetId: z.number().int().positive(),
-  status: z.enum(['resolved', 'dismissed']),
-  /** 处理帖子举报时顺便删除这条帖子（和结案在同一个事务里） */
+  status: reportStatus,
   deletePost: z.boolean().default(false),
 });
 
-/** 这条举报是不是针对这位管理员本人（或他的帖子）：本人看不到举报人，也不能自己处理 */
-function involves(adminId: number, targetType: string, targetId: number) {
-  if (targetType === 'user') return targetId === adminId;
-  return !!get('SELECT 1 FROM posts WHERE id = $id AND author_id = $me', { id: targetId, me: adminId });
+const settleSchema = z.object({
+  batchId: z.number().int().positive(),
+  revision: z.number().int().nonnegative(),
+  status: reportStatus,
+  deletePost: z.boolean().default(false),
+});
+
+type ReportBatch = {
+  id: number;
+  target_type: 'post' | 'user';
+  target_id: number;
+  author_id: number | null;
+  detached: number;
+  revision: number;
+  status: 'open' | 'resolved' | 'dismissed';
+  handled_at: number | null;
+};
+
+const reportConflict = () => new HttpError(409, '举报内容或目标已变化，请刷新后重新确认');
+
+/** 在调用者的事务中处理同一批举报，并通知仍有账号的举报人。 */
+function settleBatch(batch: ReportBatch, adminId: number, status: z.infer<typeof reportStatus>, deletePost: boolean) {
+  if (batch.author_id === null) throw new HttpError(403, '无法确认原举报对象');
+  if (batch.author_id === adminId) throw new HttpError(403, '这条举报涉及你本人，请交给其他管理员处理');
+
+  const count = get<{ n: number }>('SELECT COUNT(*) AS n FROM reports WHERE batch_id = $id', { id: batch.id })!.n;
+  if (!count) throw reportConflict();
+  if (deletePost) {
+    if (batch.target_type !== 'post' || status !== 'resolved') throw new HttpError(400, '只能在处理帖子举报时删除帖子');
+    if (batch.detached || !get('SELECT 1 FROM posts WHERE id = $id AND author_id = $a', { id: batch.target_id, a: batch.author_id })
+      || !removePost(batch.target_id, true)) throw reportConflict();
+  }
+
+  const t = now();
+  run('UPDATE report_batches SET status = $s, handled_by = $by, handled_at = $t WHERE id = $id', {
+    s: status, by: adminId, t, id: batch.id,
+  });
+  // 不走 notify() 的去重：同一个人可能多次举报、多次被处理。
+  run(`INSERT INTO notifications (user_id, actor_id, type, post_id, extra, created_at)
+       SELECT reporter_id, $by, 'report', NULL, $extra, $t FROM reports WHERE batch_id = $id AND reporter_id IS NOT NULL`, {
+    by: adminId, extra: JSON.stringify({ targetType: batch.target_type, status }), t, id: batch.id,
+  });
+  return { ok: true, count };
 }
 
 function userByName(username: string) {
@@ -110,26 +151,33 @@ export async function safetyRoutes(app: FastifyInstance) {
   app.post('/reports', { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } }, async (req) => {
     const user = me(req);
     const body = parse(reportSchema, req.body);
-    if (body.targetType === 'post') {
-      // 和正常看帖同样的规则：私密吧、审核中的帖子，看不到的人也举报不了
-      const p = get<{ author_id: number }>(
-        `SELECT p.author_id FROM posts p WHERE p.id = $id AND p.deleted = 0
-           AND (p.status = 'ok' OR p.author_id = $me) AND ${visibleTo('p.')}`,
-        { id: body.targetId, me: user.id },
+    return tx(() => {
+      let authorId = body.targetId;
+      if (body.targetType === 'post') {
+        // 和按 ID 看帖相同：转发行和它的原帖都必须可见。
+        const post = postById(body.targetId, user.id);
+        if (!post || post.deleted) throw new HttpError(404, '帖子不存在');
+        authorId = post.author.id;
+        if (authorId === user.id) throw new HttpError(400, '不能举报自己的帖子');
+      } else {
+        if (!get('SELECT 1 FROM users WHERE id = $id', { id: body.targetId })) throw new HttpError(404, '用户不存在');
+        if (authorId === user.id) throw new HttpError(400, '不能举报自己');
+      }
+
+      const target = { type: body.targetType, id: body.targetId };
+      const batchId = get<{ id: number }>(
+        "SELECT id FROM report_batches WHERE target_type = $type AND target_id = $id AND status = 'open' AND detached = 0", target,
+      )?.id ?? run('INSERT INTO report_batches (target_type, target_id, author_id) VALUES ($type, $id, $author)', {
+        ...target, author: authorId,
+      }).lastId;
+      const r = run(
+        `INSERT INTO reports (batch_id, reporter_id, reason, note, created_at)
+         SELECT $b, $u, $reason, $note, $t WHERE NOT EXISTS (SELECT 1 FROM reports WHERE batch_id = $b AND reporter_id = $u)`,
+        { b: batchId, u: user.id, reason: body.reason, note: body.note, t: now() },
       );
-      if (!p) throw new HttpError(404, '帖子不存在');
-      if (p.author_id === user.id) throw new HttpError(400, '不能举报自己的帖子');
-    } else {
-      if (!get('SELECT 1 FROM users WHERE id = $id', { id: body.targetId })) throw new HttpError(404, '用户不存在');
-      if (body.targetId === user.id) throw new HttpError(400, '不能举报自己');
-    }
-    const r = run(
-      `INSERT OR IGNORE INTO reports (reporter_id, target_type, target_id, reason, note, created_at)
-       VALUES ($u, $type, $id, $reason, $note, $t)`,
-      { u: user.id, type: body.targetType, id: body.targetId, reason: body.reason, note: body.note, t: now() },
-    );
-    // 已经举报过、还没处理：当作成功，不重复记录
-    return { ok: true, duplicate: !r.changes };
+      // 已经举报过、还没处理：当作成功，不重复记录。
+      return { ok: true, duplicate: !r.changes };
+    });
   });
 
   /* ---------- 举报处理（站点管理员） ---------- */
@@ -138,36 +186,49 @@ export async function safetyRoutes(app: FastifyInstance) {
       if (me(req).role !== 'admin') throw new HttpError(403, '需要管理员权限');
     });
 
+    // 旧客户端不回传版本：只允许它结案看过的首批、单条且从未改变的举报。
+    // 同一数字目标之后永远不会再进入这个集合，标签页间刷新也不会授权处理另一批。
+    const legacyViews = new Map<number, { session: string; batches: Set<number> }>();
+
     admin.get('/admin/reports/count', async () => ({
-      count: get<{ n: number }>(`SELECT COUNT(DISTINCT target_type || ':' || target_id) AS n FROM reports WHERE status = 'open'`)!.n,
+      count: get<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM report_batches b WHERE b.status = 'open' AND b.author_id IS NOT NULL AND EXISTS (SELECT 1 FROM reports WHERE batch_id = b.id)",
+      )!.n,
     }));
 
-    /** 按目标聚合：同一条帖子被多人举报只显示一行 */
-    admin.get('/admin/reports', async (req) => {
+    /** 按批次聚合；目标被删除后保留该批次，不与复用同一个 ID 的目标合并。 */
+    admin.get('/admin/reports', async (req, reply) => {
+      reply.header('Cache-Control', 'no-store');
       const adminId = me(req).id;
-      const status = (req.query as { status?: string }).status === 'closed' ? 'closed' : 'open';
-      const groups = all<{ target_type: string; target_id: number; n: number; first_at: number; last_at: number; status: string; handled_at: number | null }>(
-        `SELECT target_type, target_id, COUNT(*) AS n, MIN(created_at) AS first_at, MAX(created_at) AS last_at,
-                MAX(status) AS status, MAX(handled_at) AS handled_at
-         FROM reports WHERE ${status === 'open' ? "status = 'open'" : "status <> 'open'"}
-         GROUP BY target_type, target_id ${status === 'open' ? '' : ', handled_at'}
-         ORDER BY ${status === 'open' ? 'n DESC, last_at DESC' : 'handled_at DESC'} LIMIT 100`,
+      const query = req.query as { status?: string; batch?: string };
+      const status = query.status === 'archived' || query.status === 'closed' ? query.status : 'open';
+      // 无法确认目标的旧举报只在归档显示，不占待处理队列的名额。
+      const filter = status === 'archived' ? 'b.author_id IS NULL'
+        : `b.author_id IS NOT NULL AND b.status ${status === 'open' ? '=' : '<>'} 'open'`;
+      const groups = all<ReportBatch & { n: number; first_at: number; last_at: number; legacy_eligible: number }>(
+        `SELECT b.*, COUNT(*) AS n, MIN(r.created_at) AS first_at, MAX(r.created_at) AS last_at,
+                (b.revision = 1 AND b.detached = 0 AND NOT EXISTS (
+                   SELECT 1 FROM report_batches old WHERE old.target_type = b.target_type AND old.target_id = b.target_id AND old.id < b.id
+                 )) AS legacy_eligible
+         FROM report_batches b JOIN reports r ON r.batch_id = b.id WHERE ${filter}
+         GROUP BY b.id
+         ORDER BY ${status === 'open' ? 'n DESC, last_at DESC' : status === 'closed' ? 'b.handled_at DESC' : 'last_at DESC'}, b.id DESC LIMIT 100`,
       );
-      return groups.map((g) => {
-        const self = involves(adminId, g.target_type, g.target_id);
-        const reports = all<{ reason: string; note: string; created_at: number; username: string; display_name: string }>(
-          `SELECT r.reason, r.note, r.created_at, u.username, u.display_name FROM reports r JOIN users u ON u.id = r.reporter_id
-           WHERE r.target_type = $type AND r.target_id = $id AND ${status === 'open' ? "r.status = 'open'" : 'r.handled_at = $h'}
-           ORDER BY r.id DESC LIMIT 20`,
-          { type: g.target_type, id: g.target_id, h: g.handled_at },
+      const result = groups.map((g) => {
+        const unknown = g.author_id === null;
+        const redact = unknown || g.author_id === adminId;
+        const reports = all<{ reason: string; note: string; created_at: number; username: string | null; display_name: string | null }>(
+          `SELECT r.reason, r.note, r.created_at, u.username, u.display_name FROM reports r LEFT JOIN users u ON u.id = r.reporter_id
+           WHERE r.batch_id = $id ORDER BY r.id DESC LIMIT 20`,
+          { id: g.id },
         );
         let target: Record<string, unknown> | null = null;
-        if (g.target_type === 'post') {
+        if (!g.detached && !unknown && g.target_type === 'post') {
           // 注意：USER_COLS 里也有 u.id，帖子 id 单独取别名，不然会被作者 id 覆盖
           const p = get(
-            `SELECT p.id AS post_id, p.content, p.images, p.deleted, p.status, p.parent_id, p.root_id, ${USER_COLS}
-             FROM posts p JOIN users u ON u.id = p.author_id WHERE p.id = $id`,
-            { id: g.target_id },
+            `SELECT p.id AS post_id, p.content, p.images, p.deleted, p.parent_id, p.repost_of, ${USER_COLS}
+             FROM posts p JOIN users u ON u.id = p.author_id WHERE p.id = $id AND p.author_id = $author`,
+            { id: g.target_id, author: g.author_id },
           );
           if (p) {
             target = {
@@ -176,66 +237,72 @@ export async function safetyRoutes(app: FastifyInstance) {
               images: JSON.parse(p.images as string),
               deleted: !!p.deleted,
               isReply: p.parent_id != null,
+              isRepost: p.repost_of != null,
               author: userPublic(p),
             };
           }
-        } else {
+        } else if (!g.detached && !unknown && g.target_type === 'user') {
           const u = get(`SELECT ${USER_COLS} FROM users u WHERE u.id = $id`, { id: g.target_id });
           if (u) target = { user: userPublic(u) };
         }
         return {
+          batchId: g.id,
+          revision: g.revision,
           targetType: g.target_type,
           targetId: g.target_id,
           count: g.n,
           firstAt: g.first_at,
           lastAt: g.last_at,
-          status: status === 'open' ? 'open' : g.status,
+          status: g.status,
           handledAt: g.handled_at,
           target,
-          /** 举报的是这位管理员本人：不显示举报人和补充说明，也不能自己处理 */
-          involvesMe: self,
+          involvesMe: redact,
+          identityUnknown: unknown,
           reports: reports.map((r) => ({
             reason: r.reason,
             reasonText: REPORT_REASONS[r.reason as ReasonKey] ?? r.reason,
-            note: self ? '' : r.note,
+            note: redact ? '' : r.note,
             createdAt: r.created_at,
-            reporter: self ? null : { username: r.username, displayName: r.display_name },
+            reporter: redact
+              ? { username: '', displayName: '已隐藏' }
+              : { username: r.username ?? '', displayName: r.display_name ?? '账号已删除' },
           })),
         };
       });
+      if (status === 'open' && query.batch !== '1') {
+        legacyViews.set(adminId, {
+          session: sessionTokenHash(req.headers.authorization?.slice(7) ?? ''),
+          batches: new Set(groups.filter((g) => g.legacy_eligible).map((g) => g.id)),
+        });
+      }
+      return result;
     });
 
-    /** 处理（resolved）或驳回（dismissed）这个目标的全部待处理举报；处理时通知举报人 */
+    /** 旧客户端兼容：无版本请求绝不删帖，也不能结案无法确认的批次。 */
     admin.post('/admin/reports/handle', async (req) => {
       const user = me(req);
       const body = parse(handleSchema, req.body);
-      if (involves(user.id, body.targetType, body.targetId)) throw new HttpError(403, '这条举报涉及你本人，请交给其他管理员处理');
-      if (body.deletePost && body.targetType !== 'post') throw new HttpError(400, '只有帖子能删除');
-      const t = now();
-      const reporters = tx(() => {
-        const ids = all<{ reporter_id: number }>(
-          `SELECT reporter_id FROM reports WHERE target_type = $type AND target_id = $id AND status = 'open'`,
+      if (body.deletePost) throw new HttpError(409, '请更新或刷新客户端后从举报后台删除帖子');
+      return tx(() => {
+        const batch = get<ReportBatch>(
+          "SELECT * FROM report_batches WHERE target_type = $type AND target_id = $id AND status = 'open' AND detached = 0",
           { type: body.targetType, id: body.targetId },
-        ).map((r) => r.reporter_id);
-        run(
-          `UPDATE reports SET status = $s, handled_by = $by, handled_at = $t
-           WHERE target_type = $type AND target_id = $id AND status = 'open'`,
-          { s: body.status, by: user.id, t, type: body.targetType, id: body.targetId },
         );
-        if (!ids.length) throw new HttpError(409, '这条举报已经被处理过了');
-        if (body.deletePost) removePost(body.targetId, true);
-        {
-          const extra = JSON.stringify({ targetType: body.targetType, status: body.status });
-          // 处理和驳回都通知举报人。不走 notify() 的去重：同一个人可能多次举报、多次被处理
-          for (const id of ids) {
-            run(`INSERT INTO notifications (user_id, actor_id, type, post_id, extra, created_at) VALUES ($u, $a, 'report', NULL, $extra, $t)`, {
-              u: id, a: user.id, extra, t,
-            });
-          }
-        }
-        return ids;
+        const seen = legacyViews.get(user.id);
+        if (!batch || batch.revision !== 1 || !seen?.batches.has(batch.id)
+          || seen.session !== sessionTokenHash(req.headers.authorization?.slice(7) ?? '')) throw reportConflict();
+        return settleBatch(batch, user.id, body.status, false);
       });
-      return { ok: true, count: reporters.length };
+    });
+
+    admin.post('/admin/reports/settle', async (req) => {
+      const user = me(req);
+      const body = parse(settleSchema, req.body);
+      return tx(() => {
+        const batch = get<ReportBatch>("SELECT * FROM report_batches WHERE id = $id AND status = 'open'", { id: body.batchId });
+        if (!batch || batch.revision !== body.revision) throw reportConflict();
+        return settleBatch(batch, user.id, body.status, body.deletePost);
+      });
     });
   });
 
