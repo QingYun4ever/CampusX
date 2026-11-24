@@ -32,7 +32,14 @@ export function InfiniteList<T>({
   const sentinel = useOnVisible(() => q.fetchNextPage(), !!q.hasNextPage && !q.isFetchingNextPage);
   if (q.isPending) return <PostSkeleton />;
   if (q.isError) return <Empty title="加载失败">{(q.error as Error).message}</Empty>;
-  const items = q.data.pages.flatMap((p) => p.items);
+  // 首页插进来的推流帖子，往下翻可能又按时间出现一次：只留第一次
+  const seen = new Set<Key>();
+  const items = q.data.pages.flatMap((p) => p.items).filter((it) => {
+    const k = getKey(it);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
   if (!items.length) return <>{empty ?? <Empty title="暂无内容" />}</>;
   return (
     <>

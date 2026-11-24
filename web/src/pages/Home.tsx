@@ -4,6 +4,7 @@ import { useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-que
 import { ArrowUp } from 'lucide-react';
 import { Composer } from '../components/Composer';
 import { Announcements } from '../components/SiteStatus';
+import { EventCards } from '../components/EventCards';
 import { Feed } from '../components/Feed';
 import { Logo } from '../components/Logo';
 import { useAccountSheet } from '../components/Layout';
@@ -100,6 +101,7 @@ export function Home() {
         />
       </TopBar>
       <NewPostsPill tab={tab} />
+      <EventCards />
       <Announcements />
       <div className="desktop-composer">
         <Composer />
@@ -107,7 +109,8 @@ export function Home() {
       <Feed
         key={tab}
         queryKey={['feed', tab]}
-        path={`/feed?tab=${tab}`}
+        // promo=1：允许插推流帖子；顶部「有新帖子」的轮询不带，不算曝光
+        path={tab === 'all' ? '/feed?tab=all&promo=1' : `/feed?tab=${tab}`}
         empty={
           tab === 'following' ? (
             <Empty

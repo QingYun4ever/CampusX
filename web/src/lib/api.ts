@@ -342,6 +342,10 @@ export interface Post {
   tags: string[];
   reactions: Reaction[];
   pinned: boolean;
+  /** 首页里插进来的推流帖子 */
+  boosted?: boolean;
+  /** 刚发的帖子参加了活动，拿到的紫水晶 */
+  eventReward?: { title: string; gained: number }[];
   /** 我是这条帖子所在吧的吧主 / 吧务 */
   canModerate: boolean;
   repostOf: Post | null;
@@ -406,7 +410,7 @@ export interface Page<T> {
 
 export interface Notification {
   id: number;
-  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation' | 'report' | 'tip';
+  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation' | 'report' | 'tip' | 'boost';
   read: boolean;
   /** reaction：用的哪个表情；moderation：JSON { reason, excerpt, warnings } */
   extra?: string;
@@ -446,18 +450,49 @@ export interface Wallet {
     newAccountDays: number;
     tipAmounts: number[];
     tipDailyCap: number;
+    boostAmounts?: number[];
+    boostReachPer?: number;
+    boostDailyCap?: number;
   };
+  /** 活动期间签到的倍数（老服务器没有） */
+  checkinBonus?: number;
   tasks: { id: string; title: string; reward: number; done: boolean; claimed: boolean }[];
   decorations: { prices: Record<string, number>; owned: string[] };
 }
 
 export interface CrystalEntry {
   id: number;
-  kind: 'checkin' | 'liked' | 'task' | 'buy' | 'tip_in' | 'tip_out' | 'revoke' | 'admin';
+  kind: 'checkin' | 'liked' | 'task' | 'buy' | 'tip_in' | 'tip_out' | 'revoke' | 'boost' | 'boost_refund' | 'event' | 'admin';
   ref: string;
+  /** 活动名 */
+  note?: string | null;
   delta: number;
   postId: number | null;
   createdAt: number;
+}
+
+/** 一条帖子的推流情况 */
+export interface BoostStatus {
+  reach: number;
+  shown: number;
+  active: boolean;
+  mine: { id: number; amount: number; reach: number; shown: number; createdAt: number; expiresAt: number; endedAt: number | null; refund: number }[];
+}
+
+/** 管理员办的活动 */
+export interface CampusEvent {
+  id: number;
+  title: string;
+  body: string;
+  tag: string;
+  postReward: number;
+  checkinBonus: number;
+  startsAt: number;
+  endsAt: number;
+  status: 'upcoming' | 'active' | 'ended';
+  posts: number;
+  people: number;
+  me: { posted: boolean; rewarded: number };
 }
 
 export interface CustomEmoji {

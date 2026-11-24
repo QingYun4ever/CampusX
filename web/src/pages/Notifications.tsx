@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AtSign, Heart, MessageCircle, Quote, Repeat2, ShieldAlert, ShieldCheck, UserPlus } from 'lucide-react';
+import { AtSign, Heart, MessageCircle, Quote, Repeat2, ShieldAlert, ShieldCheck, TrendingUp, UserPlus } from 'lucide-react';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { PostCard } from '../components/PostCard';
 import { Avatar, Emoji, Empty, TopBar } from '../components/ui';
@@ -21,6 +21,7 @@ const META = {
   moderation: { icon: null, text: '' },
   report: { icon: null, text: '' },
   tip: { icon: <CrystalIcon size={26} />, text: '打赏了你的帖子' },
+  boost: { icon: <TrendingUp size={24} color="var(--crystal-text)" strokeWidth={2.4} />, text: '帮你的帖子推流了' },
 };
 
 /** 举报处理完成 */
@@ -107,7 +108,7 @@ function Item({ n }: { n: Notification }) {
           <Link to={`/u/${n.actor.username}`} className="name" onClick={(e) => e.stopPropagation()}>
             {n.actor.displayName}
           </Link>{' '}
-          {n.type === 'tip' ? `打赏了你 ${n.extra} 颗紫水晶` : m.text}
+          {n.type === 'tip' ? `打赏了你 ${n.extra} 颗紫水晶` : n.type === 'boost' ? `帮你的帖子推流了，会多 ${n.extra} 个人看到` : m.text}
           <span className="faint"> · {timeAgo(n.createdAt)}</span>
         </div>
         {n.post && (

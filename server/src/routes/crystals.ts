@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { tx } from '../db.ts';
 import { buyDecoration, claimTask, crystalCheckin, CRYSTAL, history, tipPost, wallet } from '../crystals.ts';
+import { boostPost, boostStatus, endBoosts } from '../boosts.ts';
 import { assertCanInteract } from '../serialize.ts';
 import { resolveTarget } from './posts.ts';
 import { cursorNum, me, parse } from '../util.ts';
@@ -45,6 +46,26 @@ export async function crystalRoutes(app: FastifyInstance) {
       const target = resolveTarget(Number((req.params as { id: string }).id), user.id);
       assertCanInteract(user.id, target.author_id);
       return tipPost(user.id, target, amount);
+    });
+  });
+
+  /* ---------- 推流 ---------- */
+  app.get('/posts/:id/boost', async (req, reply) => {
+    reply.header('Cache-Control', 'private, no-store');
+    const user = me(req);
+    const target = resolveTarget(Number((req.params as { id: string }).id), user.id);
+    tx(() => endBoosts(true));
+    return boostStatus(target.id, user.id);
+  });
+
+  app.post('/posts/:id/boost', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req) => {
+    const user = me(req);
+    const { amount } = parse(tipSchema, req.body);
+    return tx(() => {
+      const target = resolveTarget(Number((req.params as { id: string }).id), user.id);
+      assertCanInteract(user.id, target.author_id);
+      const reach = boostPost(user.id, target.id, amount);
+      return { reach, status: boostStatus(target.id, user.id), wallet: wallet(user.id) };
     });
   });
 

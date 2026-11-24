@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { CalendarCheck, Check, ChevronRight } from 'lucide-react';
 import { CrystalIcon } from '../components/Crystal';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Empty, Spinner, toast, TopBar } from '../components/ui';
-import { api, type CrystalEntry, type Wallet } from '../lib/api';
+import { api, type CampusEvent, type CrystalEntry, type Wallet } from '../lib/api';
+import { EventRow } from './Events';
 import { useMe } from '../lib/auth';
 import { useSetWallet, useWallet } from '../lib/crystals';
 import { DECORATIONS } from '../lib/decorations';
@@ -31,7 +33,10 @@ function entryText(e: CrystalEntry, tasks: Wallet['tasks']) {
     case 'buy': return `解锁装扮：${decorationName(e.ref.replace(/^decoration:/, ''))}`;
     case 'tip_in': return '收到打赏';
     case 'tip_out': return '打赏';
-    case 'revoke': return '帖子被删，扣回被赞所得';
+    case 'revoke': return e.ref.startsWith('event:') ? `帖子被删，扣回活动奖励${e.note ? `：${e.note}` : ''}` : '帖子被删，扣回被赞所得';
+    case 'boost': return '推流';
+    case 'boost_refund': return '推流结束，退回没用完的';
+    case 'event': return `活动奖励${e.note ? `：${e.note}` : ''}`;
     case 'admin': return '管理员调整';
     default: return e.kind;
   }
@@ -56,7 +61,10 @@ function CheckinCard({ w }: { w: Wallet }) {
     <div className="crystal-checkin">
       <CalendarCheck size={22} />
       <div className="grow">
-        <b>{w.checkedIn ? '今天已签到' : `今天签到 +${w.checkinReward}`}</b>
+        <b>
+          {w.checkedIn ? '今天已签到' : `今天签到 +${w.checkinReward}`}
+          {(w.checkinBonus ?? 1) > 1 && <span className="crystal-bonus">活动 ×{w.checkinBonus}</span>}
+        </b>
         <div className="muted small">
           {w.streak ? `已连续签到 ${w.streak} 天` : '每天签到一次'}
           {' · '}每连签 7 天多 1 颗，最多 +{w.rules.checkinBase + w.rules.checkinStreakMax}
@@ -124,13 +132,32 @@ function Rules({ w }: { w: Wallet }) {
         <li><b>帖子被赞或回应</b>：每个人每天给你算 1 次，每天最多 +{r.likedDailyCap}（今天已得 {w.likedToday}）。注册不满 {r.newAccountDays} 天的账号点的赞不算</li>
         <li><b>新手任务</b>：每项领一次</li>
         <li><b>别人打赏</b>：好帖子会收到别人送的紫水晶</li>
+        <li><b>参加活动</b>：活动期间带话题发帖，有的活动签到还翻倍</li>
       </ul>
       <h2>怎么用</h2>
       <ul className="crystal-rules">
         <li><b>解锁头像装扮</b>：<Link to="/market?tab=halo">去商场看看</Link></li>
         <li><b>打赏</b>：在帖子的「…」菜单里送给作者，每天最多 {r.tipDailyCap} 颗</li>
+        <li><b>推流</b>：在帖子的「…」菜单里选「推流」，1 颗紫水晶多 {r.boostReachPer ?? 5} 个人在首页看到。可以推自己的，也可以帮别人推好帖子；72 小时内没推完的退回</li>
       </ul>
-      <p className="muted small">帖子因为违规被删除，它被赞得到的紫水晶会扣回。</p>
+      <p className="muted small">帖子因为违规被删除，它被赞和参加活动得到的紫水晶会扣回。</p>
+    </section>
+  );
+}
+
+function Events() {
+  const q = useQuery({ queryKey: ['events', 'current'], queryFn: () => api<CampusEvent[]>('/events/current'), staleTime: 60_000, retry: false });
+  return (
+    <section className="crystal-section">
+      <h2 className="crystal-section-head">
+        活动
+        <Link to="/events" className="small">全部活动</Link>
+      </h2>
+      {q.data?.length ? (
+        <div className="crystal-events">{q.data.map((e) => <EventRow key={e.id} e={e} />)}</div>
+      ) : (
+        <p className="muted small">现在没有进行中的活动。管理员办活动时，这里和首页顶部都会显示。</p>
+      )}
     </section>
   );
 }
@@ -154,7 +181,7 @@ function History({ w }: { w: Wallet }) {
               <b className={e.delta > 0 ? 'plus' : 'minus'}>{e.delta > 0 ? `+${e.delta}` : e.delta}</b>
             </>
           );
-          return e.postId && e.kind !== 'revoke' ? (
+          return e.postId && e.kind !== 'revoke' && e.kind !== 'boost_refund' ? (
             <Link className="crystal-entry" to={`/post/${e.postId}`}>{body}<ChevronRight size={16} className="faint" /></Link>
           ) : (
             <div className="crystal-entry">{body}</div>
@@ -179,10 +206,11 @@ export function Crystals() {
           <div className="crystal-hero">
             <CrystalIcon size={44} />
             <div className="crystal-balance">{q.data.balance.toLocaleString('zh-CN')}</div>
-            <div className="muted">颗紫水晶 · 全站通用，可以解锁头像装扮、给好帖子打赏</div>
+            <div className="muted">颗紫水晶 · 全站通用，可以解锁头像装扮、打赏、推流</div>
           </div>
           <CheckinCard w={q.data} />
           <Tasks w={q.data} />
+          <Events />
           <Rules w={q.data} />
           <History w={q.data} />
         </div>

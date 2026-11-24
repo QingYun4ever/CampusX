@@ -9,6 +9,7 @@ import { consumeDraftUploads, holdDraftUploads, MAX_REVIEW_IMAGE_BYTES, siteUplo
 import { USER_COLS, userPublic } from './users-common.ts';
 import { grantForLike, revokeForPost } from '../levels.ts';
 import { crystalForLike, revokeCrystalsForPost } from '../crystals.ts';
+import { endBoosts, takeBoost } from '../boosts.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 import { getAssistantConfig } from '../assistant.ts';
 
@@ -100,7 +101,7 @@ export async function postRoutes(app: FastifyInstance) {
   /* ---------- 首页时间线 ---------- */
   app.get('/feed', async (req) => {
     const user = me(req);
-    const q = req.query as { tab?: string; cursor?: string };
+    const q = req.query as { tab?: string; cursor?: string; promo?: string };
     const following = q.tab === 'following';
     const rows = all(
       `${postSelect()}
@@ -118,6 +119,15 @@ export async function postRoutes(app: FastifyInstance) {
     );
     const items = spreadAuthors(hydrate(rows, user.id));
     const minId = rows.reduce((m, r) => Math.min(m, r.id as number), Infinity);
+    // 推流：只在「全部」里，每页最多插 1 条。要前端带 promo=1（「有新帖子」的轮询不带，不算曝光）
+    if (!following && q.promo === '1' && rows.length) {
+      const boostedId = tx(() => {
+        endBoosts();
+        return takeBoost(user.id, minId, rows.map((r) => r.id as number));
+      });
+      const boosted = boostedId && hydrate(all(`${postSelect()} WHERE p.id = $id`, { me: user.id, id: boostedId }), user.id)[0];
+      if (boosted) items.splice(Math.min(4, items.length), 0, { ...boosted, boosted: true });
+    }
     return { items, nextCursor: rows.length >= PAGE ? String(minId) : null };
   });
 
@@ -199,7 +209,14 @@ export async function postRoutes(app: FastifyInstance) {
       const warnings = warnAuthor(id, verdict!.reason);
       throw new HttpError(422, `没有发出去：${verdict!.reason}`, { moderation: { reason: verdict!.reason, warnings } });
     }
-    return postById(id, user.id);
+    const post = postById(id, user.id);
+    // 参加了活动：告诉前端拿了多少紫水晶
+    const eventReward = all<{ title: string; gained: number }>(
+      `SELECT e.title, l.delta AS gained FROM crystal_log l JOIN events e ON e.id = CAST(l.ref AS INTEGER)
+       WHERE l.user_id = $u AND l.kind = 'event' AND l.post_id = $p`,
+      { u: user.id, p: id },
+    );
+    return eventReward.length ? { ...post, eventReward } : post;
   });
 
   /* ---------- 帖子详情：祖先链 + 本帖 ---------- */

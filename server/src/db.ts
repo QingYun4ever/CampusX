@@ -592,7 +592,7 @@ db.exec(`
 CREATE TABLE IF NOT EXISTS crystal_log (
   id         INTEGER PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  kind       TEXT NOT NULL,            -- checkin | liked | task | buy | tip_in | tip_out | revoke | admin
+  kind       TEXT NOT NULL,            -- checkin | liked | task | buy | tip_in | tip_out | revoke | boost | boost_refund | event | admin
   ref        TEXT NOT NULL,
   delta      INTEGER NOT NULL,
   post_id    INTEGER,
@@ -622,6 +622,48 @@ CREATE TABLE IF NOT EXISTS tips (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_tips_post ON tips(post_id);
+`);
+db.exec(`
+-- 推流：花紫水晶让一条帖子被更多人看到。reach 是买的人数，shown 是已经给多少人看过；
+-- 结束（看满、到期或者帖子没了）时按没用完的人数退回紫水晶
+CREATE TABLE IF NOT EXISTS boosts (
+  id         INTEGER PRIMARY KEY,
+  post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  buyer_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount     INTEGER NOT NULL,
+  reach      INTEGER NOT NULL,
+  shown      INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  ended_at   INTEGER,
+  refund     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_boosts_active ON boosts(ended_at, id);
+CREATE INDEX IF NOT EXISTS idx_boosts_post ON boosts(post_id);
+-- 一条帖子的推流，同一个人只看一次（不管叠了几笔）
+CREATE TABLE IF NOT EXISTS boost_views (
+  post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  boost_id   INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (post_id, user_id)
+);
+
+-- 活动：管理员办，期间带指定话题发帖得紫水晶（每人一次），签到可以翻倍
+CREATE TABLE IF NOT EXISTS events (
+  id            INTEGER PRIMARY KEY,
+  title         TEXT NOT NULL,
+  body          TEXT NOT NULL DEFAULT '',
+  tag           TEXT NOT NULL,
+  post_reward   INTEGER NOT NULL DEFAULT 0,
+  checkin_bonus INTEGER NOT NULL DEFAULT 1,
+  starts_at     INTEGER NOT NULL,
+  ends_at       INTEGER NOT NULL,
+  created_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at    INTEGER NOT NULL,
+  ended         INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_events_time ON events(ends_at);
 `);
 addColumn('users', 'crystals', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'crystal_day', 'TEXT');

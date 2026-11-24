@@ -3,7 +3,7 @@ import type { Post, QuotePreview } from '../lib/api';
 import { Composer } from './Composer';
 import { Modal, useModalClose } from './ui';
 
-export type ComposeOpts = { boardSlug?: string } & (
+export type ComposeOpts = { boardSlug?: string; /** 预先填好的正文，比如活动话题 */ text?: string } & (
   | { replyTo?: Post; quoteOf?: never }
   | { quoteOf: QuotePreview; replyTo?: never }
 );

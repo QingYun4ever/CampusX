@@ -4,6 +4,7 @@ import { all, get, now } from '../db.ts';
 import { HIDDEN_BOARDS, visibleNotification } from '../serialize.ts';
 import { me } from '../util.ts';
 import { announcementsSince } from './site.ts';
+import { eventsStartedSince } from '../events.ts';
 
 /* ---------------- App 更新 ---------------- */
 
@@ -100,6 +101,7 @@ const NOTIF_TEXT: Record<string, string> = {
   like: '赞了你的帖子',
   reaction: '回应了你的帖子',
   tip: '打赏了你的帖子',
+  boost: '帮你的帖子推流了',
 };
 
 export async function appRoutes(app: FastifyInstance) {
@@ -138,6 +140,21 @@ export async function appRoutes(app: FastifyInstance) {
           title: `📢 ${a.title}`,
           body: a.body.replace(/\s+/g, ' ').slice(0, 120),
           path: a.link.startsWith('/') ? a.link : '/',
+        });
+      }
+    }
+
+    // 活动开始：和公告走同一个渠道
+    if (q.notice === '1' || q.posts !== '0') {
+      for (const e of eventsStartedSince(from)) {
+        const perks = [e.post_reward ? `带 #${e.tag} 发帖得 ${e.post_reward} 颗紫水晶` : `带 #${e.tag} 发帖参加`];
+        if (e.checkin_bonus > 1) perks.push(`签到紫水晶 ×${e.checkin_bonus}`);
+        items.push({
+          id: `event-${e.id}`,
+          kind: q.notice === '1' ? 'notice' : 'posts',
+          title: `🎉 活动开始：${e.title}`,
+          body: perks.join('，'),
+          path: `/events/${e.id}`,
         });
       }
     }
@@ -213,7 +230,7 @@ export async function appRoutes(app: FastifyInstance) {
         const moderation = r.type === 'moderation';
         const dismissed = r.type === 'report' && (r.extra ?? '').includes('"dismissed"');
         const text = r.type === 'reply' || r.type === 'mention' || r.type === 'quote' ? clip(r.content ?? '')
-          : r.type === 'tip' ? `${r.extra} 颗紫水晶` : '';
+          : r.type === 'tip' ? `${r.extra} 颗紫水晶` : r.type === 'boost' ? `会多 ${r.extra} 个人看到` : '';
         items.push({
           id: `n-${r.id}`,
           kind: 'interactions',

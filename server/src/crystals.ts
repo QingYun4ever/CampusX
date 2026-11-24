@@ -4,7 +4,8 @@
  *
  * - 每一笔都写进 crystal_log（只追加），users.crystals 是余额，两者在同一个事务里更新
  * - 赚：每日签到、被不同的人赞或回应（每天有上限）、新手任务
- * - 花：解锁头像装扮、打赏
+ * - 花：解锁头像装扮、打赏、推流（boosts.ts）
+ * - 活动（events.ts）：带话题发帖得紫水晶，活动期间签到翻倍
  * - 帖子因违规被删时，扣回这条帖子被赞赚到的紫水晶（余额不够就扣到 0）
  *
  * 这里的函数都不开事务，调用方负责。
@@ -42,7 +43,7 @@ export const balanceOf = (userId: number) =>
   get<{ n: number }>('SELECT crystals AS n FROM users WHERE id = $u', { u: userId })?.n ?? 0;
 
 /** 记一笔。同一笔（kind + ref）只记一次；返回实际记的数，没记返回 null */
-function record(userId: number, kind: string, ref: string, delta: number, postId: number | null = null, t = now()) {
+export function record(userId: number, kind: string, ref: string, delta: number, postId: number | null = null, t = now()) {
   const r = run(
     `INSERT OR IGNORE INTO crystal_log (user_id, kind, ref, delta, post_id, day, created_at)
      VALUES ($u, $k, $ref, $d, $p, $day, $t)`,
@@ -54,21 +55,29 @@ function record(userId: number, kind: string, ref: string, delta: number, postId
 }
 
 /** 花紫水晶：余额不够直接报错 */
-function spend(userId: number, kind: string, ref: string, amount: number, postId: number | null = null) {
+export function spend(userId: number, kind: string, ref: string, amount: number, postId: number | null = null) {
   if (balanceOf(userId) < amount) throw new HttpError(400, `紫水晶不够（需要 ${amount} 颗）`);
   if (record(userId, kind, ref, -amount, postId) === null) throw new HttpError(409, '这笔已经处理过了');
 }
 
-const sumToday = (userId: number, kind: string, day: string) =>
+export const sumToday = (userId: number, kind: string, day: string) =>
   get<{ n: number }>('SELECT COALESCE(SUM(delta), 0) AS n FROM crystal_log WHERE user_id = $u AND kind = $k AND day = $d', {
     u: userId, k: kind, d: day,
   })!.n;
 
-const isNewAccount = (u: { created_at: number }) => now() - u.created_at < CRYSTAL.newAccountDays * 86_400_000;
+export const isNewAccount = (u: { created_at: number }) => now() - u.created_at < CRYSTAL.newAccountDays * 86_400_000;
 
 /* ---------------- 签到 ---------------- */
 
-export const checkinReward = (streak: number) => CRYSTAL.checkinBase + Math.min(CRYSTAL.checkinStreakMax, Math.floor(streak / 7));
+export const checkinReward = (streak: number, bonus = 1) =>
+  (CRYSTAL.checkinBase + Math.min(CRYSTAL.checkinStreakMax, Math.floor(streak / 7))) * bonus;
+
+/** 正在进行的活动里最大的签到倍数（没有活动是 1） */
+export function checkinBonus(t = now()) {
+  return get<{ n: number | null }>(
+    'SELECT MAX(checkin_bonus) AS n FROM events WHERE ended = 0 AND starts_at <= $t AND ends_at > $t', { t },
+  )?.n ?? 1;
+}
 
 function streakState(userId: number, t = now()) {
   const u = get<{ crystal_day: string | null; crystal_streak: number }>(
@@ -86,7 +95,7 @@ export function crystalCheckin(userId: number, t = now()) {
   if (s.checkedIn) return null;
   const streak = s.streak + 1;
   run('UPDATE users SET crystal_day = $d, crystal_streak = $s WHERE id = $u', { d: s.today, s: streak, u: userId });
-  const gained = record(userId, 'checkin', s.today, checkinReward(streak), null, t);
+  const gained = record(userId, 'checkin', s.today, checkinReward(streak, checkinBonus(t)), null, t);
   return gained === null ? null : { gained, streak };
 }
 
@@ -106,14 +115,14 @@ export function crystalForLike(post: { id: number; author_id: number }, likerId:
   record(post.author_id, 'liked', `${likerId}@${day}`, Math.min(CRYSTAL.liked, room), post.id, t);
 }
 
-/** 帖子因违规被撤下：扣回它被赞赚到的。余额不够就扣到 0；每笔只扣一次 */
+/** 帖子因违规被撤下：扣回它被赞、参加活动赚到的。余额不够就扣到 0；每笔只扣一次 */
 export function revokeCrystalsForPost(postId: number) {
-  const rows = all<{ id: number; user_id: number; delta: number }>(
-    "SELECT id, user_id, delta FROM crystal_log WHERE post_id = $p AND kind = 'liked' AND delta > 0", { p: postId },
+  const rows = all<{ id: number; user_id: number; kind: string; delta: number }>(
+    "SELECT id, user_id, kind, delta FROM crystal_log WHERE post_id = $p AND kind IN ('liked', 'event') AND delta > 0", { p: postId },
   );
   for (const r of rows) {
     const take = Math.min(r.delta, balanceOf(r.user_id));
-    record(r.user_id, 'revoke', `liked:${r.id}`, -take, postId);
+    record(r.user_id, 'revoke', `${r.kind}:${r.id}`, -take, postId);
   }
 }
 
@@ -201,14 +210,20 @@ export function tipPost(fromId: number, post: { id: number; author_id: number },
 
 export function wallet(userId: number) {
   const s = streakState(userId);
+  const bonus = checkinBonus();
+  const today = s.checkedIn
+    ? get<{ d: number }>("SELECT delta AS d FROM crystal_log WHERE user_id = $u AND kind = 'checkin' AND ref = $r", { u: userId, r: s.today })?.d
+    : undefined;
   return {
     balance: balanceOf(userId),
     checkedIn: s.checkedIn,
     streak: s.streak,
     /** 今天签到能拿多少（已签到时是今天拿到的） */
-    checkinReward: checkinReward(s.checkedIn ? s.streak : s.streak + 1),
+    checkinReward: today ?? checkinReward(s.checkedIn ? s.streak : s.streak + 1, bonus),
+    /** 活动期间签到的倍数 */
+    checkinBonus: bonus,
     likedToday: sumToday(userId, 'liked', dayOf(now())),
-    rules: CRYSTAL,
+    rules: { ...CRYSTAL, boostAmounts: BOOST.amounts, boostReachPer: BOOST.reachPer, boostDailyCap: BOOST.dailyCap },
     tasks: taskList(userId),
     decorations: { prices: DECORATION_PRICES, owned: ownedDecorations(userId) },
   };
@@ -219,5 +234,31 @@ export function history(userId: number, before: number | null) {
     `SELECT id, kind, ref, delta, post_id, created_at FROM crystal_log
      WHERE user_id = $u AND ($before IS NULL OR id < $before) AND delta <> 0 ORDER BY id DESC LIMIT 30`,
     { u: userId, before },
-  ).map((r) => ({ id: r.id, kind: r.kind, ref: r.ref, delta: r.delta, postId: r.post_id, createdAt: r.created_at }));
+  ).map((r) => ({ id: r.id, kind: r.kind, ref: r.ref, delta: r.delta, postId: r.post_id, createdAt: r.created_at, note: noteOf(r.kind, r.ref) }));
 }
+
+/** 明细里要显示名字的：活动标题 */
+function noteOf(kind: string, ref: string) {
+  if (kind === 'event') return get<{ title: string }>('SELECT title FROM events WHERE id = $id', { id: Number(ref) })?.title ?? null;
+  if (kind === 'revoke' && ref.startsWith('event:')) {
+    return get<{ title: string }>(
+      "SELECT e.title FROM crystal_log l JOIN events e ON e.id = CAST(l.ref AS INTEGER) WHERE l.id = $id", { id: Number(ref.slice(6)) },
+    )?.title ?? null;
+  }
+  return null;
+}
+
+/* ---------------- 推流的价格（逻辑在 boosts.ts） ---------------- */
+
+export const BOOST = {
+  /** 可选的档位 */
+  amounts: [10, 30, 60, 100] as const,
+  /** 1 颗紫水晶让多少人看到 */
+  reachPer: 5,
+  /** 每人每天最多花多少在推流上 */
+  dailyCap: 200,
+  /** 推流最多持续多久，到期退回没用完的 */
+  hours: 72,
+  /** 只能推发出来不超过这么多天的帖子 */
+  maxPostAgeDays: 7,
+};

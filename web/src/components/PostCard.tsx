@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart2, Bookmark, ChevronDown, Flag, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Quote, Repeat2, SmilePlus, Trash2, UserX } from 'lucide-react';
+import { BarChart2, Bookmark, ChevronDown, Flag, Heart, Link2, MessageCircle, MoreHorizontal, Pin, PinOff, Quote, Repeat2, SmilePlus, Trash2, TrendingUp, UserX } from 'lucide-react';
 import { api, thumb, QUICK_REACTIONS, REACTIONS, WEB_ORIGIN, type Post, type Reaction, type User } from '../lib/api';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
@@ -13,7 +13,7 @@ import { LevelBadge } from './Level';
 import { QuoteCard } from './QuoteCard';
 import { CustomEmojiImg } from './CustomEmoji';
 import { CrystalIcon } from './Crystal';
-import { TipDialog } from './TipDialog';
+import { BoostDialog, TipDialog } from './TipDialog';
 import { EMOJI_TOKEN_ONE, isPostSticker, onlyEmoji, PLAIN_TEXT_TOKEN } from '../../../server/src/emoji-tokens';
 import { ReportDialog, useBlockToggle } from './Safety';
 import { Avatar, Emoji, emojiUrl, Empty, Modal, openGallery, Rolling, Spinner, toast, toneFor, usePopover, Verified } from './ui';
@@ -625,7 +625,10 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
   const mod = post.canModerate || admin;
   const [reporting, setReporting] = useState(false);
   const [tipping, setTipping] = useState(false);
+  const [boosting, setBoosting] = useState(false);
   const canTip = !mine && post.author.role !== 'bot' && !post.author.blocked && !post.deleted;
+  // 推流只对公开的主帖（canQuote 就是公开）；7 天以前的交给服务器提示
+  const canBoost = !post.parentId && !post.repostOf && post.canQuote && post.author.role !== 'bot' && !post.author.blocked && !post.deleted;
   const toggleBlock = useBlockToggle();
   const canPin = mod && !!post.board && !post.parentId;
   const canDelete = mine || mod;
@@ -664,6 +667,11 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
               {post.pinned ? '取消置顶' : `在${post.board!.name}吧置顶`}
             </button>
           )}
+          {canBoost && (
+            <button onClick={() => { setOpen(false); setBoosting(true); }} role="menuitem">
+              <TrendingUp size={18} /> {mine ? '推流' : '帮 TA 推流'}
+            </button>
+          )}
           {canTip && (
             <button onClick={() => { setOpen(false); setTipping(true); }} role="menuitem">
               <CrystalIcon size={18} /> 打赏紫水晶
@@ -691,6 +699,7 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
       )}
       {reporting && <ReportDialog targetType="post" targetId={post.id} onClose={() => setReporting(false)} />}
       {tipping && <TipDialog post={post} onClose={() => setTipping(false)} />}
+      {boosting && <BoostDialog post={post} onClose={() => setBoosting(false)} />}
     </div>
   );
 }
@@ -836,6 +845,11 @@ export function PostCard({
       {pinnedContext && (
         <div className="post-context pinned">
           <Pin size={14} /> 置顶
+        </div>
+      )}
+      {item.boosted && (
+        <div className="post-context boosted" title="有人用紫水晶推流了这条帖子">
+          <TrendingUp size={14} /> 推流
         </div>
       )}
       {item.repostOf && (

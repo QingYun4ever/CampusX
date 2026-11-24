@@ -1,6 +1,7 @@
 import { all, get, now, run, type Row } from './db.ts';
 import { grantForPost, levelInfo, revokeForPost, type LevelInfo } from './levels.ts';
 import { revokeCrystalsForPost } from './crystals.ts';
+import { eventRewardForPost } from './events.ts';
 import { HttpError } from './util.ts';
 
 /** 表情回应（Telegram 式）：每人每帖一个，换一个会替换掉之前的。前端的列表要和这里一致 */
@@ -138,6 +139,8 @@ export interface PostDTO {
   reactions: Reaction[];
   /** 在吧里置顶 */
   pinned: boolean;
+  /** 首页里插进来的推流帖子 */
+  boosted?: boolean;
   /** 当前用户是这条帖子所在吧的吧主 / 吧务（可以置顶、删除） */
   canModerate: boolean;
   repostOf: PostDTO | null;
@@ -376,6 +379,7 @@ export function publishEffects(postId: number) {
   }
   notifyMentions(p.content, p.author_id, postId, skip);
   grantForPost(postId);
+  eventRewardForPost(postId);
   for (const hook of publishHooks) hook(postId, p.author_id, p.content, parentAuthor);
 }
 

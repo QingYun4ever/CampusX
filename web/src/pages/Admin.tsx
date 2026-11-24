@@ -25,7 +25,7 @@ import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Logo } from '../components/Logo';
 import { MediaImage } from '../components/MediaImage';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Spinner, Switch, toast, useModalClose, Verified } from '../components/ui';
-import { api, ApiError, WEB_ORIGIN, type Announcement, type AssistantConfig, type Invite, type MaintenanceConfig, type ReportGroup, type User, type UserLite } from '../lib/api';
+import { api, ApiError, WEB_ORIGIN, type Announcement, type CampusEvent, type AssistantConfig, type Invite, type MaintenanceConfig, type ReportGroup, type User, type UserLite } from '../lib/api';
 import { refreshStatus } from '../lib/site';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
@@ -870,9 +870,10 @@ export function Admin() {
 function SitePage() {
   return (
     <>
-      <PageHead title="站点" sub="维护模式和公告" />
+      <PageHead title="站点" sub="维护模式、公告和活动" />
       <div className="admin-form">
         <MaintenanceForm />
+        <EventsForm />
         <AnnouncementsForm />
       </div>
     </>
@@ -1031,6 +1032,105 @@ function AnnouncementsForm() {
           <button className="icon-btn" onClick={() => remove(a)} aria-label="删除">
             <Trash2 size={18} />
           </button>
+        </div>
+      ))}
+    </>
+  );
+}
+
+const EVENT_STATUS = { active: '进行中', upcoming: '未开始', ended: '已结束' } as const;
+
+function EventsForm() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['admin-events'], queryFn: () => api<CampusEvent[]>('/admin/events') });
+  const blank = () => ({
+    title: '', body: '', tag: '', postReward: '10', checkinBonus: '1',
+    startsAt: toLocalInput(Date.now()), endsAt: toLocalInput(Date.now() + 7 * 86_400_000),
+  });
+  const [f, setF] = useState(blank);
+  const [busy, setBusy] = useState(false);
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['admin-events'] });
+    qc.invalidateQueries({ queryKey: ['events'] });
+    qc.invalidateQueries({ queryKey: ['wallet'] });
+  };
+  const create = async () => {
+    if (!f.title.trim()) return toast('请填写活动名称', 'error');
+    if (!f.tag.trim()) return toast('请填写话题', 'error');
+    setBusy(true);
+    try {
+      await api('/admin/events', {
+        body: {
+          title: f.title, body: f.body, tag: f.tag,
+          postReward: Number(f.postReward) || 0, checkinBonus: Number(f.checkinBonus) || 1,
+          startsAt: new Date(f.startsAt).getTime(), endsAt: new Date(f.endsAt).getTime(),
+        },
+      });
+      setF(blank());
+      refresh();
+      toast('活动已创建。开始时 App 会推送一次，首页顶部会显示');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const end = async (e: CampusEvent) => {
+    if (!confirm(`提前结束活动「${e.title}」？已经发出去的紫水晶不收回。`)) return;
+    await api(`/admin/events/${e.id}/end`, { method: 'POST' }).catch((err) => toast(err.message, 'error'));
+    refresh();
+  };
+  const remove = async (e: CampusEvent) => {
+    if (!confirm(`删除活动「${e.title}」？`)) return;
+    await api(`/admin/events/${e.id}`, { method: 'DELETE' }).catch((err) => toast(err.message, 'error'));
+    refresh();
+  };
+  return (
+    <>
+      <div className="admin-card">
+        <div className="name">办活动</div>
+        <p className="muted small">
+          比如校运会、迎新。活动期间带指定话题发一条公开的主帖，作者得紫水晶（每人一次）；还可以让签到的紫水晶翻倍。
+          开始时 App 推送一次，首页顶部显示活动卡片，活动页列出所有参与的帖子。
+        </p>
+        <Field label="活动名称" value={f.title} onChange={(v) => setF({ ...f, title: v })} maxLength={30} counter />
+        <Field label="介绍（选填）" multiline value={f.body} onChange={(v) => setF({ ...f, body: v })} maxLength={1000} counter style={{ minHeight: '4em', resize: 'vertical' }} />
+        <div className="row">
+          <Field label="话题" value={f.tag} onChange={(v) => setF({ ...f, tag: v.replace(/^#+/, '') })} placeholder="校运会" hint="大家发帖时带上 #话题 就算参加" maxLength={20} />
+          <Field label="发帖奖励" inputMode="numeric" value={f.postReward} onChange={(v) => setF({ ...f, postReward: v.replace(/\D/g, '').slice(0, 2) })} hint="0–50 颗，0 就是不发" />
+          <Field label="签到倍数" inputMode="numeric" value={f.checkinBonus} onChange={(v) => setF({ ...f, checkinBonus: v.replace(/[^1-3]/g, '').slice(-1) })} hint="1–3，1 就是不翻倍" />
+        </div>
+        <div className="row">
+          <Field label="开始" type="datetime-local" value={f.startsAt} onChange={(v) => setF({ ...f, startsAt: v })} />
+          <Field label="结束" type="datetime-local" value={f.endsAt} onChange={(v) => setF({ ...f, endsAt: v })} hint="最长 31 天" />
+        </div>
+        <div>
+          <button className="btn btn-primary" disabled={busy} onClick={create}>
+            创建活动
+          </button>
+        </div>
+      </div>
+      {q.data?.map((e) => (
+        <div key={e.id} className="table-row">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <b className="ellipsis">{e.title}</b>
+              <span className={`pill ${e.status === 'active' ? 'ok' : ''}`}>{EVENT_STATUS[e.status]}</span>
+            </div>
+            <div className="faint ellipsis" style={{ fontSize: 13 }}>
+              #{e.tag} · 发帖 +{e.postReward}{e.checkinBonus > 1 ? ` · 签到 ×${e.checkinBonus}` : ''} · {fullTime(e.startsAt)} – {fullTime(e.endsAt)} · {e.people} 人参加
+            </div>
+          </div>
+          {e.status !== 'ended' && (
+            <button className="btn btn-outline sm" onClick={() => end(e)}>
+              结束
+            </button>
+          )}
+          {e.status === 'upcoming' && (
+            <button className="icon-btn" onClick={() => remove(e)} aria-label="删除">
+              <Trash2 size={18} />
+            </button>
+          )}
         </div>
       ))}
     </>

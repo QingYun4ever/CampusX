@@ -127,6 +127,7 @@ export function Composer({
   replyTo,
   quoteOf,
   boardSlug,
+  text: initialText,
   autoFocus,
   onPosted,
   showReplyContext,
@@ -139,7 +140,7 @@ export function Composer({
 }) {
   const me = useMe();
   const qc = useQueryClient();
-  const [text, setText] = useState('');
+  const [text, setText] = useState(initialText ?? '');
   // file：本机的原图，用来再次编辑（旋转、裁剪），不用再从服务器下载
   const [images, setImages] = useState<{ key: string; url: string | null; file: File }[]>([]);
   const [editing, setEditing] = useState<number | null>(null);
@@ -265,7 +266,12 @@ export function Composer({
       setTags([]);
       setShowTags(false);
       setPreview(false);
-      toast(target ? '已回复' : quoteOf ? '已发布引用' : '已发布');
+      const reward = post.eventReward?.[0];
+      toast(reward ? `已发布，参加了「${reward.title}」，紫水晶 +${post.eventReward!.reduce((n, r) => n + r.gained, 0)}` : target ? '已回复' : quoteOf ? '已发布引用' : '已发布');
+      if (reward) {
+        void qc.invalidateQueries({ queryKey: ['wallet'] });
+        void qc.invalidateQueries({ queryKey: ['events'] });
+      }
       // board：发帖涨经验，吧首页的经验条要跟着变
       for (const k of ['feed', 'board-posts', 'replies', 'post', 'user-posts', 'boards', 'board', 'board-ranking', 'tag-posts', 'search-posts']) {
         qc.invalidateQueries({ queryKey: [k] });

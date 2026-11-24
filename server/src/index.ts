@@ -14,6 +14,7 @@ import { appRoutes } from './routes/app.ts';
 import { authRoutes } from './routes/auth.ts';
 import { boardRoutes } from './routes/boards.ts';
 import { crystalRoutes } from './routes/crystals.ts';
+import { eventRoutes } from './routes/events.ts';
 import { dmRoutes } from './routes/dm.ts';
 import { miscRoutes } from './routes/misc.ts';
 import { postRoutes } from './routes/posts.ts';
@@ -107,6 +108,7 @@ await app.register(
     await api.register(siteRoutes);
     await api.register(appRoutes);
     await api.register(crystalRoutes);
+    await api.register(eventRoutes);
   },
   { prefix: '/api' },
 );

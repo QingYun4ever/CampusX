@@ -204,3 +204,101 @@
   align-items: center;
   gap: 4px;
 }
+
+/* 推流 */
+.post-context.boosted {
+  color: var(--crystal-text);
+}
+.boost-intro {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.boost-progress {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  background: var(--bg-2);
+}
+.boost-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.boost-bar {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 3px;
+  background: var(--line-strong);
+  overflow: hidden;
+}
+.boost-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #8b5cf6;
+  transition: width 0.3s;
+}
+.boost-amounts {
+  grid-template-columns: repeat(4, 1fr);
+}
+.boost-amounts button {
+  gap: 2px;
+}
+.boost-reach {
+  font-size: 16px;
+}
+.boost-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.boost-mine {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  font-size: 14px;
+}
+.boost-mine-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.boost-mine-row {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.crystal-bonus {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, #8b5cf6 16%, transparent);
+  color: var(--crystal-text);
+  font-size: 12px;
+  vertical-align: 2px;
+}
+.crystal-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.crystal-section-head a {
+  font-weight: 600;
+  color: var(--accent);
+}
+.crystal-events {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.crystal-events .event-row:last-child {
+  border-bottom: 0;
+}
