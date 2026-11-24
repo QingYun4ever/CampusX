@@ -1,5 +1,6 @@
 import { all, get, now, run, type Row } from './db.ts';
 import { grantForPost, levelInfo, revokeForPost, type LevelInfo } from './levels.ts';
+import { revokeCrystalsForPost } from './crystals.ts';
 import { HttpError } from './util.ts';
 
 /** 表情回应（Telegram 式）：每人每帖一个，换一个会替换掉之前的。前端的列表要和这里一致 */
@@ -57,7 +58,7 @@ const NOT_BLOCKED = `author_id NOT IN (SELECT blocked_id FROM blocks WHERE block
 export function postSelect(extraCols = '', { showBlocked = false } = {}) {
   return `
 SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.content, p.images,
-  p.like_count, p.reply_count, p.repost_count, p.view_count, p.deleted, p.created_at, p.last_activity_at,
+  p.like_count, p.reply_count, p.repost_count, p.view_count, p.tip_total, p.deleted, p.created_at, p.last_activity_at,
   u.username, u.display_name, u.avatar, u.avatar_decoration, u.role, u.class_name, u.verified, u.verified_note,
   b.slug AS board_slug, b.name AS board_name, b.icon AS board_icon, b.level_titles AS board_level_titles,
   be.exp AS author_exp,
@@ -125,6 +126,8 @@ export interface PostDTO {
   replyCount: number;
   repostCount: number;
   viewCount: number;
+  /** 收到的紫水晶打赏 */
+  tipTotal: number;
   liked: boolean;
   reposted: boolean;
   /** 当前用户加了书签（只有自己知道） */
@@ -188,6 +191,7 @@ function serializeRow(r: Row, quotes: Map<number, QuotePreview>): PostDTO {
     replyCount: r.reply_count,
     repostCount: r.repost_count,
     viewCount: r.view_count ?? 0,
+    tipTotal: deleted ? 0 : (r.tip_total ?? 0),
     liked: !!r.liked,
     reposted: !!r.reposted,
     bookmarked: !!r.bookmarked,
@@ -386,6 +390,7 @@ export function unpublishEffects(postId: number) {
   }
   run("DELETE FROM notifications WHERE post_id = $id AND type IN ('reply', 'mention', 'quote')", { id: postId });
   revokeForPost(postId);
+  revokeCrystalsForPost(postId);
 }
 
 /* ---------------- 拉黑 ---------------- */

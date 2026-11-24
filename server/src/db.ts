@@ -584,3 +584,54 @@ if (addColumn('custom_emojis', 'sent', 'INTEGER NOT NULL DEFAULT 0')) {
 // origin：从别人那里收藏来的表情，记下最初的文件，避免同一个表情重复收藏
 addColumn('custom_emojis', 'origin', 'TEXT');
 
+
+/* ---------------- 紫水晶（全站点数） ---------------- */
+db.exec(`
+-- 每一笔加减都记一行，只追加不修改；users.crystals 是余额，和流水在同一个事务里更新。
+-- 同一笔（user + kind + ref）只记一次。post_id 不设外键：帖子删了流水还在，方便追查
+CREATE TABLE IF NOT EXISTS crystal_log (
+  id         INTEGER PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind       TEXT NOT NULL,            -- checkin | liked | task | buy | tip_in | tip_out | revoke | admin
+  ref        TEXT NOT NULL,
+  delta      INTEGER NOT NULL,
+  post_id    INTEGER,
+  day        TEXT NOT NULL,            -- 北京时间日期，算每天上限
+  created_at INTEGER NOT NULL,
+  UNIQUE (user_id, kind, ref)
+);
+CREATE INDEX IF NOT EXISTS idx_crystal_log_user ON crystal_log(user_id, id);
+CREATE INDEX IF NOT EXISTS idx_crystal_log_day ON crystal_log(user_id, kind, day);
+CREATE INDEX IF NOT EXISTS idx_crystal_log_post ON crystal_log(post_id) WHERE post_id IS NOT NULL;
+
+-- 已解锁的头像装扮
+CREATE TABLE IF NOT EXISTS user_decorations (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  decoration TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, decoration)
+);
+
+-- 打赏记录
+CREATE TABLE IF NOT EXISTS tips (
+  id         INTEGER PRIMARY KEY,
+  post_id    INTEGER REFERENCES posts(id) ON DELETE SET NULL,
+  from_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  to_id      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  amount     INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tips_post ON tips(post_id);
+`);
+addColumn('users', 'crystals', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('users', 'crystal_day', 'TEXT');
+addColumn('users', 'crystal_streak', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('posts', 'tip_total', 'INTEGER NOT NULL DEFAULT 0');
+// 装扮改成用紫水晶解锁之前，已经戴着的那一个直接算解锁
+if (!get("SELECT 1 FROM settings WHERE key = 'decorations_grandfathered'")) {
+  tx(() => {
+    run(`INSERT OR IGNORE INTO user_decorations (user_id, decoration, created_at)
+         SELECT id, avatar_decoration, $t FROM users WHERE avatar_decoration <> ''`, { t: now() });
+    run("INSERT INTO settings (key, value) VALUES ('decorations_grandfathered', '1')");
+  });
+}

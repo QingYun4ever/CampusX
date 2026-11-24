@@ -12,6 +12,8 @@ import { MediaImage } from './MediaImage';
 import { LevelBadge } from './Level';
 import { QuoteCard } from './QuoteCard';
 import { CustomEmojiImg } from './CustomEmoji';
+import { CrystalIcon } from './Crystal';
+import { TipDialog } from './TipDialog';
 import { EMOJI_TOKEN_ONE, isPostSticker, onlyEmoji, PLAIN_TEXT_TOKEN } from '../../../server/src/emoji-tokens';
 import { ReportDialog, useBlockToggle } from './Safety';
 import { Avatar, Emoji, emojiUrl, Empty, Modal, openGallery, Rolling, Spinner, toast, toneFor, usePopover, Verified } from './ui';
@@ -515,6 +517,12 @@ function ActionBar({ post: item, big, rx }: { post: Post; big?: boolean; rx: Rx 
               <b>{a.likes}</b> 个喜欢
             </span>
           )}
+          {!!post.tipTotal && (
+            <span className="stat-tip">
+              <CrystalIcon size={14} />
+              <b>{post.tipTotal}</b> 紫水晶
+            </span>
+          )}
           {rx.list.length > 0 && (
             <button className="stat-link" onClick={() => rx.setWhoOpen(true)}>
               <b>{rx.list.reduce((n, r) => n + r.count, 0)}</b> 个回应
@@ -616,6 +624,8 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
   const admin = me.role === 'admin';
   const mod = post.canModerate || admin;
   const [reporting, setReporting] = useState(false);
+  const [tipping, setTipping] = useState(false);
+  const canTip = !mine && post.author.role !== 'bot' && !post.author.blocked && !post.deleted;
   const toggleBlock = useBlockToggle();
   const canPin = mod && !!post.board && !post.parentId;
   const canDelete = mine || mod;
@@ -654,6 +664,11 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
               {post.pinned ? '取消置顶' : `在${post.board!.name}吧置顶`}
             </button>
           )}
+          {canTip && (
+            <button onClick={() => { setOpen(false); setTipping(true); }} role="menuitem">
+              <CrystalIcon size={18} /> 打赏紫水晶
+            </button>
+          )}
           {!mine && (
             <>
               <button onClick={() => { setOpen(false); setReporting(true); }} role="menuitem">
@@ -675,6 +690,7 @@ function PostMenu({ post, onDeleted }: { post: Post; onDeleted?: () => void }) {
         </div>
       )}
       {reporting && <ReportDialog targetType="post" targetId={post.id} onClose={() => setReporting(false)} />}
+      {tipping && <TipDialog post={post} onClose={() => setTipping(false)} />}
     </div>
   );
 }

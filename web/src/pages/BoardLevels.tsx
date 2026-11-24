@@ -70,14 +70,16 @@ function useCheckin(slug: string) {
     if (busy) return;
     setBusy(true);
     try {
-      const r = await api<{ gained: number; already: boolean; me: MyLevel }>(`/boards/${slug}/checkin`, { method: 'POST', body: {} });
+      const r = await api<{ gained: number; already: boolean; crystals?: number; me: MyLevel }>(`/boards/${slug}/checkin`, { method: 'POST', body: {} });
       const before = qc.getQueryData<BoardDetail>(['board', slug])?.me?.level;
       qc.setQueryData<BoardDetail>(['board', slug], (b) => (b ? { ...b, me: r.me } : b));
       if (before !== undefined && before !== r.me.level) refreshPostBadges(qc, slug);
       if (r.gained) {
         setGain({ n: r.gained, key: Date.now() });
-        toast(r.me.streak > 1 ? `签到成功，经验 +${r.gained}，已连签 ${r.me.streak} 天` : `签到成功，经验 +${r.gained}`);
+        const crystals = r.crystals ? `，紫水晶 +${r.crystals}` : '';
+        toast(r.me.streak > 1 ? `签到成功，经验 +${r.gained}${crystals}，已连签 ${r.me.streak} 天` : `签到成功，经验 +${r.gained}${crystals}`);
       }
+      if (r.crystals) void qc.invalidateQueries({ queryKey: ['wallet'] });
       void qc.invalidateQueries({ queryKey: ['boards'] });
       void qc.invalidateQueries({ queryKey: ['board-ranking', slug] });
     } catch (e) {
@@ -353,8 +355,9 @@ export function CheckinAll({ boards }: { boards: Board[] }) {
   const run = async () => {
     setBusy(true);
     try {
-      const r = await api<{ count: number; gained: number }>('/checkin/all', { method: 'POST', body: {} });
-      toast(r.count ? `签到了 ${r.count} 个吧，经验一共 +${r.gained}` : '今天都签过了');
+      const r = await api<{ count: number; gained: number; crystals?: number }>('/checkin/all', { method: 'POST', body: {} });
+      toast(r.count ? `签到了 ${r.count} 个吧，经验一共 +${r.gained}${r.crystals ? `，紫水晶 +${r.crystals}` : ''}` : '今天都签过了');
+      if (r.crystals) void qc.invalidateQueries({ queryKey: ['wallet'] });
       await qc.invalidateQueries({ queryKey: ['boards'] });
       void qc.invalidateQueries({ queryKey: ['board'] });
       void qc.invalidateQueries({ queryKey: ['board-ranking'] });

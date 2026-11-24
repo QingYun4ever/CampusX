@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { ownsDecoration } from '../crystals.ts';
 import { all, get, now, run, tx } from '../db.ts';
 import { assertCanInteract, blockState, HIDDEN_BOARDS, hydrate, notify, postSelect, unnotify, visibleTo } from '../serialize.ts';
 import { levelInfo } from '../levels.ts';
@@ -49,6 +50,9 @@ export async function userRoutes(app: FastifyInstance) {
       avatarDecoration: 'avatar_decoration',
       banner: 'banner',
     };
+    if (body.avatarDecoration && !ownsDecoration(user.id, body.avatarDecoration)) {
+      throw new HttpError(403, '这个装扮还没解锁，去商场用紫水晶解锁吧');
+    }
     tx(() => {
       const previous = body.avatar !== undefined || body.banner !== undefined
         ? get<{ avatar: string | null; banner: string | null }>('SELECT avatar, banner FROM users WHERE id = $id', { id: user.id })

@@ -8,6 +8,7 @@ import { type PostDTO, assertCanInteract, boardRole, extractTags, hydrate, norma
 import { consumeDraftUploads, holdDraftUploads, MAX_REVIEW_IMAGE_BYTES, siteUploadUrl, type UploadSnapshots } from '../site-uploads.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 import { grantForLike, revokeForPost } from '../levels.ts';
+import { crystalForLike, revokeCrystalsForPost } from '../crystals.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 import { getAssistantConfig } from '../assistant.ts';
 
@@ -69,7 +70,10 @@ export function removePost(id: number, byOther: boolean) {
     run('DELETE FROM posts WHERE id = $id', { id });
     return true;
   }
-  if (byOther) revokeForPost(id);
+  if (byOther) {
+    revokeForPost(id);
+    revokeCrystalsForPost(id);
+  }
   run(`UPDATE posts SET deleted = 1, content = '', images = '[]', pinned_at = NULL WHERE id = $id`, { id });
   run('DELETE FROM posts WHERE repost_of = $id', { id });
   run('DELETE FROM notifications WHERE post_id = $id', { id });
@@ -80,7 +84,7 @@ export function removePost(id: number, byOther: boolean) {
 }
 
 /** 如果是转发行，取它的原帖 id。审核中/未通过的帖子、看不到的私密吧里的帖子，对别人来说都不存在 */
-function resolveTarget(id: number, meId: number) {
+export function resolveTarget(id: number, meId: number) {
   const p = get<{ id: number; author_id: number; repost_of: number | null; deleted: number; board_id: number | null }>(
     `SELECT id, author_id, repost_of, deleted, board_id FROM posts
      WHERE id = $id AND (status = 'ok' OR (status = 'pending' AND author_id = $me)) AND ${visibleTo()}`,
@@ -332,6 +336,7 @@ export async function postRoutes(app: FastifyInstance) {
         run('UPDATE posts SET like_count = like_count + 1 WHERE id = $p', { p: target.id });
         notify(target.author_id, user.id, 'like', target.id);
         grantForLike(target, user.id);
+        crystalForLike(target, user.id);
       }
     });
     return { ok: true };
@@ -404,6 +409,7 @@ export async function postRoutes(app: FastifyInstance) {
       unnotify(target.author_id, user.id, 'reaction', target.id);
       notify(target.author_id, user.id, 'reaction', target.id, emoji);
       grantForLike(target, user.id);
+      crystalForLike(target, user.id);
     });
     return postById(target.id, user.id)?.reactions ?? [];
   });

@@ -1,0 +1,206 @@
+/* ---------- 紫水晶钱包 ---------- */
+.crystal-ico {
+  flex: none;
+  display: inline-block;
+}
+.crystal-amount {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.crystals {
+  padding: 0 16px 40px;
+}
+.crystal-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 28px 0 20px;
+  text-align: center;
+}
+.crystal-hero .muted {
+  font-size: 14px;
+  max-width: 300px;
+}
+.crystal-balance {
+  margin-top: 6px;
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.crystal-checkin {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+}
+.crystal-checkin > svg {
+  color: #8b5cf6;
+  flex: none;
+}
+.crystal-section {
+  margin-top: 28px;
+}
+.crystal-section h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 800;
+}
+.crystal-section h2 ~ h2 {
+  margin-top: 20px;
+}
+.crystal-tasks {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.crystal-task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px 8px 16px;
+}
+.crystal-task + .crystal-task {
+  border-top: 1px solid var(--line);
+}
+.crystal-task.claimed .grow {
+  color: var(--text-2);
+}
+.crystal-reward {
+  color: var(--crystal-text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.crystal-task-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 64px;
+  justify-content: flex-end;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.crystal-task .btn {
+  min-width: 64px;
+  justify-content: center;
+}
+.crystal-rules {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.crystal-rules b {
+  color: var(--text);
+}
+.crystal-rules li + li {
+  margin-top: 4px;
+}
+.crystal-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+}
+.crystal-entry b {
+  font-variant-numeric: tabular-nums;
+}
+.crystal-entry .plus {
+  color: var(--crystal-text);
+}
+.crystal-entry .minus {
+  color: var(--text-2);
+}
+
+/* 打赏 */
+.tip-dialog {
+  padding: 4px 16px 16px;
+}
+.tip-balance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.tip-amounts {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.tip-amounts button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.tip-amounts button.on {
+  border-color: #8b5cf6;
+  background: color-mix(in srgb, #8b5cf6 14%, transparent);
+}
+.tip-amounts button:disabled {
+  opacity: 0.4;
+}
+.tip-dialog .btn-primary {
+  width: 100%;
+  justify-content: center;
+  margin-top: 16px;
+}
+.tip-note {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-2);
+  text-align: center;
+}
+
+/* 商场里的价格 */
+.market-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.market-wallet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+:root {
+  --crystal-text: #a78bfa;
+}
+:root[data-theme='light'] {
+  --crystal-text: #7c3aed;
+}
+.stat-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

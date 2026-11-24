@@ -7,6 +7,7 @@ import { consumeDraftUploads, siteUploadUrl } from '../site-uploads.ts';
 import { HttpError, me, parse } from '../util.ts';
 import { checkin, dayOf, DEFAULT_TITLES, LEVEL_EXP, levelInfo, MAX_LEVEL, myLevel, parseTitles, rankOf, ranking, titleOf } from '../levels.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
+import { crystalCheckin } from '../crystals.ts';
 
 const PAGE = 20;
 
@@ -402,8 +403,15 @@ export async function boardRoutes(app: FastifyInstance) {
     const user = me(req);
     const r = findRow(slugOf(req), user.id);
     if (!r.joined) throw new HttpError(400, '先加入这个吧再签到');
-    const res = tx(() => checkin(r.id as number, user.id));
-    return { gained: res?.gained ?? 0, already: !res, me: myLevel(r.id as number, user.id, r.level_titles as string) };
+    const t = now();
+    const [res, crystals] = tx(() => [checkin(r.id as number, user.id, t), crystalCheckin(user.id, t)] as const);
+    return {
+      gained: res?.gained ?? 0,
+      already: !res,
+      /** 今天第一次签到时顺便拿到的紫水晶 */
+      crystals: crystals?.gained ?? 0,
+      me: myLevel(r.id as number, user.id, r.level_titles as string),
+    };
   });
 
   /** 一键签到所有加入了的吧 */
@@ -415,8 +423,10 @@ export async function boardRoutes(app: FastifyInstance) {
     );
     let count = 0;
     let gained = 0;
+    let crystals = 0;
     const t = now();
     tx(() => {
+      if (boards.length) crystals = crystalCheckin(user.id, t)?.gained ?? 0;
       for (const b of boards) {
         const res = checkin(b.id, user.id, t);
         if (res) {
@@ -425,7 +435,7 @@ export async function boardRoutes(app: FastifyInstance) {
         }
       }
     });
-    return { count, gained };
+    return { count, gained, crystals };
   });
 
   app.get('/boards/:slug/ranking', async (req) => {

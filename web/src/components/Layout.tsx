@@ -40,6 +40,7 @@ import { useEscape } from '../lib/escape';
 import { getNavCollapsed, getNavWidth, NAV_W, setNavCollapsed, setNavWidth } from '../lib/theme';
 import { useCompose } from './compose';
 import { FollowButton } from './FollowButton';
+import { CrystalIcon } from './Crystal';
 import { Logo } from './Logo';
 import { preloadMarkdown } from './PostCard';
 import { Avatar, BoardMark, Modal, PostSkeleton, Rolling, useModalClose, Verified } from './ui';
@@ -102,6 +103,9 @@ function AccountMenuItems({ onDone }: { onDone: () => void }) {
       </Link>
       <Link to="/market" onClick={onDone} className="mobile-only">
         <Store size={18} /> 商场
+      </Link>
+      <Link to="/crystals" onClick={onDone}>
+        <CrystalIcon size={18} /> 紫水晶
       </Link>
       <Link to="/settings" onClick={onDone}>
         <Settings size={18} /> 设置

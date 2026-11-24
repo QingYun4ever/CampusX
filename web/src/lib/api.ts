@@ -331,6 +331,8 @@ export interface Post {
   opReplies?: Post[];
   repostCount: number;
   viewCount: number;
+  /** 收到的紫水晶打赏（老服务器没有） */
+  tipTotal?: number;
   liked: boolean;
   reposted: boolean;
   /** 自己加了书签 */
@@ -404,7 +406,7 @@ export interface Page<T> {
 
 export interface Notification {
   id: number;
-  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation' | 'report';
+  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation' | 'report' | 'tip';
   read: boolean;
   /** reaction：用的哪个表情；moderation：JSON { reason, excerpt, warnings } */
   extra?: string;
@@ -427,6 +429,35 @@ export interface Invite {
 
 export interface BlockedUser extends User {
   blockedAt: number;
+}
+
+/** 紫水晶钱包 */
+export interface Wallet {
+  balance: number;
+  checkedIn: boolean;
+  streak: number;
+  checkinReward: number;
+  likedToday: number;
+  rules: {
+    checkinBase: number;
+    checkinStreakMax: number;
+    liked: number;
+    likedDailyCap: number;
+    newAccountDays: number;
+    tipAmounts: number[];
+    tipDailyCap: number;
+  };
+  tasks: { id: string; title: string; reward: number; done: boolean; claimed: boolean }[];
+  decorations: { prices: Record<string, number>; owned: string[] };
+}
+
+export interface CrystalEntry {
+  id: number;
+  kind: 'checkin' | 'liked' | 'task' | 'buy' | 'tip_in' | 'tip_out' | 'revoke' | 'admin';
+  ref: string;
+  delta: number;
+  postId: number | null;
+  createdAt: number;
 }
 
 export interface CustomEmoji {

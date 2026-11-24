@@ -1,10 +1,12 @@
 import { useState, type CSSProperties } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check } from 'lucide-react';
+import { Check, Lock } from 'lucide-react';
+import { CrystalAmount } from '../components/Crystal';
 import { EmojiGlyph } from '../components/EmojiPicker';
 import { Avatar, Tabs, toast, TopBar } from '../components/ui';
-import { api, type AvatarDecoration, type User } from '../lib/api';
+import { api, type AvatarDecoration, type User, type Wallet } from '../lib/api';
+import { useSetWallet, useWallet } from '../lib/crystals';
 import { useAuth, useMe } from '../lib/auth';
 import { DECORATIONS } from '../lib/decorations';
 import { EMOJI_PACKS, setEmojiPackInstalled, useInstalledEmojiPacks } from '../lib/emojiPacks';
@@ -57,7 +59,11 @@ function Halos() {
   const me = useMe();
   const { setUser } = useAuth();
   const qc = useQueryClient();
+  const w = useWallet();
+  const setWallet = useSetWallet();
   const [busy, setBusy] = useState<AvatarDecoration | null>(null);
+  const prices = w.data?.decorations.prices ?? {};
+  const owned = new Set(w.data?.decorations.owned ?? []);
   const wear = async (id: AvatarDecoration, name: string) => {
     if (busy !== null) return;
     setBusy(id);
@@ -73,12 +79,31 @@ function Halos() {
       setBusy(null);
     }
   };
+  const unlock = async (id: AvatarDecoration, name: string, price: number) => {
+    if (busy !== null) return;
+    if (!confirm(`用 ${price} 颗紫水晶解锁「${name}」？`)) return;
+    setBusy(id);
+    try {
+      const r = await api<{ wallet: Wallet }>(`/me/decorations/${id}/buy`, { method: 'POST', body: {} });
+      setWallet(r.wallet);
+      toast(`已解锁「${name}」`);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
   return (
     <>
-      <p className="market-intro">光环和头像框显示在你的头像周围，在动态、回复和私信里都看得到，所有人看到的都一样。头像框的动画只在个人主页上播放。</p>
+      <p className="market-intro">
+        光环和头像框显示在你的头像周围，在动态、回复和私信里都看得到，所有人看到的都一样。头像框的动画只在个人主页上播放。用紫水晶解锁，解锁后随时换着戴。
+      </p>
       <div className="market-halos">
         {DECORATIONS.map((d, i) => {
           const on = me.avatarDecoration === d.id;
+          const price = prices[d.id] ?? 0;
+          // 老服务器没有价格：都当作已解锁
+          const has = !d.id || owned.has(d.id) || !w.data || prices[d.id] === undefined;
           return (
             <article className={`market-halo enter ${on ? 'on' : ''}`} style={{ '--i': i } as CSSProperties} key={d.id || 'none'}>
               <div className="market-halo-stage">
@@ -86,13 +111,25 @@ function Halos() {
               </div>
               <h3>{d.name}</h3>
               <p>{d.description}</p>
-              <button
-                className={`btn sm ${on ? 'btn-outline' : 'btn-primary'}`}
-                disabled={on || busy !== null}
-                onClick={() => wear(d.id, d.name)}
-              >
-                {on ? <><Check size={15} strokeWidth={2.5} />{d.id ? '佩戴中' : '当前'}</> : busy === d.id ? '…' : d.id ? '佩戴' : '取下装扮'}
-              </button>
+              {!has && <span className="market-price"><CrystalAmount n={price} size={14} /></span>}
+              {has ? (
+                <button
+                  className={`btn sm ${on ? 'btn-outline' : 'btn-primary'}`}
+                  disabled={on || busy !== null || w.isPending}
+                  onClick={() => wear(d.id, d.name)}
+                >
+                  {on ? <><Check size={15} strokeWidth={2.5} />{d.id ? '佩戴中' : '当前'}</> : busy === d.id ? '…' : d.id ? '佩戴' : '取下装扮'}
+                </button>
+              ) : (
+                <button
+                  className="btn sm btn-outline"
+                  disabled={busy !== null || (w.data?.balance ?? 0) < price}
+                  onClick={() => unlock(d.id, d.name, price)}
+                  title={(w.data?.balance ?? 0) < price ? '紫水晶不够' : undefined}
+                >
+                  <Lock size={14} /> {busy === d.id ? '…' : '解锁'}
+                </button>
+              )}
             </article>
           );
         })}
@@ -101,12 +138,22 @@ function Halos() {
   );
 }
 
+function WalletPill() {
+  const w = useWallet();
+  if (!w.data) return null;
+  return (
+    <Link to="/crystals" className="market-wallet" aria-label={`我有 ${w.data.balance} 颗紫水晶`}>
+      <CrystalAmount n={w.data.balance} />
+    </Link>
+  );
+}
+
 export function Market() {
   const [params, setParams] = useSearchParams();
   const tab: Tab = params.get('tab') === 'halo' ? 'halo' : 'emoji';
   return (
     <>
-      <TopBar back title="商场" />
+      <TopBar back title="商场" right={<WalletPill />} />
       <Tabs<Tab>
         value={tab}
         onChange={(t) => setParams(t === 'emoji' ? {} : { tab: t }, { replace: true })}

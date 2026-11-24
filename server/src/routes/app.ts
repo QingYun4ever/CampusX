@@ -99,6 +99,7 @@ const NOTIF_TEXT: Record<string, string> = {
   repost: '转发了你的帖子',
   like: '赞了你的帖子',
   reaction: '回应了你的帖子',
+  tip: '打赏了你的帖子',
 };
 
 export async function appRoutes(app: FastifyInstance) {
@@ -211,7 +212,8 @@ export async function appRoutes(app: FastifyInstance) {
       for (const r of rows.filter((r) => !quiet.includes(r)).slice(0, 5)) {
         const moderation = r.type === 'moderation';
         const dismissed = r.type === 'report' && (r.extra ?? '').includes('"dismissed"');
-        const text = r.type === 'reply' || r.type === 'mention' || r.type === 'quote' ? clip(r.content ?? '') : '';
+        const text = r.type === 'reply' || r.type === 'mention' || r.type === 'quote' ? clip(r.content ?? '')
+          : r.type === 'tip' ? `${r.extra} 颗紫水晶` : '';
         items.push({
           id: `n-${r.id}`,
           kind: 'interactions',

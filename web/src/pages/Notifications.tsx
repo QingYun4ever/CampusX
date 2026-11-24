@@ -7,6 +7,7 @@ import { PostCard } from '../components/PostCard';
 import { Avatar, Emoji, Empty, TopBar } from '../components/ui';
 import { api, type Notification } from '../lib/api';
 import { PushAsk } from './AppSettings';
+import { CrystalIcon } from '../components/Crystal';
 import { timeAgo } from '../lib/format';
 
 const META = {
@@ -19,6 +20,7 @@ const META = {
   reaction: { icon: null, text: '回应了你的帖子' },
   moderation: { icon: null, text: '' },
   report: { icon: null, text: '' },
+  tip: { icon: <CrystalIcon size={26} />, text: '打赏了你的帖子' },
 };
 
 /** 举报处理完成 */
@@ -105,7 +107,7 @@ function Item({ n }: { n: Notification }) {
           <Link to={`/u/${n.actor.username}`} className="name" onClick={(e) => e.stopPropagation()}>
             {n.actor.displayName}
           </Link>{' '}
-          {m.text}
+          {n.type === 'tip' ? `打赏了你 ${n.extra} 颗紫水晶` : m.text}
           <span className="faint"> · {timeAgo(n.createdAt)}</span>
         </div>
         {n.post && (
