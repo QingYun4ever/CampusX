@@ -15,6 +15,8 @@ RUN npm run build
 
 # ---------- 第二阶段：只带后端运行所需的东西 ----------
 FROM node:24-alpine
+# 视频转码、截封面要 ffmpeg；不装也能跑，只是不能发视频
+RUN apk add --no-cache ffmpeg
 ENV NODE_ENV=production \
     DATA_DIR=/data \
     PORT=3000 \

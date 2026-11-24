@@ -161,11 +161,11 @@ function Item({ n }: { n: Notification }) {
         {n.post && (
           n.type === 'quote' ? (
             <Link to={`/post/${n.post.id}`} className="muted clamp" style={{ marginTop: 4 }} onClick={(e) => e.stopPropagation()}>
-              {n.post.content || '[图片]'}
+              {n.post.content || (n.post.video ? '[视频]' : '[图片]')}
             </Link>
           ) : (
             <div className="muted clamp" style={{ marginTop: 4 }}>
-              {n.post.content || (n.post.images.length ? '[图片]' : '')}
+              {n.post.content || (n.post.images.length ? '[图片]' : n.post.video ? '[视频]' : '')}
             </div>
           )
         )}

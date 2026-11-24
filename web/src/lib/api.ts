@@ -308,10 +308,21 @@ export interface SiteStats {
   boards: number;
 }
 
+/** 帖子里的视频（处理好的 H.264 MP4 和封面） */
+export interface Video {
+  url: string;
+  poster: string;
+  width: number;
+  height: number;
+  /** 秒 */
+  duration: number;
+}
+
 export interface QuotePreview {
   id: number;
   content: string;
   images: string[];
+  video?: Video | null;
   createdAt: number;
   author: Pick<UserLite, 'id' | 'username' | 'displayName' | 'avatar' | 'avatarDecoration' | 'role' | 'verified' | 'verifiedNote'>;
   /** 原帖作者被我拉黑了 */
@@ -327,6 +338,8 @@ export interface Post {
   parentUsername: string | null;
   content: string;
   images: string[];
+  /** 视频（和图片二选一）；旧版服务器没有这个字段 */
+  video?: Video | null;
   likeCount: number;
   replyCount: number;
   /** 详情页回复列表里：楼主（和 AI 助手）在这条评论下的回复，最多 2 条 */
@@ -562,7 +575,7 @@ export interface ReportGroup {
   status: 'open' | 'resolved' | 'dismissed';
   handledAt: number | null;
   target:
-    | { id: number; excerpt: string; images: string[]; deleted: boolean; isReply: boolean; isRepost?: boolean; author: User }
+    | { id: number; excerpt: string; images: string[]; video?: Video | null; deleted: boolean; isReply: boolean; isRepost?: boolean; author: User }
     | { user: User }
     | null;
   /** 当前管理员无权查看举报人、说明或处理这批举报。 */

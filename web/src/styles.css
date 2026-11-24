@@ -5574,3 +5574,13 @@ img.emoji {
 .signup-ip.warn {
   color: var(--danger);
 }
+.log-video {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  max-height: 240px;
+  margin-top: 6px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: #000;
+}

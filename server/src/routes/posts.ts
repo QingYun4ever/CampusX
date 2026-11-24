@@ -13,6 +13,7 @@ import { endBoosts, takeBoost } from '../boosts.ts';
 import { rankedFeed } from '../ranking.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 import { getAssistantConfig } from '../assistant.ts';
+import { assertVideoUsable, consumeVideo } from '../videos.ts';
 
 const PAGE = 20;
 
@@ -22,6 +23,8 @@ const createSchema = z.object({
     .array(z.string().regex(siteUploadUrl, '图片地址无效'))
     .max(4, '最多 4 张图片')
     .default([]),
+  /** 视频 id（videos.ts）。一条帖子一个视频，不能和图片一起发 */
+  video: z.string().regex(/^[\w-]{16}$/, '视频无效').nullish(),
   boardSlug: z.string().nullish(),
   parentId: z.number().int().positive().nullish(),
   quoteOfId: z.number().int().positive().optional(),
@@ -76,7 +79,7 @@ export function removePost(id: number, byOther: boolean) {
     revokeForPost(id);
     revokeCrystalsForPost(id);
   }
-  run(`UPDATE posts SET deleted = 1, content = '', images = '[]', pinned_at = NULL WHERE id = $id`, { id });
+  run(`UPDATE posts SET deleted = 1, content = '', images = '[]', video = NULL, pinned_at = NULL WHERE id = $id`, { id });
   run('DELETE FROM posts WHERE repost_of = $id', { id });
   run('DELETE FROM notifications WHERE post_id = $id', { id });
   if (p.parent_id && p.status === 'ok') {
@@ -172,7 +175,10 @@ export async function postRoutes(app: FastifyInstance) {
     const body = parse(createSchema, req.body);
     const content = body.content.trim();
     if (body.parentId && body.quoteOfId) throw new HttpError(400, '引用和回复不能同时使用');
-    if (!content && !body.images.length) throw new HttpError(400, '写点什么吧');
+    const video = body.video ?? null;
+    if (!content && !body.images.length && !video) throw new HttpError(400, '写点什么吧');
+    if (video && body.images.length) throw new HttpError(400, '视频不能和图片一起发');
+    if (video) assertVideoUsable(video, user.id);
     const emojis = postEmojiFiles(content);
     assertEmojis(emojis);
 
@@ -199,7 +205,7 @@ export async function postRoutes(app: FastifyInstance) {
       holdDraftUploads(body.images, user.id, imageLimit);
       const board = boardId ? (get<{ name: string }>('SELECT name FROM boards WHERE id = $id', { id: boardId })?.name ?? null) : null;
       const parentText = parent ? (get<{ content: string }>('SELECT content FROM posts WHERE id = $id', { id: parent.id })?.content ?? '') : null;
-      ({ verdict, snapshots } = await screen(content, body.images, emojis, reviewContext(board, parentText), moderation));
+      ({ verdict, snapshots } = await screen(content, body.images, emojis, reviewContext(board, parentText), moderation, video));
       status = !verdict ? 'pending' : verdict.verdict === 'pass' ? 'ok' : 'rejected';
     }
 
@@ -209,6 +215,7 @@ export async function postRoutes(app: FastifyInstance) {
       // 审核要等一会儿：写入前再查一次，这段时间里可能被楼主拉黑了
       if (parent) assertCanInteract(user.id, parent.author_id);
       consumeDraftUploads(body.images, user.id, imageLimit, snapshots);
+      if (video) consumeVideo(video, user.id);
       markEmojisSent(emojis);
       const quote = body.quoteOfId === undefined ? undefined : get<{ id: number }>(
         `SELECT s.id FROM posts p JOIN posts s ON s.id = COALESCE(p.repost_of, p.id)
@@ -218,8 +225,8 @@ export async function postRoutes(app: FastifyInstance) {
       if (body.quoteOfId !== undefined && !quote) throw new HttpError(404, '原帖不可引用');
       if (quote) assertCanInteract(user.id, get<{ author_id: number }>('SELECT author_id FROM posts WHERE id = $id', { id: quote.id })!.author_id);
       const { lastId } = run(
-        `INSERT INTO posts (author_id, board_id, parent_id, root_id, content, images, status, last_activity_at, created_at)
-         VALUES ($a, $b, $parent, $root, $c, $img, $status, $t, $t)`,
+        `INSERT INTO posts (author_id, board_id, parent_id, root_id, content, images, video, status, last_activity_at, created_at)
+         VALUES ($a, $b, $parent, $root, $c, $img, $video, $status, $t, $t)`,
         {
           a: user.id,
           b: boardId,
@@ -227,6 +234,7 @@ export async function postRoutes(app: FastifyInstance) {
           root: parent ? (parent.root_id ?? parent.id) : null,
           c: content,
           img: JSON.stringify(body.images),
+          video,
           status,
           t,
         },

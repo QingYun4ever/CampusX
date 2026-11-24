@@ -72,6 +72,7 @@ export const config = {
 };
 
 export const uploadsDir = path.join(config.dataDir, 'uploads');
+export const videosDir = path.join(config.dataDir, 'videos');
 export const accountSecurityKeyPath = path.join(config.dataDir, 'account-security.key');
 
 /**

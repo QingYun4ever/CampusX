@@ -701,3 +701,25 @@ if (!get("SELECT 1 FROM settings WHERE key = 'decorations_grandfathered'")) {
     run("INSERT INTO settings (key, value) VALUES ('decorations_grandfathered', '1')");
   });
 }
+
+// 视频（videos.ts）：分片上传 → ffmpeg 处理 → 发帖时挂到 posts.video 上
+db.exec(`
+CREATE TABLE IF NOT EXISTS videos (
+  id          TEXT PRIMARY KEY,
+  owner_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  status      TEXT NOT NULL DEFAULT 'uploading',
+  error       TEXT NOT NULL DEFAULT '',
+  upload_size INTEGER NOT NULL,
+  received    INTEGER NOT NULL DEFAULT 0,
+  size        INTEGER NOT NULL DEFAULT 0,
+  width       INTEGER NOT NULL DEFAULT 0,
+  height      INTEGER NOT NULL DEFAULT 0,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  progress    REAL NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  used        INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_videos_owner ON videos(owner_id, created_at);
+`);
+addColumn('posts', 'video', 'TEXT');
+db.exec('CREATE INDEX IF NOT EXISTS idx_posts_video ON posts(video) WHERE video IS NOT NULL;');

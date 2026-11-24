@@ -5,6 +5,7 @@
 - **账号**：仅凭邀请码注册，注册时需同意[用户协议](web/src/pages/Terms.tsx)（`/terms`，协议更新后老用户下次打开会被请求重新确认）；「设置 → 账户安全」可选验证邮箱、开启验证器两步验证（含一次性恢复码）。邮箱不公开，不能用于找回密码
 - **隐私政策**：`/privacy` 无需登录，说明站点保存的信息、内容可见范围、第三方服务和隐私问题的联系渠道；入口在登录、注册和设置页
 - **时间线**：「全部 / 关注」两个 tab，发帖、回复（楼中楼）、点赞、普通转发、附评论的引用、@提及、最多 4 张图片
+- **视频**：和 X 一样，每条帖子一个视频，最长 2 分钟，不能和图片一起发。选好后在手机上用 WebCodecs 压缩（长边 1280、约 2 Mbps，H.264；已经够小的不压，浏览器不支持的直接传原文件），超过 2 分钟会问要不要只发前 2 分钟；分片上传（每片 4 MB，断网自动续传，反代限制了请求大小时自动改小分片），服务器用 ffmpeg 统一转成 H.264 + AAC 的 MP4（能直接用的只重新封装）、去掉 GPS 等元数据、截封面。处理好之前「发布」是灰的，发帖框里可以预览。时间线里划到屏幕上静音自动播放（设置里可以改成仅 Wi-Fi 或从不），左下角剩余时间、右下角声音；点开全屏播放，可拖进度条、下滑关闭。开启 AI 审核时，视频的 3 张截图一起送审
 - **图片**：时间线和引用卡片按需加载缩略图（长边 1280，WebP），点开再取原图。个人头像和吧头像默认使用最多 192 像素的缩略图，个人主页大头像使用原图。查看时可缩放、翻页、保存；App 保存到相册 Pictures/校墙。站点图片是随机文件名的公开地址，浏览器和 App 通常缓存一年；私信图片单独鉴权、不缓存。
 - **书签**：帖子下面的书签按钮，左栏「书签」页查看，只有自己能看到
 - **Markdown + LaTeX**：标题、列表、任务清单、表格、代码块、引用；`$行内公式$`、`$$块级公式$$`（KaTeX）。发帖框可以预览。不渲染原始 HTML，外链图片只显示成链接
@@ -122,7 +123,7 @@ Compose 只启动校墙，默认开放 `127.0.0.1:3000` 给宿主机。用你自
 ```nginx
 server {
   server_name forum.example.com;
-  client_max_body_size 36m;          # 私信每条最多 4 张图，每张不超过 8 MiB
+  client_max_body_size 36m;          # 私信每条最多 4 张图，每张不超过 8 MiB；视频分片 4 MB
   location / {
     proxy_pass http://127.0.0.1:3000;
     proxy_set_header Host $host;
@@ -223,6 +224,10 @@ npm start            # 后端同时托管前端页面，监听 3000
 | `UPLOAD_ACCOUNT_LIMIT_BYTES` | 单账号站点上传累计配额，默认 256 MiB |
 | `UPLOAD_SITE_LIMIT_BYTES` | 全站站点上传累计配额，默认 10 GiB，包含已有文件 |
 | `UPLOAD_ORPHAN_TTL_MS` | 未引用上传的清理等待时间，默认 24 小时 |
+| `VIDEO_MAX_UPLOAD_BYTES` | 单个视频（压缩后）最大大小，默认 300 MB |
+| `VIDEO_ACCOUNT_LIMIT_BYTES` / `VIDEO_SITE_LIMIT_BYTES` | 单账号 / 全站视频累计配额，默认 2 GiB / 30 GiB；每人每天最多传 20 个 |
+| `VIDEO_CONCURRENCY` | 同时转码几个视频，默认 1（小服务器别调大） |
+| `FFMPEG_PATH` / `FFPROBE_PATH` | ffmpeg 的位置，默认从 PATH 里找。Docker 镜像已经自带；直接用 Node 运行要自己装（`apt install ffmpeg`）。找不到时发帖框不显示视频选项 |
 | `SMTP_HOST` / `MAIL_FROM` | 可选；同时配置后才允许邮箱验证 |
 | `SMTP_PORT` / `SMTP_SECURE` | 默认 587，要求 STARTTLS；465 默认隐式 TLS，也可显式设置 `SMTP_SECURE=1` |
 | `SMTP_USER` / `SMTP_PASS` | SMTP 认证，要么同时设置，要么留空 |
@@ -233,7 +238,11 @@ npm start            # 后端同时托管前端页面，监听 3000
 
 每张图片按原图大小的两倍计入配额（最低 4 KiB），包含缩略图预留；历史图片计入全站配额。服务启动时及每小时清理超过保留时间且不再被帖子、个人资料或吧头像引用的文件。图片备份无需包含 `uploads/.thumbs/`，缩略图可重新生成。
 
-`npm run backup` 为数据库制作快照，并在需要时生成同名 `.key` 和 `.dm-uploads`。恢复时先停服务，将它们还原为 `forum.db`、`account-security.key`（权限 `0600`）和 `dm-uploads/`；普通 `uploads/` 仍需另行备份。密钥和备份都应留在私有存储，密钥丢失后无法再用原验证器登录。
+`npm run backup` 为数据库制作快照，并在需要时生成同名 `.key` 和 `.dm-uploads`。恢复时先停服务，将它们还原为 `forum.db`、`account-security.key`（权限 `0600`）和 `dm-uploads/`；普通 `uploads/` 和视频 `videos/` 仍需另行备份。
+
+### 视频
+
+视频存在 `DATA_DIR/videos/`：`<id>.mp4` 和封面 `<id>.jpg` 按随机文件名公开访问（支持 Range，可以拖进度），`<id>.f1-3.jpg` 是送审用的截图，不公开。传了没发出去的视频 24 小时后删掉，帖子删掉后视频也会在一小时内删掉。转码用 `nice` 降低优先级，一次只转一个；手机已经压好的视频通常只需重新封装，一两秒就好，需要转码的 2 分钟视频要几十秒。密钥和备份都应留在私有存储，密钥丢失后无法再用原验证器登录。
 
 ## 打包原生 App
 
@@ -302,6 +311,8 @@ gh release create "v$version" "$name" "$name.sha256" \
 ## 第三方素材
 
 表情图片来自 [Twemoji](https://github.com/jdecked/twemoji)（`web/public/emoji/`），图形以 [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/) 授权，© Twitter, Inc. 及其他贡献者。彩色表情字体 `web/src/assets/fonts/twemoji-15.0.3.woff2` 来自 [twemoji-colr-font](https://www.npmjs.com/package/twemoji-colr-font)，字体文件以 SIL OFL 1.1 授权，图形同上。
+
+发视频时在本地压缩用的是 [Mediabunny](https://github.com/Vanilagy/mediabunny)（MPL-2.0，未修改，只在选视频时按需加载）。服务器转码用系统里的 ffmpeg，不随项目分发。
 
 ## 后续可以加的功能
 

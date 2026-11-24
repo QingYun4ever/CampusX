@@ -10,6 +10,8 @@ import { MediaImage } from './MediaImage';
 import { useMention } from './MentionMenu';
 import { RichText } from './PostCard';
 import { QuoteCard } from './QuoteCard';
+import { useVideoDraft, VideoDraftTile } from './VideoDraft';
+import { isVideoFile } from '../lib/video';
 import { Avatar, BoardMark, Modal, Spinner, toast, usePopover } from './ui';
 
 const MAX = 2000;
@@ -154,6 +156,7 @@ export function Composer({
   const [tags, setTags] = useState<string[]>([]);
   const [showTags, setShowTags] = useState(false);
   const [preview, setPreview] = useState(false);
+  const vd = useVideoDraft();
 
   useEffect(() => setBoard(boardSlug ?? ''), [boardSlug]);
 
@@ -197,6 +200,16 @@ export function Composer({
   }, [text, preview]);
 
   const addFiles = async (files: File[]) => {
+    // 视频：一条帖子一个，不能和图片一起发（和 X 一样）
+    const videos = files.filter(isVideoFile);
+    if (videos.length) {
+      if (!vd.enabled) return toast('服务器暂时不支持发视频', 'error');
+      if (videos.length > 1 || files.length > videos.length || images.length || uploading || vd.draft) {
+        return toast('一条帖子只能发一个视频，而且不能和图片一起发', 'error');
+      }
+      return vd.start(videos[0]);
+    }
+    if (vd.draft) return toast('已经有视频了，视频不能和图片一起发', 'error');
     const room = MAX_IMAGES - images.length - uploading;
     const list = files.filter((f) => f.type.startsWith('image/')).slice(0, Math.max(room, 0));
     if (files.length > list.length) toast(`最多 ${MAX_IMAGES} 张图片`, 'error');
@@ -223,7 +236,7 @@ export function Composer({
 
   // 服务端和文本框选区都按 UTF-16 代码单元计数。
   const len = text.length;
-  const canPost = (text.trim() || images.length) && len <= MAX && !uploading && !busy;
+  const canPost = (text.trim() || images.length || vd.ready) && len <= MAX && !uploading && !busy && (!vd.draft || vd.ready);
   const target = replyTo?.repostOf ?? replyTo;
   const mention = useMention({
     ta,
@@ -253,6 +266,7 @@ export function Composer({
         body: {
           content: text,
           images: submitted,
+          ...(vd.id ? { video: vd.id } : {}),
           parentId: target?.id ?? null,
           quoteOfId: quoteOf?.id,
           boardSlug: target ? null : board || null,
@@ -263,6 +277,7 @@ export function Composer({
       selection.current = [0, 0];
       pendingSelection.current = null;
       setImages([]);
+      vd.posted();
       setTags([]);
       setShowTags(false);
       setPreview(false);
@@ -290,6 +305,7 @@ export function Composer({
             : image
         )));
       }
+      if (e instanceof ApiError && e.data.code === 'VIDEO_UNAVAILABLE') vd.fail(e.message);
       if (mod) setBlocked(mod);
       else if (unavailable) toast('附件已失效，再次发布时会重新上传', 'error');
       else toast((e as Error).message, 'error');
@@ -328,7 +344,7 @@ export function Composer({
               <span className="name">{target.author.displayName}</span>
               <span className="muted handle">@{target.author.username}</span>
             </div>
-            <div className="content clamp">{target.content || (target.images.length ? '[图片]' : '')}</div>
+            <div className="content clamp">{target.content || (target.images.length ? '[图片]' : target.video ? '[视频]' : '')}</div>
             <div className="reply-to" style={{ marginTop: 8 }}>
               回复 <a>@{target.author.username}</a>
             </div>
@@ -398,12 +414,13 @@ export function Composer({
               ))}
             </div>
           )}
+          {vd.draft && <VideoDraftTile draft={vd.draft} onRemove={vd.remove} onRetry={vd.retry} />}
           {quoteOf && <QuoteCard post={quoteOf} preview />}
           <div className="composer-tools">
             <input
               ref={fileRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
+              accept={`image/jpeg,image/png,image/webp,image/gif${vd.enabled ? ',video/*' : ''}`}
               multiple
               hidden
               onChange={(e) => {
@@ -413,9 +430,9 @@ export function Composer({
             />
             <button
               className="icon-btn accent"
-              title="图片"
-              aria-label="添加图片"
-              disabled={images.length + uploading >= MAX_IMAGES}
+              title={vd.enabled ? '图片或视频' : '图片'}
+              aria-label={vd.enabled ? '添加图片或视频' : '添加图片'}
+              disabled={images.length + uploading >= MAX_IMAGES || !!vd.draft}
               onClick={() => fileRef.current?.click()}
             >
               <ImagePlus size={20} />

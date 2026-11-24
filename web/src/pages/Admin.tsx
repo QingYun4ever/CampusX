@@ -24,7 +24,7 @@ import {
 import { ContentLink } from '../components/ContentLink';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Logo } from '../components/Logo';
-import { MediaImage } from '../components/MediaImage';
+import { MediaImage, resolveMediaUrl } from '../components/MediaImage';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Spinner, Switch, toast, useModalClose, Verified } from '../components/ui';
 import { api, ApiError, WEB_ORIGIN, type Announcement, type CampusEvent, type EventEntry, type AssistantConfig, type Invite, type MaintenanceConfig, type ReportGroup, type User, type UserLite } from '../lib/api';
 import { refreshStatus } from '../lib/site';
@@ -69,7 +69,7 @@ interface ModLog {
   outputTokens: number;
   createdAt: number;
   actor: string | null;
-  post: { id: number; content: string; images: string[]; status: string; author: UserLite };
+  post: { id: number; content: string; images: string[]; video?: { url: string; poster: string } | null; status: string; author: UserLite };
 }
 
 const VERDICT: Record<ModLog['verdict'], [string, string]> = {
@@ -384,6 +384,21 @@ function ModSettings() {
   );
 }
 
+/** 审核、举报里的视频：直接在列表里放，管理员不用点进帖子 */
+function AdminVideo({ video }: { video: { url: string; poster: string } }) {
+  return (
+    <video
+      className="log-video"
+      src={resolveMediaUrl(video.url)}
+      poster={resolveMediaUrl(video.poster)}
+      controls
+      playsInline
+      preload="none"
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+}
+
 function LogItem({ log, onDecided }: { log: ModLog; onDecided: () => void }) {
   const [busy, setBusy] = useState(false);
   const [label, tone] = VERDICT[log.verdict];
@@ -424,6 +439,7 @@ function LogItem({ log, onDecided }: { log: ModLog; onDecided: () => void }) {
             ))}
           </div>
         )}
+        {log.post.video && <AdminVideo video={log.post.video} />}
         {log.reason && <div className="log-reason">{log.reason}</div>}
         <div className="log-meta muted small">
           {log.verdict.startsWith('manual') ? (
@@ -1144,6 +1160,7 @@ function EntryItem({ x, onDone }: { x: EventEntry; onDone: () => void }) {
                 ))}
               </div>
             )}
+            {p.video && <AdminVideo video={p.video} />}
           </>
         )}
         {x.status === 'rejected' && x.note && <div className="log-reason">驳回理由：{x.note}</div>}
@@ -1526,6 +1543,7 @@ function ReportItem({ g, onDone }: { g: ReportGroup; onDone: (deleted?: boolean)
                 ))}
               </div>
             )}
+            {!post.deleted && post.video && <AdminVideo video={post.video} />}
           </>
         )}
         <div className="log-reason">

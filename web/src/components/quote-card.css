@@ -67,3 +67,9 @@
 .repost-menu > button:disabled {
   background: transparent;
 }
+.quote-card-video {
+  margin-top: 8px;
+  border-radius: 8px;
+  max-height: 160px;
+  aspect-ratio: 16 / 9;
+}

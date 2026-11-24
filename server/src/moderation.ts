@@ -16,6 +16,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod/v4';
 import { config } from './config.ts';
+import { videoReviewFrames } from './videos.ts';
 import { all, get, now, run, tx } from './db.ts';
 import { emojiSrc } from './emoji-tokens.ts';
 import { postEmojiFiles } from './post-markdown.ts';
@@ -193,6 +194,18 @@ async function emojiImages(files: readonly string[], c: ModConfig): Promise<Img[
     out.push({ mime: image.mime, data: image.buffer.toString('base64') });
   }
   return out;
+}
+
+/** 送审用：帖子带的视频截的画面（接在帖子图片后面，视频和图片不会同时有） */
+function videoFrames(video: string | null | undefined, c: ModConfig): Img[] {
+  return video && c.reviewImages ? videoReviewFrames(video) : [];
+}
+
+/** 有视频截图时，告诉模型那几张是视频画面 */
+function withVideoNote(context: string, frames: number) {
+  if (!frames) return context;
+  const note = `帖子附带一段视频。上方的 ${frames} 张图是按时间顺序从视频里截取的画面，请按视频内容一起审核。`;
+  return context ? `${context}\n\n${note}` : note;
 }
 
 /** 有表情图时，告诉模型后面几张是表情 */
@@ -406,9 +419,13 @@ export function reviewContext(board: string | null, parentText: string | null) {
 }
 
 /** 发帖时的同步审核；上游超时或出错时将已校验的附件交给后台队列。 */
-export async function screen(text: string, urls: string[], emojiFiles: readonly string[], context: string, c: ModConfig) {
+export async function screen(text: string, urls: string[], emojiFiles: readonly string[], context: string, c: ModConfig, video?: string | null) {
   // 本地输入校验失败不是上游错误，不能被超时或 failPolicy 吞掉。
-  const { images, snapshots } = await loadImages(urls, c.reviewImages ? MAX_REVIEW_IMAGE_BYTES : config.maxUploadBytes, c.reviewImages);
+  const loaded = await loadImages(urls, c.reviewImages ? MAX_REVIEW_IMAGE_BYTES : config.maxUploadBytes, c.reviewImages);
+  const { snapshots } = loaded;
+  const frames = videoFrames(video, c);
+  const images = [...loaded.images, ...frames];
+  context = withVideoNote(context, frames.length);
   const emojis = await emojiImages(emojiFiles, c);
   const deadline = new AbortController();
   try {
@@ -418,7 +435,9 @@ export async function screen(text: string, urls: string[], emojiFiles: readonly 
     ]);
     return { verdict, snapshots };
   } catch (error) {
-    if ((images.length || emojis.length) && isProviderInputError(error)) throw new AttachmentError('审核服务不接受这些图片，请更换图片后重试');
+    if ((images.length || emojis.length) && isProviderInputError(error)) {
+      throw new AttachmentError(frames.length ? '审核服务不接受这个视频的画面，换一个视频试试' : '审核服务不接受这些图片，请更换图片后重试');
+    }
     return { verdict: null, snapshots };
   } finally {
     deadline.abort();
@@ -432,12 +451,12 @@ export { log as logReview };
  * 帖子本身已经是 rejected（谁都看不到），所以通知里带上内容摘要和理由。
  */
 export function warnAuthor(postId: number, reason: string) {
-  const p = get<{ author_id: number; content: string; images: string }>('SELECT author_id, content, images FROM posts WHERE id = $id', { id: postId });
+  const p = get<{ author_id: number; content: string; images: string; video: string | null }>('SELECT author_id, content, images, video FROM posts WHERE id = $id', { id: postId });
   if (!p) return 0;
   run('UPDATE users SET mod_warnings = mod_warnings + 1 WHERE id = $u', { u: p.author_id });
   const warnings = get<{ n: number }>('SELECT mod_warnings AS n FROM users WHERE id = $u', { u: p.author_id })!.n;
   const images = (JSON.parse(p.images) as string[]).length;
-  const excerpt = p.content.slice(0, 80) || (images ? '[图片]' : '');
+  const excerpt = p.content.slice(0, 80) || (images ? '[图片]' : p.video ? '[视频]' : '');
   run(
     `INSERT INTO notifications (user_id, actor_id, type, post_id, extra, created_at)
      VALUES ($u, $u, 'moderation', NULL, $extra, $t)`,
@@ -473,8 +492,8 @@ function pump() {
 }
 
 async function handle(postId: number) {
-  const post = get<{ content: string; images: string; status: string; deleted: number; parent_id: number | null; board: string | null }>(
-    `SELECT p.content, p.images, p.status, p.deleted, p.parent_id, b.name AS board
+  const post = get<{ content: string; images: string; video: string | null; status: string; deleted: number; parent_id: number | null; board: string | null }>(
+    `SELECT p.content, p.images, p.video, p.status, p.deleted, p.parent_id, b.name AS board
      FROM posts p LEFT JOIN boards b ON b.id = p.board_id WHERE p.id = $id`,
     { id: postId },
   );
@@ -490,7 +509,8 @@ async function handle(postId: number) {
   const parentText = post.parent_id
     ? (get<{ content: string }>('SELECT content FROM posts WHERE id = $id', { id: post.parent_id })?.content ?? '')
     : null;
-  const context = reviewContext(post.board, parentText);
+  const frames = videoFrames(post.video, c);
+  const context = withVideoNote(reviewContext(post.board, parentText), frames.length);
 
   let prepared: PreparedImages | undefined;
   let verdict: ReviewResult | undefined;
@@ -503,7 +523,8 @@ async function handle(postId: number) {
         prepared ??= await loadImages(urls, limit, c.enabled && c.reviewImages);
         if (!c.enabled) return; // 审核关停时，有效待审帖仍交管理员处理
         const emojis = await emojiImages(emojiFiles, c);
-        verdict = await reviewWithImages(post.content, [...prepared.images, ...emojis], withEmojiNote(context, prepared.images.length, emojis.length), c);
+        const shown = [...prepared.images, ...frames];
+        verdict = await reviewWithImages(post.content, [...shown, ...emojis], withEmojiNote(context, shown.length, emojis.length), c);
         break;
       } catch (error) {
         if (error instanceof AttachmentError || error instanceof ImageInputError) throw error;

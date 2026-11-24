@@ -11,6 +11,7 @@ import { postsByIds, visibleNotification } from '../serialize.ts';
 import { assistantSchema, publicAssistantConfig, updateAssistantConfig } from '../assistant.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 import { getSignup, isPrivateIp, saveSignup } from '../invites.ts';
+import { videoUrls } from '../videos.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
 
 export async function miscRoutes(app: FastifyInstance) {
@@ -232,7 +233,7 @@ export async function miscRoutes(app: FastifyInstance) {
       if (q.filter === 'pending') {
         // 审核中：直接列帖子（可能还没有任何记录）
         const rows = all(
-          `SELECT p.id AS post_id, p.content, p.images, p.status, p.created_at AS post_created_at, ${USER_COLS}
+          `SELECT p.id AS post_id, p.content, p.images, p.video, p.status, p.created_at AS post_created_at, ${USER_COLS}
            FROM posts p JOIN users u ON u.id = p.author_id
            WHERE p.status = 'pending' AND p.deleted = 0 AND ($cursor IS NULL OR p.id < $cursor)
            ORDER BY p.id DESC LIMIT 30`,
@@ -251,14 +252,14 @@ export async function miscRoutes(app: FastifyInstance) {
             outputTokens: 0,
             createdAt: r.post_created_at,
             actor: null,
-            post: { id: r.post_id, content: r.content, images: JSON.parse(r.images), status: r.status, author: userPublic(r) },
+            post: { id: r.post_id, content: r.content, images: JSON.parse(r.images), video: r.video ? videoUrls(r.video as string) : null, status: r.status, author: userPublic(r) },
           })),
           nextCursor: rows.length >= 30 ? String(rows[rows.length - 1].post_id) : null,
         };
       }
       const where = filters[q.filter ?? 'all'] ?? '1';
       const rows = all(
-        `SELECT l.*, p.content, p.images, p.status, p.deleted, a.username AS actor_username, ${USER_COLS}
+        `SELECT l.*, p.content, p.images, p.video, p.status, p.deleted, a.username AS actor_username, ${USER_COLS}
          FROM moderation_logs l
          JOIN posts p ON p.id = l.post_id
          JOIN users u ON u.id = p.author_id
@@ -284,6 +285,7 @@ export async function miscRoutes(app: FastifyInstance) {
             id: r.post_id as number,
             content: r.content as string,
             images: JSON.parse(r.images) as string[],
+            video: r.video ? videoUrls(r.video as string) : null,
             status: r.deleted ? 'deleted' : (r.status as string),
             author: userPublic(r),
           },

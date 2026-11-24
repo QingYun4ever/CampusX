@@ -10,6 +10,7 @@ import { get, now } from './db.ts';
 import { resumePending } from './moderation.ts';
 import { resumeAssistant } from './assistant.ts';
 import { registerSiteUploadRoutes, startSiteUploads } from './site-uploads.ts';
+import { registerVideoFiles, startVideos, videoRoutes } from './videos.ts';
 import { appRoutes } from './routes/app.ts';
 import { authRoutes } from './routes/auth.ts';
 import { boardRoutes } from './routes/boards.ts';
@@ -110,12 +111,15 @@ await app.register(
     await api.register(appRoutes);
     await api.register(crystalRoutes);
     await api.register(eventRoutes);
+    await api.register(videoRoutes);
   },
   { prefix: '/api' },
 );
 
 startSiteUploads();
 registerSiteUploadRoutes(app);
+await startVideos();
+registerVideoFiles(app);
 
 // 生产环境：同时托管前端构建产物（SPA）
 const hasWeb = fs.existsSync(config.webDist);

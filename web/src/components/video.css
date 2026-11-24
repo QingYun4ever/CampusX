@@ -1,0 +1,431 @@
+/* ---------- 时间线里的视频 ---------- */
+.video-inline {
+  position: relative;
+  margin-top: 12px;
+  max-width: 100%;
+  min-width: 200px;
+  max-height: 510px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  background: #000;
+  cursor: pointer;
+  isolation: isolate;
+  -webkit-tap-highlight-color: transparent;
+}
+.video-inline:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.video-inline video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+/* 左下角剩余时间、右下角声音：和 X 一样是半透明黑底的小块 */
+.vi-time {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.66);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.vi-mute {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(0, 0, 0, 0.66);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.vi-mute:hover {
+  background: rgba(0, 0, 0, 0.82);
+}
+
+.vi-center,
+.vv-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+/* 中间的播放键：X 的蓝色圆按钮 */
+.vi-big,
+.vv-big {
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.vi-big svg {
+  margin-left: 2px;
+}
+.video-inline.ended .vi-big svg {
+  margin-left: 0;
+}
+.video-inline:hover .vi-big {
+  filter: brightness(1.08);
+}
+.vi-spin {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.28);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+  pointer-events: none;
+}
+.vi-error {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* 引用卡片里的小封面 */
+.video-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #000;
+}
+.video-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.video-thumb .vt-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: 2px solid #fff;
+}
+.video-thumb .vt-play svg {
+  margin-left: 2px;
+}
+.video-thumb .vi-time {
+  left: 6px;
+  bottom: 6px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* ---------- 全屏播放 ---------- */
+.video-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  color: #fff;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: contain;
+}
+.video-viewer.idle {
+  cursor: none;
+}
+.vv-bg {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  animation: fade-in 0.2s var(--ease) backwards;
+}
+.vv-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+.vv-stage video {
+  max-width: 100%;
+  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  animation: vv-in 0.24s var(--ease) backwards;
+}
+@keyframes vv-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.vv-big {
+  pointer-events: auto;
+  cursor: pointer;
+  width: 68px;
+  height: 68px;
+}
+.vv-big svg {
+  margin-left: 3px;
+}
+.vv-error {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.vv-top,
+.vv-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  transition: opacity 0.25s;
+}
+.vv-top {
+  top: 0;
+  padding: calc(10px + var(--safe-top)) calc(12px + var(--safe-right)) 10px calc(12px + var(--safe-left));
+  background: linear-gradient(rgba(0, 0, 0, 0.5), transparent);
+  pointer-events: none;
+}
+.vv-top .vv-btn {
+  pointer-events: auto;
+}
+.vv-bottom {
+  bottom: 0;
+  padding: 24px calc(14px + var(--safe-right)) calc(8px + var(--safe-bottom)) calc(14px + var(--safe-left));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
+}
+.video-viewer.idle .vv-top,
+.video-viewer.idle .vv-bottom {
+  opacity: 0;
+  pointer-events: none;
+}
+.video-viewer.idle .vv-top .vv-btn {
+  pointer-events: none;
+}
+
+.vv-btn {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.vv-top .vv-btn {
+  background: rgba(0, 0, 0, 0.45);
+}
+.vv-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.vv-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 -8px;
+}
+.vv-row .spacer {
+  flex: 1;
+}
+.vv-time {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* 进度条：平时细，按住或者鼠标放上去变粗，露出圆点（和 X 一样） */
+.vv-scrub {
+  position: relative;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+.vv-track {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.28);
+  overflow: hidden;
+  transition: height 0.15s;
+}
+.vv-buffered,
+.vv-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+}
+.vv-buffered {
+  background: rgba(255, 255, 255, 0.4);
+}
+.vv-fill {
+  background: var(--accent);
+}
+.vv-knob {
+  position: absolute;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  margin: -6.5px 0 0 -6.5px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: scale(0);
+  transition: transform 0.15s;
+}
+.vv-scrub:hover .vv-track,
+.vv-scrub:active .vv-track,
+.vv-scrub:focus-visible .vv-track {
+  height: 5px;
+}
+.vv-scrub:hover .vv-knob,
+.vv-scrub:active .vv-knob,
+.vv-scrub:focus-visible .vv-knob {
+  transform: scale(1);
+}
+@media (hover: none) {
+  .vv-knob {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vv-bg,
+  .vv-stage video {
+    animation: none;
+  }
+}
+
+/* ---------- 发帖框里的视频 ---------- */
+.video-draft {
+  position: relative;
+  max-width: 100%;
+  min-width: 200px;
+  max-height: 400px;
+  margin: 4px 0 12px;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: #000;
+  border: 1px solid var(--line);
+}
+.video-draft video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.video-draft .thumb-remove {
+  position: absolute;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(15, 20, 25, 0.72);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  backdrop-filter: blur(4px);
+  transition: background-color 0.2s;
+  z-index: 2;
+}
+.video-draft .thumb-remove:hover {
+  background: rgba(39, 44, 48, 0.82);
+}
+.vd-veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  text-align: center;
+}
+.vd-veil.error {
+  background: rgba(0, 0, 0, 0.7);
+}
+.vd-msg {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  line-height: 1.5;
+  max-width: 320px;
+}
+.vd-veil.error .vd-msg {
+  font-weight: 500;
+}
+.vd-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.25);
+}
+.vd-bar > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s linear;
+}
+.vd-veil.process .vd-bar > div {
+  background: linear-gradient(90deg, var(--accent), #7cc6f7, var(--accent));
+  background-size: 200% 100%;
+  animation: vd-shimmer 1.4s linear infinite;
+}
+@keyframes vd-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.vd-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 0;
+  background: #fff;
+  color: #0f1419;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vd-veil.process .vd-bar > div {
+    animation: none;
+  }
+}

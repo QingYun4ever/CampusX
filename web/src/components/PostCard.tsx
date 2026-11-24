@@ -9,6 +9,7 @@ import { markViewed, useViewTracking } from '../lib/views';
 import { useCompose } from './compose';
 import { ContentLink } from './ContentLink';
 import { MediaImage } from './MediaImage';
+import { InlineVideo } from './VideoPlayer';
 import { LevelBadge } from './Level';
 import { QuoteCard } from './QuoteCard';
 import { CustomEmojiImg } from './CustomEmoji';
@@ -870,7 +871,7 @@ export function PostCard({
         <Head post={post} />
         <SubLine post={post} opId={opId} floor={floor} hideReplyTo={hideReplyTo} />
         {post.content && <ClampedText text={post.content} />}
-        <MediaGrid images={post.images} />
+        {post.video ? <InlineVideo video={post.video} /> : <MediaGrid images={post.images} />}
         {post.quote && <QuoteCard post={post.quote.post} />}
         <TagList tags={post.tags} />
         <ReactionPills rx={rx} />
@@ -937,7 +938,7 @@ export function PostMain({ post: item, onDeleted }: { post: Post; onDeleted?: ()
         </div>
       )}
       {post.content && <RichText text={post.content} />}
-      <MediaGrid images={post.images} />
+      {post.video ? <InlineVideo video={post.video} /> : <MediaGrid images={post.images} />}
       {post.quote && <QuoteCard post={post.quote.post} />}
       <TagList tags={post.tags} />
       <ReactionPills rx={rx} />

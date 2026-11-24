@@ -3,6 +3,7 @@ import { grantForPost, levelInfo, revokeForPost, type LevelInfo } from './levels
 import { revokeCrystalsForPost } from './crystals.ts';
 import { eventRewardForPost } from './events.ts';
 import { HttpError } from './util.ts';
+import { videoDTO, type VideoDTO } from './videos.ts';
 
 /** 表情回应（Telegram 式）：每人每帖一个，换一个会替换掉之前的。前端的列表要和这里一致 */
 export const REACTIONS = [
@@ -59,6 +60,7 @@ const NOT_BLOCKED = `author_id NOT IN (SELECT blocked_id FROM blocks WHERE block
 export function postSelect(extraCols = '', { showBlocked = false } = {}) {
   return `
 SELECT p.id, p.author_id, p.board_id, p.parent_id, p.root_id, p.repost_of, p.content, p.images,
+  p.video, pv.width AS video_w, pv.height AS video_h, pv.duration_ms AS video_ms,
   p.like_count, p.reply_count, p.repost_count, p.view_count, p.tip_total, p.deleted, p.created_at, p.last_activity_at,
   u.username, u.display_name, u.avatar, u.avatar_decoration, u.role, u.class_name, u.verified, u.verified_note,
   b.slug AS board_slug, b.name AS board_name, b.icon AS board_icon, b.level_titles AS board_level_titles,
@@ -95,6 +97,7 @@ LEFT JOIN boards b ON b.id = p.board_id
 LEFT JOIN board_exp be ON be.board_id = p.board_id AND be.user_id = p.author_id
 LEFT JOIN post_quotes q ON q.post_id = p.id
 LEFT JOIN posts pp ON pp.id = p.parent_id
+LEFT JOIN videos pv ON pv.id = p.video AND pv.status = 'ready'
 LEFT JOIN users pu ON pu.id = pp.author_id`;
 }
 
@@ -123,6 +126,8 @@ export interface PostDTO {
   parentUsername: string | null;
   content: string;
   images: string[];
+  /** 视频（和图片二选一） */
+  video: VideoDTO | null;
   likeCount: number;
   replyCount: number;
   repostCount: number;
@@ -152,6 +157,7 @@ interface QuotePreview {
   id: number;
   content: string;
   images: string[];
+  video: VideoDTO | null;
   createdAt: number;
   author: Pick<PostDTO['author'], 'id' | 'username' | 'displayName' | 'avatar' | 'avatarDecoration' | 'role' | 'verified' | 'verifiedNote'>;
   /** 原帖作者被我拉黑了：不带正文和图片 */
@@ -190,6 +196,7 @@ function serializeRow(r: Row, quotes: Map<number, QuotePreview>): PostDTO {
     parentUsername: r.parent_username ?? null,
     content: deleted ? '' : r.content,
     images: deleted ? [] : (JSON.parse(r.images) as string[]),
+    video: deleted || r.video_w == null ? null : videoDTO(r.video, r.video_w, r.video_h, r.video_ms),
     likeCount: r.like_count,
     replyCount: r.reply_count,
     repostCount: r.repost_count,
@@ -229,9 +236,11 @@ export function hydrate(rows: Row[], me: number): PostDTO[] {
   if (quoteIds.size) {
     for (const r of all(
       `SELECT s.id, s.content, s.images, s.created_at, s.author_id,
+         s.video, sv.width AS video_w, sv.height AS video_h, sv.duration_ms AS video_ms,
          u.username, u.display_name, u.avatar, u.avatar_decoration, u.role, u.verified, u.verified_note,
          EXISTS(SELECT 1 FROM blocks bq WHERE bq.blocker_id = $me AND bq.blocked_id = s.author_id) AS blocked
        FROM posts s JOIN users u ON u.id = s.author_id
+       LEFT JOIN videos sv ON sv.id = s.video AND sv.status = 'ready'
        WHERE s.id IN (SELECT value FROM json_each($ids)) AND s.repost_of IS NULL AND ${publicPost('s')}`,
       { ids: JSON.stringify([...quoteIds]), me },
     )) {
@@ -239,6 +248,7 @@ export function hydrate(rows: Row[], me: number): PostDTO[] {
         id: r.id,
         content: r.blocked ? '' : r.content,
         images: r.blocked ? [] : (JSON.parse(r.images) as string[]),
+        video: r.blocked || r.video_w == null ? null : videoDTO(r.video, r.video_w, r.video_h, r.video_ms),
         ...(r.blocked ? { blocked: true } : {}),
         createdAt: r.created_at,
         author: {

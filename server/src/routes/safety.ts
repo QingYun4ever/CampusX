@@ -13,6 +13,7 @@ import { postById, unnotify } from '../serialize.ts';
 import { removePost } from './posts.ts';
 import { EMOJI_TOKEN_ONE, emojiSrc, emojiToken } from '../emoji-tokens.ts';
 import { MAX_REVIEW_IMAGE_BYTES, readStoredUpload, storeSiteUpload } from '../site-uploads.ts';
+import { videoUrls } from '../videos.ts';
 import { makeEmojiImage } from '../thumbs.ts';
 import { HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
@@ -112,8 +113,8 @@ const emojiDTO = (r: EmojiRow) => ({
   createdAt: r.created_at,
 });
 
-const excerpt = (content: string, images: string) =>
-  content.slice(0, 120) || ((JSON.parse(images) as string[]).length ? '[图片]' : '');
+const excerpt = (content: string, images: string, video?: unknown) =>
+  content.slice(0, 120) || ((JSON.parse(images) as string[]).length ? '[图片]' : video ? '[视频]' : '');
 
 export async function safetyRoutes(app: FastifyInstance) {
   /* ---------- 拉黑 ---------- */
@@ -230,15 +231,16 @@ export async function safetyRoutes(app: FastifyInstance) {
         if (!g.detached && !unknown && g.target_type === 'post') {
           // 注意：USER_COLS 里也有 u.id，帖子 id 单独取别名，不然会被作者 id 覆盖
           const p = get(
-            `SELECT p.id AS post_id, p.content, p.images, p.deleted, p.parent_id, p.repost_of, ${USER_COLS}
+            `SELECT p.id AS post_id, p.content, p.images, p.video, p.deleted, p.parent_id, p.repost_of, ${USER_COLS}
              FROM posts p JOIN users u ON u.id = p.author_id WHERE p.id = $id AND p.author_id = $author`,
             { id: g.target_id, author: g.author_id },
           );
           if (p) {
             target = {
               id: p.post_id,
-              excerpt: excerpt(p.content as string, p.images as string),
+              excerpt: excerpt(p.content as string, p.images as string, p.video),
               images: JSON.parse(p.images as string),
+              video: p.video ? videoUrls(p.video as string) : null,
               deleted: !!p.deleted,
               isReply: p.parent_id != null,
               isRepost: p.repost_of != null,

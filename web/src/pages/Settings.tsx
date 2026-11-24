@@ -5,6 +5,7 @@ import { Switch, TopBar } from '../components/ui';
 import { isAndroid } from '../lib/android';
 import { useAuth, useMe } from '../lib/auth';
 import { CURRENT } from '../lib/changelog';
+import { getAutoplayPref, setAutoplayPref, type AutoplayPref } from '../lib/video';
 import {
   ACCENTS,
   accentColor,
@@ -253,7 +254,42 @@ function Appearance() {
           />
         </div>
       </section>
+
+      <VideoAutoplay />
     </>
+  );
+}
+
+const AUTOPLAY: { id: AutoplayPref; name: string }[] = [
+  { id: 'always', name: '总是' },
+  { id: 'wifi', name: '仅 Wi-Fi' },
+  { id: 'never', name: '从不' },
+];
+
+/** 时间线里的视频要不要静音自动播放（X 的「数据使用」里也有这一项） */
+function VideoAutoplay() {
+  const [pref, setPref] = useState(getAutoplayPref);
+  return (
+    <section className="section">
+      <h3>视频自动播放</h3>
+      <p className="section-sub">时间线里的视频划到屏幕上时静音播放。用手机流量时可以改成仅 Wi-Fi，省流量。</p>
+      <div className="seg" role="radiogroup" aria-label="视频自动播放">
+        {AUTOPLAY.map((o) => (
+          <button
+            key={o.id}
+            role="radio"
+            aria-checked={pref === o.id}
+            className={pref === o.id ? 'on' : ''}
+            onClick={() => {
+              setPref(o.id);
+              setAutoplayPref(o.id);
+            }}
+          >
+            {o.name}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -183,9 +183,9 @@ export async function appRoutes(app: FastifyInstance) {
     }
 
     if (q.posts !== '0') {
-      const rows = all<{ id: number; content: string; display_name: string; images: number }>(
+      const rows = all<{ id: number; content: string; display_name: string; images: number; video: number }>(
         `SELECT p.id, p.content, u.display_name,
-                (p.images <> '[]') AS images
+                (p.images <> '[]') AS images, (p.video IS NOT NULL) AS video
          FROM posts p JOIN users u ON u.id = p.author_id
          WHERE p.author_id IN (SELECT followee_id FROM follows WHERE follower_id = $me)
            AND p.parent_id IS NULL AND p.repost_of IS NULL AND p.deleted = 0 AND p.status = 'ok'
@@ -209,7 +209,7 @@ export async function appRoutes(app: FastifyInstance) {
             id: `post-${r.id}`,
             kind: 'posts',
             title: `${r.display_name} 发了新帖`,
-            body: clip(r.content) || (r.images ? '[图片]' : ''),
+            body: clip(r.content) || (r.images ? '[图片]' : r.video ? '[视频]' : ''),
             path: `/post/${r.id}`,
           });
         }

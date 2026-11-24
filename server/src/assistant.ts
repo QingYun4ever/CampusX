@@ -131,9 +131,9 @@ function pump() {
 
 /* ---------------- 回复 ---------------- */
 
-type ThreadPost = { id: number; parent_id: number | null; root_id: number | null; board_id: number | null; author_id: number; content: string; images: string; status: string; deleted: number; username: string; display_name: string };
+type ThreadPost = { id: number; parent_id: number | null; root_id: number | null; board_id: number | null; author_id: number; content: string; images: string; video: string | null; status: string; deleted: number; username: string; display_name: string };
 
-const POST_Q = `SELECT p.id, p.parent_id, p.root_id, p.board_id, p.author_id, p.content, p.images, p.status, p.deleted, u.username, u.display_name
+const POST_Q = `SELECT p.id, p.parent_id, p.root_id, p.board_id, p.author_id, p.content, p.images, p.video, p.status, p.deleted, u.username, u.display_name
   FROM posts p JOIN users u ON u.id = p.author_id WHERE p.id = $id`;
 
 function systemPrompt(c: AssistantConfig) {
@@ -201,6 +201,8 @@ function transcript(thread: ThreadPost[], board: string | null, c: AssistantConf
         : `［附 ${total} 张图，这次没给你看］`;
       n += shown;
     }
+    // 视频不给模型看，只告诉它有
+    if (!hidden(p) && p.video) pics += '［附了一段视频，你看不到内容］';
     return `${last ? '【要你回复的这条】' : ''}${who}：${body}${pics}`;
   });
   return `${board ? `这是「${board}吧」里的帖子。\n` : ''}下面是这串对话，从最早的主帖到最新的一条：\n<thread>\n${lines.join('\n\n')}\n</thread>\n\n请回复最后那条。直接写回复内容。`;
