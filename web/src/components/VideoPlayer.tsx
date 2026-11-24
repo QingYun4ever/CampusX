@@ -6,7 +6,7 @@
  *   键盘：空格暂停，← → 快退 / 快进 5 秒，M 静音，Esc 关闭。关掉后时间线里的视频从同一个位置接着播
  * 「设置 → 显示」里可以关掉自动播放，或者只在 Wi-Fi 下自动播放
  */
-import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Pause, Play, RotateCcw, Volume2, VolumeX, X } from 'lucide-react';
 import type { Video } from '../lib/api';
@@ -19,6 +19,9 @@ import './video.css';
 let soundOn = false;
 /** 正在播放的时间线视频，同一时间只播一个 */
 let current: HTMLVideoElement | null = null;
+/** 打开全屏的时间线视频；全屏期间不播放任何时间线视频 */
+let viewerOwner: HTMLVideoElement | null = null;
+let inlinePlayAttempt = 0;
 
 /** 时间线里视频框的宽高：按原始比例，最高 510px（和单张图一样），太窄太扁的兜住 */
 function boxStyle(v: Video) {
@@ -35,18 +38,19 @@ export function InlineVideo({ video }: { video: Video }) {
   const [left, setLeft] = useState(Math.ceil(video.duration));
   const [viewerAt, setViewerAt] = useState<number | null>(null);
   const visible = useRef(false);
-  const open = useRef(false);
   const src = resolveMediaUrl(video.url);
   const poster = resolveMediaUrl(video.poster);
 
   const play = () => {
     const v = ref.current;
-    if (!v) return;
+    if (!v || viewerOwner) return;
+    const attempt = ++inlinePlayAttempt;
     if (current && current !== v) current.pause();
     current = v;
     v.muted = !soundOn;
     setMuted(v.muted);
-    v.play().catch(() => {
+    v.play().catch((error) => {
+      if (error?.name !== 'NotAllowedError' || viewerOwner || current !== v || inlinePlayAttempt !== attempt) return;
       // 没有用户手势时浏览器不让带声音自动播：改成静音再试
       if (!v.muted) {
         v.muted = true;
@@ -56,14 +60,14 @@ export function InlineVideo({ video }: { video: Video }) {
     });
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = box.current;
-    if (!el) return;
+    const v = ref.current;
+    if (!el || !v) return;
     const io = new IntersectionObserver(
       ([e]) => {
         visible.current = e.intersectionRatio >= 0.6;
-        const v = ref.current;
-        if (!v || open.current) return;
+        if (viewerOwner) return;
         if (visible.current) {
           if (v.paused && !v.ended && autoplayAllowed()) play();
         } else if (!v.paused) v.pause();
@@ -73,22 +77,26 @@ export function InlineVideo({ video }: { video: Video }) {
     io.observe(el);
     return () => {
       io.disconnect();
-      if (current === ref.current) current = null;
+      if (current === v) current = null;
+      if (viewerOwner === v) viewerOwner = null;
     };
   }, []);
 
   const openViewer = () => {
     const v = ref.current;
-    open.current = true;
-    v?.pause();
-    setViewerAt(v && !v.ended ? v.currentTime : 0);
+    if (!v || viewerOwner) return;
+    viewerOwner = v;
+    ++inlinePlayAttempt;
+    current?.pause();
+    current = null;
+    setViewerAt(v.ended ? 0 : v.currentTime);
   };
 
   const closeViewer = (t: number) => {
-    open.current = false;
-    setViewerAt(null);
     const v = ref.current;
-    if (!v) return;
+    if (!v || viewerOwner !== v) return;
+    viewerOwner = null;
+    setViewerAt(null);
     if (t >= video.duration - 0.3) {
       v.currentTime = video.duration;
       return;
@@ -220,9 +228,11 @@ function VideoViewer({ video, start, onClose }: { video: Video; start: number; o
 
   useEffect(() => {
     const v = ref.current!;
+    let active = true;
     v.currentTime = start;
     // 刚点过，算用户手势，可以带声音播放；不让就静音
-    v.play().catch(() => {
+    v.play().catch((error) => {
+      if (error?.name !== 'NotAllowedError' || !active || ref.current !== v || v.muted) return;
       v.muted = true;
       setMuted(true);
       v.play().catch(() => {});
@@ -230,6 +240,7 @@ function VideoViewer({ video, start, onClose }: { video: Video; start: number; o
     const overflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
+      active = false;
       document.body.style.overflow = overflow;
       clearTimeout(idleTimer.current);
     };

@@ -204,12 +204,12 @@ export function Composer({
     const videos = files.filter(isVideoFile);
     if (videos.length) {
       if (!vd.enabled) return toast('服务器暂时不支持发视频', 'error');
-      if (videos.length > 1 || files.length > videos.length || images.length || uploading || vd.draft) {
+      if (videos.length > 1 || files.length > videos.length || images.length || uploading || vd.hasDraft()) {
         return toast('一条帖子只能发一个视频，而且不能和图片一起发', 'error');
       }
       return vd.start(videos[0]);
     }
-    if (vd.draft) return toast('已经有视频了，视频不能和图片一起发', 'error');
+    if (vd.hasDraft()) return toast('已经有视频了，视频不能和图片一起发', 'error');
     const room = MAX_IMAGES - images.length - uploading;
     const list = files.filter((f) => f.type.startsWith('image/')).slice(0, Math.max(room, 0));
     if (files.length > list.length) toast(`最多 ${MAX_IMAGES} 张图片`, 'error');
@@ -252,7 +252,7 @@ export function Composer({
 
   const [blocked, setBlocked] = useState<Blocked | null>(null);
   const submit = async () => {
-    if (!canPost) return;
+    if (!canPost || !vd.canPublish()) return;
     setBusy(true);
     const submitted: string[] = [];
     try {

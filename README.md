@@ -164,15 +164,16 @@ docker compose exec app node --disable-warning=ExperimentalWarning server/src/cl
 
 **5. 备份**
 
-数据库、2FA 密钥和图片都在 Docker 卷 `data` 里（容器内的 `/data`）。备份命令不用停网站：
+数据库、2FA 密钥、图片和视频都在 Docker 卷 `data` 里（容器内的 `/data`）。备份命令不用停网站：
 
 ```bash
 # 1. 在线备份数据库到 /data/backups（默认保留最近 14 份）
 docker compose exec app node --disable-warning=ExperimentalWarning server/src/cli/backup.ts
-# 2. 把数据库、同名密钥与私信图片的备份，以及普通图片拷到宿主机
+# 2. 把数据库、同名密钥与私信图片的备份，以及普通图片和视频拷到宿主机
 install -d -m 700 ~/xiaoqiang-backup
 docker compose cp app:/data/backups ~/xiaoqiang-backup/
 docker compose cp app:/data/uploads ~/xiaoqiang-backup/
+docker compose cp app:/data/videos ~/xiaoqiang-backup/
 ```
 
 建议每天备份一次，并在私有或加密的存储保留副本。`.db`、同名 `.key` 和 `.dm-uploads` 要一起保留，不能只还原数据库。
@@ -192,6 +193,7 @@ docker compose run --rm --no-deps --user root \
     fi
     if [ -d "$src.dm-uploads" ]; then cp -r "$src.dm-uploads" /data/dm-uploads; fi
     cp -r /backup/uploads /data/uploads
+    if [ -d /backup/videos ]; then cp -r /backup/videos /data/videos; fi
     chown -R node:node /data
   '
 docker compose up -d
@@ -213,7 +215,7 @@ npm start            # 后端同时托管前端页面，监听 3000
 
 用上面的 Nginx 配置反代；直接运行 Node 时，可以设置 `HOST=127.0.0.1 TRUST_PROXY=1`，只接收本机反代请求。
 
-需要长期运行可以用 `pm2 start npm --name forum -- start` 或 systemd。备份用 `npm run backup`，并复制 `server/data/uploads/`。
+需要长期运行可以用 `pm2 start npm --name forum -- start` 或 systemd。备份用 `npm run backup`，并复制 `DATA_DIR`（默认 `server/data`）下的 `uploads/` 和 `videos/`。
 
 ### 环境变量
 
@@ -245,6 +247,8 @@ npm start            # 后端同时托管前端页面，监听 3000
 `npm run backup` 为数据库制作快照，并在需要时生成同名 `.key` 和 `.dm-uploads`。恢复时先停服务，将它们还原为 `forum.db`、`account-security.key`（权限 `0600`）和 `dm-uploads/`；普通 `uploads/` 和视频 `videos/` 仍需另行备份。
 
 ### 视频
+
+服务器只处理自包含的 MP4、MOV、3GP、MKV 和 WebM，上传的源视频长边不能超过 4096 像素。
 
 视频存在 `DATA_DIR/videos/`：`<id>.mp4` 和封面 `<id>.jpg` 按随机文件名公开访问（支持 Range，可以拖进度），`<id>.f1-3.jpg` 是送审用的截图，不公开。传了没发出去的视频 24 小时后删掉，帖子删掉后视频也会在一小时内删掉。转码用 `nice` 降低优先级，一次只转一个；手机已经压好的视频通常只需重新封装，一两秒就好，需要转码的 2 分钟视频要几十秒。密钥和备份都应留在私有存储，密钥丢失后无法再用原验证器登录。
 

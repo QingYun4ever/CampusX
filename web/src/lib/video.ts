@@ -38,11 +38,16 @@ export const isAbort = (e: unknown) => e instanceof DOMException && e.name === '
 
 function sleep(ms: number, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
+    if (signal?.aborted) return reject(aborted());
+    const onAbort = () => {
       clearTimeout(t);
       reject(aborted());
-    }, { once: true });
+    };
+    const t = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -77,6 +82,7 @@ export async function compressVideo(
 ): Promise<Blob | null> {
   if (!canCompressVideo()) return null;
   const mb = await import('mediabunny');
+  if (opts.signal.aborted) throw aborted();
   const input = new mb.Input({ source: new mb.BlobSource(file), formats: mb.ALL_FORMATS });
   try {
     const track = await input.getPrimaryVideoTrack();
@@ -131,7 +137,10 @@ export async function compressVideo(
       audio: audioOpts,
       ...(trim ? { trim: { start: 0, end: trim } } : {}),
     });
+    if (opts.signal.aborted) throw aborted();
     if (!conversion.isValid) return null;
+    // 视频轨可用时转换仍可能有效，但不能把丢了音轨的结果传上去。
+    if (conversion.discardedTracks.some(({ track }) => track.isAudioTrack())) return null;
     conversion.onProgress = (p) => opts.onProgress(Math.min(1, p));
     const onAbort = () => void conversion.cancel();
     opts.signal.addEventListener('abort', onAbort, { once: true });
@@ -155,6 +164,21 @@ export async function compressVideo(
   }
 }
 
+class ChunkRateLimitError extends ApiError {
+  constructor(message: string, data: Record<string, unknown>, readonly retryAfter: string | null) {
+    super(message, 429, data);
+  }
+}
+
+function chunkRetryDelay(retryAfter: string | null) {
+  const value = retryAfter?.trim() ?? '';
+  const ms = /^\d+$/.test(value)
+    ? Number(value) * 1000
+    : /[a-z]/i.test(value) ? Date.parse(value) - Date.now() : NaN;
+  // 没有可用的 Retry-After（跨域也可能读不到）：等满分片限流的一分钟窗口。
+  return ms >= 0 && ms <= 2_147_483_647 ? ms : 60_000;
+}
+
 /** 传一片。用 XHR 是为了拿到上传进度（fetch 没有） */
 function putChunk(id: string, offset: number, part: Blob, onSent: (n: number) => void, signal: AbortSignal) {
   return new Promise<{ received: number }>((resolve, reject) => {
@@ -173,19 +197,33 @@ function putChunk(id: string, offset: number, part: Blob, onSent: (n: number) =>
       } catch {
         /* Nginx 的 413 之类返回的是 HTML */
       }
-      if (xhr.status >= 200 && xhr.status < 300) resolve(data as { received: number });
-      else reject(new ApiError((data.error as string) ?? `上传失败（${xhr.status}）`, xhr.status, data));
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data as { received: number });
+      } else {
+        const message = (data.error as string) ?? `上传失败（${xhr.status}）`;
+        reject(xhr.status === 429
+          ? new ChunkRateLimitError(message, data, xhr.getResponseHeader('Retry-After'))
+          : new ApiError(message, xhr.status, data));
+      }
     };
     xhr.onerror = xhr.ontimeout = () => reject(new ApiError('网络断了', 0));
     xhr.onabort = () => reject(aborted());
-    signal.addEventListener('abort', () => xhr.abort(), { once: true });
+    const onAbort = () => xhr.abort();
+    xhr.onloadend = () => signal.removeEventListener('abort', onAbort);
+    signal.addEventListener('abort', onAbort, { once: true });
     xhr.send(part);
   });
 }
 
 /** 分片上传，返回视频 id。网断了自动重试，从服务器记下的位置接着传 */
 export async function uploadVideo(blob: Blob, opts: { signal: AbortSignal; onProgress: (p: number) => void; onId?: (id: string) => void }) {
+  if (opts.signal.aborted) throw aborted();
+  // 不取消初始化请求：即使用户已经移除草稿，也要拿到 id 才能删掉会话。
   const init = await api<{ id: string; chunkBytes: number; received: number }>('/videos', { body: { size: blob.size } });
+  if (opts.signal.aborted) {
+    discardVideo(init.id);
+    throw aborted();
+  }
   opts.onId?.(init.id);
   let chunk = init.chunkBytes;
   let offset = init.received;
@@ -194,11 +232,12 @@ export async function uploadVideo(blob: Blob, opts: { signal: AbortSignal; onPro
     if (opts.signal.aborted) throw aborted();
     try {
       const r = await putChunk(init.id, offset, blob.slice(offset, offset + chunk), (n) => opts.onProgress((offset + n) / blob.size), opts.signal);
+      if (opts.signal.aborted) throw aborted();
       offset = r.received;
       retries = 0;
       opts.onProgress(offset / blob.size);
     } catch (e) {
-      if (isAbort(e) || !(e instanceof ApiError)) throw e;
+      if (opts.signal.aborted || isAbort(e) || !(e instanceof ApiError)) throw e;
       // 上一片其实到了，只是没收到回复：从服务器记下的位置接着传
       if (e.status === 409 && typeof e.data.received === 'number') {
         offset = e.data.received;
@@ -209,8 +248,14 @@ export async function uploadVideo(blob: Blob, opts: { signal: AbortSignal; onPro
         chunk = Math.max(256 * 1024, chunk >> 2);
         continue;
       }
+      if (e instanceof ChunkRateLimitError && retries < 6) {
+        retries++;
+        await sleep(chunkRetryDelay(e.retryAfter), opts.signal);
+        continue;
+      }
       if ((e.status === 0 || e.status >= 500) && retries < 6) {
         await sleep(1000 * 2 ** retries++, opts.signal);
+        if (opts.signal.aborted) throw aborted();
         const s = await api<VideoStatus>(`/videos/${init.id}`).catch(() => null);
         if (s) offset = s.received;
         continue;
@@ -218,16 +263,20 @@ export async function uploadVideo(blob: Blob, opts: { signal: AbortSignal; onPro
       throw e;
     }
   }
+  if (opts.signal.aborted) throw aborted();
   return init.id;
 }
 
 /** 传完了：让服务器开始处理，等它处理好 */
 export async function finishVideo(id: string, opts: { signal: AbortSignal; onProgress: (p: number) => void }) {
+  if (opts.signal.aborted) throw aborted();
   let s = await api<VideoStatus>(`/videos/${id}/finish`, { body: {} });
   let errors = 0;
   while (s.status === 'processing' || s.status === 'uploading') {
+    if (opts.signal.aborted) throw aborted();
     opts.onProgress(s.progress);
     await sleep(1000, opts.signal);
+    if (opts.signal.aborted) throw aborted();
     try {
       s = await api<VideoStatus>(`/videos/${id}`);
       errors = 0;
@@ -235,6 +284,7 @@ export async function finishVideo(id: string, opts: { signal: AbortSignal; onPro
       if (++errors > 10) throw e;
     }
   }
+  if (opts.signal.aborted) throw aborted();
   if (s.status !== 'ready') throw new Error(s.error || '视频处理失败了');
   return s;
 }
@@ -280,6 +330,6 @@ export function autoplayAllowed() {
   if (conn?.saveData) return false;
   const pref = getAutoplayPref();
   if (pref === 'never') return false;
-  if (pref === 'wifi') return !conn?.type || conn.type === 'wifi' || conn.type === 'ethernet';
+  if (pref === 'wifi') return conn?.type === 'wifi' || conn?.type === 'ethernet';
   return true;
 }

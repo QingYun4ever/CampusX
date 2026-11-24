@@ -118,7 +118,11 @@ function exec(cmd: string, args: string[], opts: { timeoutMs: number; job?: stri
         pending += s;
         const lines = pending.split('\n');
         pending = lines.pop()!;
-        lines.forEach(opts.onLine);
+        try {
+          lines.forEach(opts.onLine);
+        } catch (error) {
+          console.error('[视频] 更新处理进度失败', opts.job, error);
+        }
       } else if (stdout.length < 4 * MB) stdout += s;
     });
     child.stderr.on('data', (d: Buffer) => {
@@ -137,7 +141,12 @@ function exec(cmd: string, args: string[], opts: { timeoutMs: number; job?: stri
   });
 }
 
+const allowedInputFormats = ['mov', 'matroska'] as const;
+const maxSourceEdge = 4096;
+
 interface Probe {
+  format: (typeof allowedInputFormats)[number];
+  videoIndex: number;
   duration: number;
   /** 显示出来的宽高（已经按旋转换过来） */
   width: number;
@@ -151,22 +160,29 @@ interface Probe {
 }
 
 async function probe(file: string): Promise<Probe> {
-  const r = await exec(FFPROBE, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', file], { timeoutMs: 60_000 });
-  if (r.code !== 0) throw new VideoError('不是有效的视频文件');
+  const r = await exec(FFPROBE, [
+    '-v', 'error', '-protocol_whitelist', 'file', '-format_whitelist', allowedInputFormats.join(','),
+    '-threads', '2', '-print_format', 'json', '-show_format', '-show_streams', file,
+  ], { timeoutMs: 60_000 });
+  if (r.code !== 0) throw new VideoError('无法读取视频，请选择 MP4、MOV、3GP、MKV 或 WebM 文件');
   type Stream = {
+    index: number;
     codec_type?: string; codec_name?: string; width?: number; height?: number; pix_fmt?: string; bit_rate?: string;
     duration?: string; r_frame_rate?: string; avg_frame_rate?: string; channels?: number;
     disposition?: { attached_pic?: number }; tags?: { rotate?: string }; side_data_list?: { rotation?: number }[];
   };
-  let j: { streams?: Stream[]; format?: { duration?: string; bit_rate?: string } };
+  let j: { streams?: Stream[]; format?: { format_name?: string; duration?: string; bit_rate?: string } };
   try {
     j = JSON.parse(r.stdout);
   } catch {
     throw new VideoError('不是有效的视频文件');
   }
+  const format = allowedInputFormats.find((name) => j.format?.format_name?.split(',').includes(name));
+  if (!format) throw new VideoError('不支持这个视频格式');
   const streams = j.streams ?? [];
-  const v = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic && s.width && s.height);
-  if (!v) throw new VideoError('这个文件里没有画面');
+  const v = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic && Number.isInteger(s.index));
+  if (!v?.width || !v.height) throw new VideoError('这个文件里没有画面');
+  if (Math.max(v.width, v.height) > maxSourceEdge) throw new VideoError(`源视频长边不能超过 ${maxSourceEdge} 像素`);
   const a = streams.find((s) => s.codec_type === 'audio');
   const rotation = Number(v.side_data_list?.find((d) => d.rotation !== undefined)?.rotation ?? v.tags?.rotate ?? 0);
   const turned = Math.abs(rotation) % 180 === 90;
@@ -177,9 +193,11 @@ async function probe(file: string): Promise<Probe> {
   const duration = Number(j.format?.duration) || Number(v.duration) || 0;
   if (!(duration > 0)) throw new VideoError('读不出视频时长，换一个视频试试');
   return {
+    format,
+    videoIndex: v.index,
     duration,
-    width: turned ? v.height! : v.width!,
-    height: turned ? v.width! : v.height!,
+    width: turned ? v.height : v.width,
+    height: turned ? v.width : v.height,
     vcodec: v.codec_name ?? '',
     pixfmt: v.pix_fmt ?? '',
     vbitrate: Number(v.bit_rate) || Number(j.format?.bit_rate) || 0,
@@ -190,7 +208,7 @@ async function probe(file: string): Promise<Probe> {
 }
 
 /** 长边缩到 edge 以内，宽高都是偶数（H.264 要求） */
-const fitScale = (edge: number) => `scale=w='if(gte(iw,ih),min(${edge},iw),-2)':h='if(gte(iw,ih),-2,min(${edge},ih))'`;
+const fitScale = (edge: number) => `scale=w='if(gte(iw,ih),trunc(min(${edge},iw)/2)*2,-2)':h='if(gte(iw,ih),-2,trunc(min(${edge},ih)/2)*2)'`;
 
 /* ---------------- 处理队列 ---------------- */
 
@@ -229,19 +247,19 @@ async function processVideo(id: string) {
     const p = await probe(src);
     if (p.duration > VIDEO.maxSeconds + 1) throw new VideoError(`视频超过 ${VIDEO.maxSeconds / 60} 分钟了`);
     const copyVideo = p.vcodec === 'h264' && p.pixfmt === 'yuv420p' && Math.max(p.width, p.height) <= VIDEO.maxEdge
-      && p.vbitrate > 0 && p.vbitrate <= 3_500_000 && p.fps <= 61;
+      && p.width % 2 === 0 && p.height % 2 === 0 && p.vbitrate > 0 && p.vbitrate <= 3_500_000 && p.fps <= 61;
     const copyAudio = p.acodec === 'aac' && p.channels <= 2;
     let lastWrite = 0;
     const r = await exec(FFMPEG, [
-      '-hide_banner', '-nostdin', '-y', '-i', src,
-      '-map', '0:v:0', '-map', '0:a:0?', '-map_metadata', '-1', '-map_chapters', '-1', '-sn', '-dn',
+      '-hide_banner', '-nostdin', '-y', '-protocol_whitelist', 'file', '-threads', '2', '-f', p.format, '-i', src,
+      '-map', `0:${p.videoIndex}`, '-map', '0:a:0?', '-map_metadata', '-1', '-map_chapters', '-1', '-sn', '-dn',
       '-t', String(VIDEO.maxSeconds + 1),
       ...(copyVideo
         ? ['-c:v', 'copy']
         : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26', '-maxrate', '2500k', '-bufsize', '5000k',
           '-pix_fmt', 'yuv420p', '-vf', fitScale(VIDEO.maxEdge), '-fpsmax', '30']),
       ...(p.acodec ? (copyAudio ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '128k', '-ac', '2']) : []),
-      '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', out,
+      '-threads', '2', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', out,
     ], {
       timeoutMs: 20 * 60_000,
       job: id,
@@ -261,7 +279,8 @@ async function processVideo(id: string) {
     const o = await probe(out);
     // 封面：开头附近一帧（很多视频第 0 帧是黑的）；审核：按 15% / 50% / 85% 各截一张，缩小一点
     const grab = (t: number, file: string, edge: number) => exec(FFMPEG, [
-      '-hide_banner', '-nostdin', '-y', '-ss', t.toFixed(2), '-i', out, '-frames:v', '1', '-vf', fitScale(edge), '-q:v', '4', file,
+      '-hide_banner', '-nostdin', '-y', '-ss', t.toFixed(2), '-protocol_whitelist', 'file', '-threads', '2',
+      '-f', o.format, '-i', out, '-frames:v', '1', '-vf', fitScale(edge), '-q:v', '4', '-threads', '2', file,
     ], { timeoutMs: 60_000, job: id });
     await grab(Math.min(1, o.duration * 0.1), shots[0], VIDEO.maxEdge);
     for (const [i, at] of [0.15, 0.5, 0.85].entries()) await grab(o.duration * at, shots[i + 1], 768);
@@ -454,8 +473,8 @@ export async function videoRoutes(app: FastifyInstance) {
     if (v.status === 'uploading') {
       if (v.received !== v.upload_size) throw new HttpError(400, '视频还没传完', { received: v.received });
       await fsp.truncate(uploadPath(v.id), v.upload_size);
-      run("UPDATE videos SET status = 'processing', progress = 0 WHERE id = $id AND status = 'uploading'", { id: v.id });
-      enqueue(v.id);
+      const { changes } = run("UPDATE videos SET status = 'processing', progress = 0 WHERE id = $id AND status = 'uploading'", { id: v.id });
+      if (changes) enqueue(v.id);
     }
     return statusDTO(rowOf(v.id)!);
   });

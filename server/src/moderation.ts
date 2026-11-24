@@ -434,6 +434,7 @@ export async function screen(text: string, urls: string[], emojiFiles: readonly 
   const loaded = await loadImages(urls, c.reviewImages ? MAX_REVIEW_IMAGE_BYTES : config.maxUploadBytes, c.reviewImages);
   const { snapshots } = loaded;
   const frames = videoFrames(video, c);
+  if (video && c.reviewImages && !frames.length) return { verdict: null, snapshots };
   const images = [...loaded.images, ...frames];
   context = withVideoNote(context, frames.length);
   const emojis = await emojiImages(emojiFiles, c);
@@ -520,6 +521,10 @@ async function handle(postId: number) {
     ? (get<{ content: string }>('SELECT content FROM posts WHERE id = $id', { id: post.parent_id })?.content ?? '')
     : null;
   const frames = videoFrames(post.video, c);
+  if (post.video && c.reviewImages && !frames.length) {
+    log(postId, c, 'error', { reason: '无法读取视频审核画面，需人工审核' });
+    return;
+  }
   const context = withVideoNote(reviewContext(post.board, parentText), frames.length);
 
   let prepared: PreparedImages | undefined;

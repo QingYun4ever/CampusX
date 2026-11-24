@@ -372,6 +372,8 @@ export function Tabs<T extends string>({
 const ModalCtx = createContext<() => void>(() => {});
 /** 在弹窗内部调用，带退出动画地关闭弹窗 */
 export const useModalClose = () => useContext(ModalCtx);
+const ModalLeavingCtx = createContext(false);
+export const useModalLeaving = () => useContext(ModalLeavingCtx);
 
 export function Modal({
   title,
@@ -418,7 +420,7 @@ export function Modal({
             <h2>{title}</h2>
             {right}
           </div>
-          {children}
+          <ModalLeavingCtx.Provider value={leaving}>{children}</ModalLeavingCtx.Provider>
         </div>
       </div>
     </ModalCtx.Provider>,

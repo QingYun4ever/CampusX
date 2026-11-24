@@ -1,5 +1,5 @@
 // 在线备份数据库及私信图片（网站不用停）：npm run backup -w server -- --keep 14
-// DATA_DIR/backups 下同名的 .db、.key 和 .dm-uploads 要一同保存。普通上传仍需另行复制。
+// DATA_DIR/backups 下同名的 .db、.key 和 .dm-uploads 要一同保存；普通上传 uploads/ 和视频 videos/ 需另行复制。
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
