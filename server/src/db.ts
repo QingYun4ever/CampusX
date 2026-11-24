@@ -581,4 +581,6 @@ if (addColumn('custom_emojis', 'sent', 'INTEGER NOT NULL DEFAULT 0')) {
   // 老数据不知道发没发过，保守地都当作发过
   run('UPDATE custom_emojis SET sent = 1');
 }
+// origin：从别人那里收藏来的表情，记下最初的文件，避免同一个表情重复收藏
+addColumn('custom_emojis', 'origin', 'TEXT');
 

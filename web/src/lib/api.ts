@@ -433,6 +433,8 @@ export interface CustomEmoji {
   id: number;
   /** 文件名，正文里写成 [e:文件名] */
   file: string;
+  /** 从别人那里收藏来的：最初那个表情的文件名 */
+  origin?: string | null;
   url: string;
   name: string;
   animated: boolean;

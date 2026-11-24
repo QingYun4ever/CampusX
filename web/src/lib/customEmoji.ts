@@ -35,6 +35,12 @@ export function useEmojiActions() {
       await refresh();
       return e;
     },
+    /** 把别人发的表情收藏一份到自己的表情里 */
+    collect: async (file: string) => {
+      const e = await api<CustomEmoji>('/me/emojis/collect', { body: { file } });
+      await refresh();
+      return e;
+    },
     remove: async (id: number) => {
       await api(`/me/emojis/${id}`, { method: 'DELETE' });
       await refresh();

@@ -9,6 +9,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.15.4',
+    date: '2026-11-23',
+    title: 'Kirk 能看图，表情能收藏',
+    changes: [
+      ['fix', 'Kirk 现在能看到整串对话里的图：在评论里 @ 它，主帖和楼上的图它也看得到（最多 6 张）。'],
+      ['new', '长按别人发的自定义表情（电脑上右键），可以加到自己的表情里。'],
+    ],
+  },
+  {
     version: '0.15.3',
     date: '2026-11-23',
     title: '楼中楼和举报处理',

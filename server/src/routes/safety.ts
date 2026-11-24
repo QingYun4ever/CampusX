@@ -11,7 +11,8 @@ import { all, get, now, run, tx } from '../db.ts';
 import { readUploadedImage } from '../image-upload.ts';
 import { postById, unnotify } from '../serialize.ts';
 import { removePost } from './posts.ts';
-import { storeSiteUpload } from '../site-uploads.ts';
+import { EMOJI_TOKEN_ONE, emojiSrc, emojiToken } from '../emoji-tokens.ts';
+import { MAX_REVIEW_IMAGE_BYTES, readStoredUpload, storeSiteUpload } from '../site-uploads.ts';
 import { makeEmojiImage } from '../thumbs.ts';
 import { HttpError, me, parse } from '../util.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
@@ -98,10 +99,13 @@ function userByName(username: string) {
   return userPublic(r);
 }
 
-type EmojiRow = { id: number; file: string; name: string; animated: number; created_at: number };
+type EmojiRow = { id: number; file: string; name: string; animated: number; created_at: number; origin: string | null };
+const EMOJI_COLS = 'id, file, name, animated, created_at, origin';
 const emojiDTO = (r: EmojiRow) => ({
   id: r.id,
   file: r.file,
+  /** 收藏来的表情：最初那个表情的文件名 */
+  origin: r.origin ?? null,
   url: `/uploads/${r.file}`,
   name: r.name,
   animated: !!r.animated,
@@ -309,7 +313,7 @@ export async function safetyRoutes(app: FastifyInstance) {
   /* ---------- 自定义表情 ---------- */
   app.get('/me/emojis', async (req) => {
     const rows = all<EmojiRow>(
-      'SELECT id, file, name, animated, created_at FROM custom_emojis WHERE owner_id = $me AND removed = 0 ORDER BY id DESC',
+      `SELECT ${EMOJI_COLS} FROM custom_emojis WHERE owner_id = $me AND removed = 0 ORDER BY id DESC`,
       { me: me(req).id },
     );
     return { items: rows.map(emojiDTO), limit: MAX_EMOJIS };
@@ -335,7 +339,47 @@ export async function safetyRoutes(app: FastifyInstance) {
       );
     });
     // 超出数量时文件留在 site_uploads（used = 0），24 小时后会被回收
-    return emojiDTO(get<EmojiRow>('SELECT id, file, name, animated, created_at FROM custom_emojis WHERE id = $id', { id })!);
+    return emojiDTO(get<EmojiRow>(`SELECT ${EMOJI_COLS} FROM custom_emojis WHERE id = $id`, { id })!);
+  });
+
+  /**
+   * 收藏别人发过的表情：复制一份到自己名下（原主删掉也不影响）。
+   * 只能收藏已经发出来过的表情；同一个表情（包括别人收藏的副本）只收一次。
+   */
+  app.post('/me/emojis/collect', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
+    const user = me(req);
+    const { file } = parse(z.object({ file: z.string().max(60) }), req.body);
+    if (!EMOJI_TOKEN_ONE.test(emojiToken(file))) throw new HttpError(400, '表情不存在');
+    const source = get<{ animated: number; origin: string | null }>(
+      'SELECT animated, origin FROM custom_emojis WHERE file = $f AND sent = 1', { f: file },
+    );
+    if (!source) throw new HttpError(404, '这个表情不能添加');
+    const root = source.origin ?? file;
+    const mine = () => get<EmojiRow>(
+      `SELECT ${EMOJI_COLS} FROM custom_emojis WHERE owner_id = $me AND removed = 0
+         AND (file IN ($f, $root) OR origin IN ($f, $root))`,
+      { me: user.id, f: file, root },
+    );
+    const count = () => get<{ n: number }>('SELECT COUNT(*) AS n FROM custom_emojis WHERE owner_id = $me AND removed = 0', { me: user.id })!.n;
+    const check = () => {
+      if (mine()) throw new HttpError(409, '已经在你的表情里了');
+      if (count() >= MAX_EMOJIS) throw new HttpError(400, `每人最多 ${MAX_EMOJIS} 个自定义表情，先删掉一些吧`);
+    };
+    check();
+    const { buffer, ext } = await readStoredUpload(emojiSrc(file), MAX_REVIEW_IMAGE_BYTES);
+    const url = storeSiteUpload(user.id, buffer, ext);
+    const name = url.slice('/uploads/'.length);
+    const id = tx(() => {
+      check();
+      run('UPDATE site_uploads SET used = 1 WHERE name = $name', { name });
+      // 原表情已经发出来过，副本也算发过：不经过审核也不会被当成没用的文件清理
+      return Number(
+        run('INSERT INTO custom_emojis (owner_id, file, animated, sent, origin, created_at) VALUES ($me, $file, $a, 1, $o, $t)', {
+          me: user.id, file: name, a: source.animated, o: root, t: now(),
+        }).lastId,
+      );
+    });
+    return emojiDTO(get<EmojiRow>(`SELECT ${EMOJI_COLS} FROM custom_emojis WHERE id = $id`, { id })!);
   });
 
   /** 只从「我的表情」里移除；文件保留，已经发出去的内容还能显示 */

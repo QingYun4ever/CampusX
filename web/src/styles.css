@@ -1766,6 +1766,7 @@ a.card-row:hover {
 }
 /* 自定义表情：行内和文字一样高一点；只发表情时放大成贴纸 */
 img.cemoji {
+  -webkit-touch-callout: none;
   display: inline-block;
   height: 1.9em;
   width: auto;
@@ -5417,6 +5418,30 @@ img.emoji {
 }
 .dm-send.ready:active {
   transform: scale(0.9);
+}
+.emoji-ctx {
+  position: fixed;
+  right: auto;
+  min-width: 200px;
+  z-index: 70;
+  transform-origin: top left;
+}
+.emoji-ctx-head {
+  display: flex;
+  justify-content: center;
+  padding: 14px 16px 6px;
+}
+.emoji-ctx-head img {
+  height: 72px;
+  max-width: 140px;
+  object-fit: contain;
+}
+.menu > button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.menu > button:disabled:hover {
+  background: none;
 }
 .dm-ctx {
   position: fixed;
