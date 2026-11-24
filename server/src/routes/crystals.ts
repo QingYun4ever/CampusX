@@ -6,6 +6,7 @@ import { boostPost, boostStatus, endBoosts } from '../boosts.ts';
 import { assertCanInteract } from '../serialize.ts';
 import { resolveTarget } from './posts.ts';
 import { cursorNum, me, parse } from '../util.ts';
+import { createMyInvite, myInvites } from '../invites.ts';
 
 export async function crystalRoutes(app: FastifyInstance) {
   app.get('/me/crystals', async (req, reply) => {
@@ -30,6 +31,18 @@ export async function crystalRoutes(app: FastifyInstance) {
     const user = me(req);
     const gained = tx(() => claimTask(user.id, (req.params as { id: string }).id));
     return { gained, wallet: wallet(user.id) };
+  });
+
+  /* ---------- 邀请同学 ---------- */
+  app.get('/me/invites', async (req, reply) => {
+    reply.header('Cache-Control', 'private, no-store');
+    return myInvites(me(req).id);
+  });
+
+  app.post('/me/invites', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+    const user = me(req);
+    tx(() => createMyInvite(user.id));
+    return myInvites(user.id);
   });
 
   app.post('/me/decorations/:id/buy', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req) => {

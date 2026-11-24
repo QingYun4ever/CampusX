@@ -16,6 +16,7 @@ import { TERMS_VERSION } from '../config.ts';
 import { get, now, run, tx } from '../db.ts';
 import { HttpError, me, parse } from '../util.ts';
 import { userById } from './users-common.ts';
+import { assertIpRoom, getSignup, inviterOf, ipKey, noteInvited } from '../invites.ts';
 
 const strict = { config: { rateLimit: { max: 15, timeWindow: '1 minute' } } };
 
@@ -57,12 +58,13 @@ function findInvite(raw: string, time = now()) {
   }
 
   const code = normalizeInvite(raw);
-  const invite = get<{ note: string }>(
-    'SELECT note FROM invites WHERE code = $code AND used_count < max_uses AND (expires_at IS NULL OR expires_at > $time)',
+  const invite = get<{ note: string; personal: number; inviter: string | null }>(
+    `SELECT i.note, i.personal, u.display_name AS inviter FROM invites i LEFT JOIN users u ON u.id = i.created_by
+     WHERE i.code = $code AND i.used_count < i.max_uses AND (i.expires_at IS NULL OR i.expires_at > $time)`,
     { code, time },
   );
-  if (!invite) throw new HttpError(400, '邀请码无效、已过期或已用完');
-  return { code, role: 'user' as const, note: invite.note };
+  if (!invite || (invite.personal && !getSignup().userInvites)) throw new HttpError(400, '邀请码无效、已过期或已用完');
+  return { code, role: 'user' as const, note: invite.personal && invite.inviter ? `${invite.inviter} 邀请你加入` : invite.note };
 }
 
 export async function authRoutes(app: FastifyInstance) {
@@ -72,6 +74,8 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/auth/invite/check', strict, async (req) => {
     const body = parse(z.object({ inviteCode: inviteCodeSchema }), req.body);
     const { note } = findInvite(body.inviteCode);
+    // 第一步就告诉他这个网络注册满了，不用填完再失败
+    assertIpRoom(ipKey(req.ip));
     return { ok: true, note };
   });
 
@@ -94,11 +98,15 @@ export async function authRoutes(app: FastifyInstance) {
     if (get('SELECT 1 FROM users WHERE username = $u', { u: body.username })) {
       throw new HttpError(409, '用户名已被占用');
     }
+    const ip = ipKey(req.ip);
+    assertIpRoom(ip);
     const passwordHash = await hashPassword(body.password);
 
     const userId = tx(() => {
       const t = now();
       const { code, role } = findInvite(body.inviteCode, t);
+      assertIpRoom(ip);
+      const inviter = role === 'user' ? inviterOf(code) : null;
       const used = role === 'admin'
         ? run('DELETE FROM bootstrap_admin_invite WHERE code_hash = $code AND expires_at > $t', { code, t })
         : run(
@@ -108,8 +116,8 @@ export async function authRoutes(app: FastifyInstance) {
           );
       if (!used.changes) throw new HttpError(400, '邀请码无效、已过期或已用完');
       const { lastId } = run(
-        `INSERT INTO users (username, password_hash, display_name, class_name, role, created_at, terms_version, terms_accepted_at)
-         VALUES ($u, $h, $d, $c, $role, $t, $tv, $t)`,
+        `INSERT INTO users (username, password_hash, display_name, class_name, role, created_at, terms_version, terms_accepted_at, register_ip, invited_by)
+         VALUES ($u, $h, $d, $c, $role, $t, $tv, $t, $ip, $inviter)`,
         {
           u: body.username,
           h: passwordHash,
@@ -118,8 +126,11 @@ export async function authRoutes(app: FastifyInstance) {
           role,
           t,
           tv: TERMS_VERSION,
+          ip,
+          inviter,
         },
       );
+      if (inviter) noteInvited(inviter, lastId);
       // 默认加入所有初始的吧
       run(
         `INSERT INTO board_members (board_id, user_id, created_at)

@@ -10,6 +10,7 @@ import { configSchema, describeError, getConfig, manualDecision, publicConfig, r
 import { postsByIds, visibleNotification } from '../serialize.ts';
 import { assistantSchema, publicAssistantConfig, updateAssistantConfig } from '../assistant.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
+import { getSignup, saveSignup } from '../invites.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
 
 export async function miscRoutes(app: FastifyInstance) {
@@ -47,7 +48,7 @@ export async function miscRoutes(app: FastifyInstance) {
         actor: userPublic(r),
         post: r.post_id ? (posts.get(r.post_id) ?? null) : null,
       }))
-      .filter((n) => !n.post?.deleted && (n.type === 'follow' || n.type === 'moderation' || n.type === 'report' || n.type === 'event' || n.post));
+      .filter((n) => !n.post?.deleted && (n.type === 'follow' || n.type === 'moderation' || n.type === 'report' || n.type === 'event' || n.type === 'invite' || n.post));
     return { items, nextCursor: rows.length >= 30 ? String(rows[rows.length - 1].nid) : null };
   });
 
@@ -98,7 +99,7 @@ export async function miscRoutes(app: FastifyInstance) {
     admin.get('/admin/invites', async () => {
       const rows = all(
         `SELECT i.*, u.username AS creator FROM invites i LEFT JOIN users u ON u.id = i.created_by
-         ORDER BY i.created_at DESC LIMIT 200`,
+         WHERE i.personal = 0 ORDER BY i.created_at DESC LIMIT 200`,
       );
       return rows.map((r) => ({
         code: formatInvite(r.code),
@@ -127,6 +128,19 @@ export async function miscRoutes(app: FastifyInstance) {
     admin.delete('/admin/invites/:code', async (req) => {
       run('DELETE FROM invites WHERE code = $c', { c: normalizeInvite((req.params as { code: string }).code) });
       return { ok: true };
+    });
+
+    admin.get('/admin/signup', async () => ({
+      ...getSignup(),
+      /** 用户邀请来的人数、发出去的奖励 */
+      invited: get<{ n: number }>('SELECT COUNT(*) AS n FROM users WHERE invited_by IS NOT NULL')!.n,
+      inviteCrystals: get<{ n: number }>("SELECT COALESCE(SUM(delta), 0) AS n FROM crystal_log WHERE kind = 'invite'")!.n,
+    }));
+
+    admin.put('/admin/signup', async (req) => {
+      const body = parse(z.object({ ipLimit: z.number().int().min(0).max(50), userInvites: z.boolean() }), req.body);
+      saveSignup(body);
+      return getSignup();
     });
 
     admin.get('/admin/users', async () => {
@@ -293,7 +307,7 @@ export async function miscRoutes(app: FastifyInstance) {
         blocked: n("SELECT count(*) AS n FROM moderation_logs WHERE verdict = 'block' AND created_at > $t", { t: dayAgo }),
         moderation: getConfig().enabled,
         invitesLeft: n(
-          'SELECT coalesce(sum(max_uses - used_count), 0) AS n FROM invites WHERE used_count < max_uses AND (expires_at IS NULL OR expires_at > $t)',
+          'SELECT coalesce(sum(max_uses - used_count), 0) AS n FROM invites WHERE personal = 0 AND used_count < max_uses AND (expires_at IS NULL OR expires_at > $t)',
           { t: now() },
         ),
       };

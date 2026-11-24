@@ -31,6 +31,7 @@ const Settings = lazy(() => import('./pages/Settings').then(({ Settings }) => ({
 const Bookmarks = lazy(() => import('./pages/Bookmarks').then(({ Bookmarks }) => ({ default: Bookmarks })));
 const Market = lazy(() => import('./pages/Market').then(({ Market }) => ({ default: Market })));
 const Crystals = lazy(() => import('./pages/Crystals').then(({ Crystals }) => ({ default: Crystals })));
+const InvitePage = lazy(() => import('./pages/Invite').then(({ InvitePage }) => ({ default: InvitePage })));
 const EventPage = lazy(() => import('./pages/Events').then(({ EventPage }) => ({ default: EventPage })));
 const EventsPage = lazy(() => import('./pages/Events').then(({ EventsPage }) => ({ default: EventsPage })));
 const Changelog = lazy(() => import('./pages/Changelog').then(({ Changelog }) => ({ default: Changelog })));
@@ -151,6 +152,7 @@ export function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/market" element={<Market />} />
           <Route path="/crystals" element={<Crystals />} />
+          <Route path="/invite" element={<InvitePage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/events/:id" element={<EventPage />} />
           <Route path="/bookmarks" element={<Bookmarks />} />

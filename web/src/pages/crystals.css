@@ -311,3 +311,11 @@
 .crystal-events .event-row:last-child {
   border-bottom: 0;
 }
+
+.crystal-invite {
+  margin-top: 10px;
+  color: inherit;
+}
+.crystal-invite > svg:first-child {
+  color: var(--accent);
+}

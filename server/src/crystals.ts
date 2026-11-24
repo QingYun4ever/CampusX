@@ -3,7 +3,7 @@
  * 紫水晶奖励「被别人认可」，用来解锁头像装扮、给好帖子打赏。
  *
  * - 每一笔都写进 crystal_log（只追加），users.crystals 是余额，两者在同一个事务里更新
- * - 赚：每日签到、被不同的人赞或回应（每天有上限）、新手任务
+ * - 赚：每日签到、被不同的人赞或回应（每天有上限）、新手任务、邀请同学（invites.ts）
  * - 花：解锁头像装扮、打赏、推流（boosts.ts）
  * - 活动（events.ts）：带话题发帖得紫水晶，活动期间签到翻倍
  * - 帖子因违规被删时，扣回这条帖子被赞赚到的紫水晶（余额不够就扣到 0）
@@ -13,6 +13,7 @@
 import { all, get, now, run } from './db.ts';
 import { dayOf } from './levels.ts';
 import { HttpError } from './util.ts';
+import { inviteRewardAfterCheckin } from './invites.ts';
 
 export const CRYSTAL = {
   checkinBase: 5,
@@ -37,6 +38,13 @@ export const DECORATION_PRICES: Record<string, number> = {
   snow: 120,
   prism: 150,
   neko: 150,
+  maple: 100,
+  bubble: 100,
+  orbit: 150,
+  hearts: 150,
+  flame: 200,
+  thunder: 200,
+  crown: 300,
 };
 
 export const balanceOf = (userId: number) =>
@@ -96,6 +104,7 @@ export function crystalCheckin(userId: number, t = now()) {
   const streak = s.streak + 1;
   run('UPDATE users SET crystal_day = $d, crystal_streak = $s WHERE id = $u', { d: s.today, s: streak, u: userId });
   const gained = record(userId, 'checkin', s.today, checkinReward(streak, checkinBonus(t)), null, t);
+  if (gained !== null) inviteRewardAfterCheckin(userId);
   return gained === null ? null : { gained, streak };
 }
 
@@ -239,6 +248,7 @@ export function history(userId: number, before: number | null) {
 
 /** 明细里要显示名字的：活动标题 */
 function noteOf(kind: string, ref: string) {
+  if (kind === 'invite') return get<{ n: string }>('SELECT display_name AS n FROM users WHERE id = $id', { id: Number(ref) })?.n ?? null;
   if (kind === 'event') return get<{ title: string }>('SELECT title FROM events WHERE id = $id', { id: Number(ref) })?.title ?? null;
   if (kind === 'revoke' && ref.startsWith('event:')) {
     return get<{ title: string }>(

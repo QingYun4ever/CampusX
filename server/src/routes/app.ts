@@ -227,6 +227,18 @@ export async function appRoutes(app: FastifyInstance) {
       // 赞和回应可能很多，合成一条；其它逐条推
       const quiet = rows.filter((r) => r.type === 'like' || r.type === 'reaction');
       for (const r of rows.filter((r) => !quiet.includes(r)).slice(0, 5)) {
+        if (r.type === 'invite') {
+          let x: { joined?: boolean; gained?: number } = {};
+          try { x = JSON.parse(r.extra ?? '{}'); } catch { /* 忽略 */ }
+          items.push({
+            id: `n-${r.id}`,
+            kind: 'interactions',
+            title: x.gained ? `邀请奖励到账了` : `${r.display_name} 用你的邀请码加入了校墙`,
+            body: x.gained ? `${r.display_name} 签到满 3 天，紫水晶 +${x.gained}` : 'TA 签到满 3 天，你会得到紫水晶',
+            path: '/invite',
+          });
+          continue;
+        }
         if (r.type === 'event') {
           let x: { title?: string; eventId?: number; gained?: number; rejected?: boolean; note?: string } = {};
           try { x = JSON.parse(r.extra ?? '{}'); } catch { /* 忽略 */ }

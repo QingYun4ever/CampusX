@@ -592,7 +592,7 @@ db.exec(`
 CREATE TABLE IF NOT EXISTS crystal_log (
   id         INTEGER PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  kind       TEXT NOT NULL,            -- checkin | liked | task | buy | tip_in | tip_out | revoke | boost | boost_refund | event | admin
+  kind       TEXT NOT NULL,            -- checkin | liked | task | buy | tip_in | tip_out | revoke | boost | boost_refund | event | invite | admin
   ref        TEXT NOT NULL,
   delta      INTEGER NOT NULL,
   post_id    INTEGER,
@@ -686,6 +686,13 @@ addColumn('users', 'crystals', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'crystal_day', 'TEXT');
 addColumn('users', 'crystal_streak', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('posts', 'tip_total', 'INTEGER NOT NULL DEFAULT 0');
+// 防小号：注册时的 IP 哈希（之前注册的是 NULL，不算）；用户自己的邀请码（invites.personal）和邀请人
+addColumn('users', 'register_ip', 'TEXT');
+addColumn('users', 'invited_by', 'INTEGER');
+addColumn('invites', 'personal', 'INTEGER NOT NULL DEFAULT 0');
+db.exec(`CREATE INDEX IF NOT EXISTS idx_users_register_ip ON users(register_ip) WHERE register_ip IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_invited_by ON users(invited_by) WHERE invited_by IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_invites_personal ON invites(created_by) WHERE personal = 1;`);
 // 装扮改成用紫水晶解锁之前，已经戴着的那一个直接算解锁
 if (!get("SELECT 1 FROM settings WHERE key = 'decorations_grandfathered'")) {
   tx(() => {

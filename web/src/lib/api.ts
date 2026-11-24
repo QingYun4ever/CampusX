@@ -196,7 +196,9 @@ export async function uploadImage(file: File): Promise<string> {
 
 /* ---------------- 类型 ---------------- */
 
-export type AvatarDecoration = '' | 'halo' | 'aurora' | 'rose' | 'prism' | 'neon' | 'stars' | 'sakura' | 'neko' | 'snow';
+export type AvatarDecoration =
+  | '' | 'halo' | 'aurora' | 'rose' | 'prism' | 'neon' | 'stars' | 'sakura' | 'neko' | 'snow'
+  | 'maple' | 'bubble' | 'orbit' | 'hearts' | 'flame' | 'thunder' | 'crown';
 
 export interface UserLite {
   id: number;
@@ -410,7 +412,7 @@ export interface Page<T> {
 
 export interface Notification {
   id: number;
-  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation' | 'report' | 'tip' | 'boost' | 'event';
+  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation' | 'report' | 'tip' | 'boost' | 'event' | 'invite';
   read: boolean;
   /** reaction：用的哪个表情；moderation：JSON { reason, excerpt, warnings } */
   extra?: string;
@@ -462,7 +464,7 @@ export interface Wallet {
 
 export interface CrystalEntry {
   id: number;
-  kind: 'checkin' | 'liked' | 'task' | 'buy' | 'tip_in' | 'tip_out' | 'revoke' | 'boost' | 'boost_refund' | 'event' | 'admin';
+  kind: 'checkin' | 'liked' | 'task' | 'buy' | 'tip_in' | 'tip_out' | 'revoke' | 'boost' | 'boost_refund' | 'event' | 'invite' | 'admin';
   ref: string;
   /** 活动名 */
   note?: string | null;
@@ -472,6 +474,27 @@ export interface CrystalEntry {
 }
 
 /** 一条帖子的推流情况 */
+/** 我的邀请码和邀请来的人 */
+export interface InviteInfo {
+  enabled: boolean;
+  canCreate: boolean;
+  code: string | null;
+  rules: { reward: number; activeDays: number; maxRewarded: number; maxInvites: number };
+  earned: number;
+  rewardedCount: number;
+  people: {
+    id: number;
+    username: string;
+    displayName: string;
+    avatar: string | null;
+    avatarDecoration: AvatarDecoration;
+    joinedAt: number;
+    checkinDays: number;
+    status: 'waiting' | 'rewarded' | 'none';
+    reward: number;
+  }[];
+}
+
 export interface BoostStatus {
   reach: number;
   shown: number;

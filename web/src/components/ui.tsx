@@ -92,7 +92,7 @@ export function Avatar({ src, name, size = 40, decoration, original = false }: {
             {[...(name || '?')][0]}
           </span>
         )}
-        <AvatarFrame kind={decoration} />
+        <AvatarFrame kind={decoration} live={size >= 64} />
       </span>
     );
   }

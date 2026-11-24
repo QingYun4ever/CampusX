@@ -1382,10 +1382,64 @@ function AssistantPage() {
   );
 }
 
+/** 注册规则：同一网络最多注册几个账号、用户能不能自己邀请 */
+function SignupSettings() {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ['admin-signup'],
+    queryFn: () => api<{ ipLimit: number; userInvites: boolean; invited: number; inviteCrystals: number }>('/admin/signup'),
+  });
+  const [limit, setLimit] = useState<string | null>(null);
+  const save = async (patch: Partial<{ ipLimit: number; userInvites: boolean }>) => {
+    if (!q.data) return;
+    try {
+      const r = await api<{ ipLimit: number; userInvites: boolean }>('/admin/signup', {
+        method: 'PUT',
+        body: { ipLimit: q.data.ipLimit, userInvites: q.data.userInvites, ...patch },
+      });
+      qc.setQueryData(['admin-signup'], { ...q.data, ...r });
+      setLimit(null);
+      toast('已保存');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
+  if (!q.data) return null;
+  const v = limit ?? String(q.data.ipLimit);
+  return (
+    <div className="admin-form signup-settings">
+      <div className="admin-card">
+        <div className="name">同一网络最多注册几个账号</div>
+        <div className="muted small">
+          按注册时的 IP 算，防止批量注册小号；填 0 不限。这个功能上线前注册的账号不算。
+          全校共用一个出口 IP 的话（比如都连学校 Wi-Fi），会挡住正常的同学，可以调大或者填 0。
+        </div>
+        <div className="row" style={{ alignItems: 'flex-end' }}>
+          <Field label="上限" inputMode="numeric" value={v} onChange={(x) => setLimit(x.replace(/\D/g, '').slice(0, 2))} />
+          <button className="btn btn-primary" disabled={limit === null || v === ''} onClick={() => save({ ipLimit: Number(v) })}>
+            保存
+          </button>
+        </div>
+      </div>
+      <div className="admin-card setting-row">
+        <div>
+          <div className="name">允许用户邀请同学</div>
+          <div className="muted small">
+            注册满 3 天的人可以生成自己的邀请码，邀请的人签到满 3 天，邀请人得 20 颗紫水晶，最多算 10 个人。
+            目前用户邀请了 {q.data.invited} 人，发出 {q.data.inviteCrystals} 颗。
+          </div>
+        </div>
+        <Switch on={q.data.userInvites} onChange={(x) => save({ userInvites: x })} label="允许用户邀请同学" />
+      </div>
+    </div>
+  );
+}
+
 function InvitesPage() {
   return (
     <>
       <PageHead title="邀请码" sub="只有拿到邀请码的人才能注册。生成后会自动复制注册链接" />
+      <SignupSettings />
       <div className="admin-list">
         <Invites />
       </div>

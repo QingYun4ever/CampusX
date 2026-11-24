@@ -1,0 +1,124 @@
+.invite-page {
+  padding: 0 16px 40px;
+}
+.invite-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 8px 18px;
+  text-align: center;
+}
+.invite-hero > svg {
+  color: var(--accent);
+}
+.invite-hero p {
+  margin: 0;
+  max-width: 320px;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.invite-hero .crystal-amount {
+  vertical-align: -2px;
+  color: var(--text);
+}
+.invite-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px 16px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  text-align: center;
+}
+.invite-card.muted {
+  padding: 18px 16px;
+  font-size: 14px;
+}
+.invite-code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+.invite-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+}
+.invite-actions .btn {
+  flex: 1;
+  justify-content: center;
+}
+.invite-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  color: var(--text-3, var(--text-2));
+  font-size: 13px;
+  cursor: pointer;
+}
+.invite-section {
+  margin-top: 28px;
+}
+.invite-section h2 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 800;
+}
+.invite-people {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.invite-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.invite-person-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+}
+.invite-person-main .grow {
+  min-width: 0;
+}
+.invite-person-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.invite-state {
+  flex: none;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.invite-state.got {
+  color: #8b5cf6;
+}
+.invite-rules {
+  margin: 24px 0 0;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.7;
+}

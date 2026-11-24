@@ -40,6 +40,34 @@
   --avatar-ring: #9ad7ff;
   --avatar-glow: #7cc4ff;
 }
+.avatar[data-avatar-decoration='maple'] {
+  --avatar-ring: #ff7a3d;
+  --avatar-glow: #ff5a1f;
+}
+.avatar[data-avatar-decoration='bubble'] {
+  --avatar-ring: #7fd6ff;
+  --avatar-glow: #4fc3f7;
+}
+.avatar[data-avatar-decoration='orbit'] {
+  --avatar-ring: #9a8cff;
+  --avatar-glow: #6c5ce7;
+}
+.avatar[data-avatar-decoration='hearts'] {
+  --avatar-ring: #ff5c8a;
+  --avatar-glow: #ff3d7f;
+}
+.avatar[data-avatar-decoration='flame'] {
+  --avatar-ring: #ff7a1a;
+  --avatar-glow: #ff4d00;
+}
+.avatar[data-avatar-decoration='thunder'] {
+  --avatar-ring: #7c9cff;
+  --avatar-glow: #a855f7;
+}
+.avatar[data-avatar-decoration='crown'] {
+  --avatar-ring: #f5c542;
+  --avatar-glow: #ffb300;
+}
 .avatar[data-avatar-decoration],
 .new-pill .stack .avatar[data-avatar-decoration],
 .face-stack .avatar[data-avatar-decoration] {
@@ -140,11 +168,36 @@
   display: none;
 }
 
+/* 雷电：电光带一点光晕 */
+.avatar-frame .bolt-glow {
+  filter: drop-shadow(0 0 2px #a78bfa);
+}
+.avatar.framed.tiny[data-avatar-decoration='thunder'],
+.avatar.framed.tiny[data-avatar-decoration='crown'] {
+  box-shadow: 0 0 0 2px var(--avatar-ring);
+}
+
+/* 光环和动画用的伪元素：只在大头像上出现 */
+.avatar.framed.live::after {
+  pointer-events: none;
+}
+
 .avatar-frame g.twinkle,
 .avatar-frame g.spin,
-.avatar-frame g.ear {
+.avatar-frame g.ear,
+.avatar-frame g.rise,
+.avatar-frame g.zap,
+.avatar-frame g.shine {
   transform-box: fill-box;
   transform-origin: center;
+}
+/* 皇冠上的高光平时藏在皇冠外面，动画时扫过去 */
+.avatar-frame g.shine {
+  transform: translateX(-30px);
+}
+.avatar-frame g.flicker {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
 }
 .avatar-frame g.ear {
   transform-origin: 50% 100%;
@@ -180,6 +233,170 @@
   }
   .avatar.framed.live .ear.left {
     animation: frame-ear-l 7s ease-in-out 1.5s infinite;
+  }
+
+  /* 蓝色光环：一道亮光沿着圈走 */
+  .avatar.framed.live[data-avatar-decoration='halo']::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    z-index: 2;
+    border-radius: 50%;
+    background: conic-gradient(transparent 0 62%, #d7efff 82%, #fff 86%, transparent 92%);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+    animation: frame-spin 4s linear infinite;
+  }
+  /* 极光：青绿到紫的光带转动，外面一层柔光 */
+  .avatar.framed.live[data-avatar-decoration='aurora']::before,
+  .avatar.framed.live[data-avatar-decoration='aurora']::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    background: conic-gradient(#00ba7c, #47e5bc, #7856ff, #b18cff, #00ba7c);
+    pointer-events: none;
+    animation: frame-spin 9s linear infinite;
+  }
+  .avatar.framed.live[data-avatar-decoration='aurora']::before {
+    inset: -3px;
+    z-index: 2;
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  }
+  .avatar.framed.live[data-avatar-decoration='aurora']::after {
+    inset: -5px;
+    z-index: 0;
+    filter: blur(8px);
+    opacity: 0.55;
+  }
+  /* 玫瑰、心动：柔光一呼一吸；心动是两下的心跳 */
+  .avatar.framed.live[data-avatar-decoration='rose']::after,
+  .avatar.framed.live[data-avatar-decoration='hearts']::after,
+  .avatar.framed.live[data-avatar-decoration='flame']::after,
+  .avatar.framed.live[data-avatar-decoration='thunder']::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    z-index: 0;
+    border-radius: 50%;
+    box-shadow: 0 0 16px 5px color-mix(in srgb, var(--avatar-glow) 60%, transparent);
+  }
+  .avatar.framed.live[data-avatar-decoration='rose']::after {
+    animation: frame-breathe 3.2s ease-in-out infinite;
+  }
+  .avatar.framed.live[data-avatar-decoration='hearts']::after {
+    animation: frame-beat 1.6s ease-in-out infinite;
+  }
+  .avatar.framed.live[data-avatar-decoration='flame']::after {
+    animation: frame-breathe 1.1s ease-in-out infinite;
+  }
+  .avatar.framed.live[data-avatar-decoration='thunder']::after {
+    animation: frame-zap 3.4s linear infinite;
+  }
+  .avatar.framed.live[data-avatar-decoration='hearts'] {
+    animation: frame-beat-ring 1.6s ease-in-out infinite;
+  }
+
+  .avatar.framed.live .rise {
+    animation: frame-rise 3.6s ease-out infinite;
+  }
+  .avatar.framed.live .flicker {
+    animation: frame-flicker 1.3s ease-in-out infinite alternate;
+  }
+  .avatar.framed.live .zap {
+    animation: frame-zap 3.4s linear infinite;
+  }
+  .avatar.framed.live .zap.late {
+    animation-delay: 1.3s;
+  }
+  .avatar.framed.live .zap.later {
+    animation-delay: 2.2s;
+  }
+  .avatar.framed.live .shine {
+    animation: frame-shine 3.5s ease-in-out infinite;
+  }
+}
+@keyframes frame-rise {
+  0% {
+    transform: translateY(6px) scale(0.6);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-22px) scale(1.05);
+    opacity: 0;
+  }
+}
+@keyframes frame-flicker {
+  0% {
+    transform: scale(1, 0.82);
+  }
+  35% {
+    transform: scale(0.92, 1.08) skewX(-4deg);
+  }
+  70% {
+    transform: scale(1.04, 0.95) skewX(3deg);
+  }
+  100% {
+    transform: scale(0.96, 1.12);
+  }
+}
+@keyframes frame-zap {
+  0%,
+  60%,
+  64%,
+  68%,
+  100% {
+    opacity: 1;
+  }
+  62%,
+  66% {
+    opacity: 0.15;
+  }
+  20%,
+  40% {
+    opacity: 0.75;
+  }
+}
+@keyframes frame-shine {
+  0%,
+  55% {
+    transform: translateX(-28px);
+  }
+  85%,
+  100% {
+    transform: translateX(30px);
+  }
+}
+@keyframes frame-beat {
+  0%,
+  40%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  12% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  26% {
+    transform: scale(1.04);
+    opacity: 0.85;
+  }
+}
+@keyframes frame-beat-ring {
+  0%,
+  40%,
+  100% {
+    box-shadow: 0 0 0 2px var(--avatar-ring);
+  }
+  12% {
+    box-shadow: 0 0 0 3.5px var(--avatar-ring);
   }
 }
 @keyframes frame-spin {

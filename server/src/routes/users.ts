@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { ownsDecoration } from '../crystals.ts';
+import { DECORATION_PRICES, ownsDecoration } from '../crystals.ts';
 import { all, get, now, run, tx } from '../db.ts';
 import { assertCanInteract, blockState, HIDDEN_BOARDS, hydrate, notify, postSelect, unnotify, visibleTo } from '../serialize.ts';
 import { levelInfo } from '../levels.ts';
@@ -21,7 +21,7 @@ const profileSchema = z.object({
   className: z.string().trim().max(20, '班级最多 20 字').optional(),
   gradYear: z.number().int().min(1950).max(2100).nullable().optional(),
   avatar: imagePath.optional(),
-  avatarDecoration: z.enum(['', 'halo', 'aurora', 'rose', 'prism', 'neon', 'stars', 'sakura', 'neko', 'snow'], { error: '头像装扮无效' }).optional(),
+  avatarDecoration: z.string().refine((d) => d === '' || d in DECORATION_PRICES, '头像装扮无效').optional(),
   banner: imagePath.optional(),
 });
 

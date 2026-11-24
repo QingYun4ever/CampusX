@@ -23,6 +23,7 @@ const META = {
   tip: { icon: <CrystalIcon size={26} />, text: '打赏了你的帖子' },
   event: { icon: null, text: '' },
   boost: { icon: <TrendingUp size={24} color="var(--crystal-text)" strokeWidth={2.4} />, text: '帮你的帖子推流了' },
+  invite: { icon: <UserPlus size={24} color="var(--accent)" />, text: '用你的邀请码加入了校墙' },
 };
 
 /** 举报处理完成 */
@@ -115,6 +116,17 @@ function EventItem({ n }: { n: Notification }) {
   );
 }
 
+/** 邀请：TA 刚注册，或者 TA 签到满 3 天、奖励到账 */
+function inviteText(extra?: string | null) {
+  try {
+    const x = JSON.parse(extra || '{}') as { gained?: number };
+    if (x.gained) return `签到满 3 天，你的邀请奖励到账了，紫水晶 +${x.gained}`;
+  } catch {
+    /* 忽略 */
+  }
+  return '用你的邀请码加入了校墙，TA 签到满 3 天你会得到紫水晶';
+}
+
 function Item({ n }: { n: Notification }) {
   const nav = useNavigate();
   if (n.type === 'moderation') return <ModerationItem n={n} />;
@@ -143,7 +155,7 @@ function Item({ n }: { n: Notification }) {
           <Link to={`/u/${n.actor.username}`} className="name" onClick={(e) => e.stopPropagation()}>
             {n.actor.displayName}
           </Link>{' '}
-          {n.type === 'tip' ? `打赏了你 ${n.extra} 颗紫水晶` : n.type === 'boost' ? `帮你的帖子推流了，会多 ${n.extra} 个人看到` : m.text}
+          {n.type === 'tip' ? `打赏了你 ${n.extra} 颗紫水晶` : n.type === 'boost' ? `帮你的帖子推流了，会多 ${n.extra} 个人看到` : n.type === 'invite' ? inviteText(n.extra) : m.text}
           <span className="faint"> · {timeAgo(n.createdAt)}</span>
         </div>
         {n.post && (

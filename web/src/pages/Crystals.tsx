@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { CalendarCheck, Check, ChevronRight } from 'lucide-react';
+import { CalendarCheck, Check, ChevronRight, UserPlus } from 'lucide-react';
 import { CrystalIcon } from '../components/Crystal';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Empty, Spinner, toast, TopBar } from '../components/ui';
@@ -37,6 +37,7 @@ function entryText(e: CrystalEntry, tasks: Wallet['tasks']) {
     case 'boost': return '推流';
     case 'boost_refund': return '推流结束，退回没用完的';
     case 'event': return `活动奖励${e.note ? `：${e.note}` : ''}`;
+    case 'invite': return `邀请同学${e.note ? `：${e.note}` : ''}`;
     case 'admin': return '管理员调整';
     default: return e.kind;
   }
@@ -133,6 +134,7 @@ function Rules({ w }: { w: Wallet }) {
         <li><b>新手任务</b>：每项领一次</li>
         <li><b>别人打赏</b>：好帖子会收到别人送的紫水晶</li>
         <li><b>参加活动</b>：活动期间带话题发帖，管理员审核通过后发放；有的活动签到还翻倍</li>
+        <li><b>邀请同学</b>：同学用你的邀请码注册、签到满 3 天，你得 20 颗，最多算 10 个人。<Link to="/invite">我的邀请码</Link></li>
       </ul>
       <h2>怎么用</h2>
       <ul className="crystal-rules">
@@ -209,6 +211,14 @@ export function Crystals() {
             <div className="muted">颗紫水晶 · 全站通用，可以解锁头像装扮、打赏、推流</div>
           </div>
           <CheckinCard w={q.data} />
+          <Link to="/invite" className="crystal-checkin crystal-invite">
+            <UserPlus size={22} />
+            <div className="grow">
+              <b>邀请同学</b>
+              <div className="muted small">同学注册后签到满 3 天，你得 20 颗紫水晶</div>
+            </div>
+            <ChevronRight size={18} className="faint" />
+          </Link>
           <Tasks w={q.data} />
           <Events />
           <Rules w={q.data} />
