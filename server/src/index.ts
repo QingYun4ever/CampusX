@@ -19,6 +19,8 @@ import { crystalRoutes } from './routes/crystals.ts';
 import { eventRoutes } from './routes/events.ts';
 import { emojiPackRoutes } from './routes/emoji-packs.ts';
 import { seedEmojiPacks } from './emoji-packs.ts';
+import { installMetrics } from './metrics.ts';
+import { loadRoutes } from './routes/load.ts';
 import { dmRoutes } from './routes/dm.ts';
 import { miscRoutes } from './routes/misc.ts';
 import { postRoutes } from './routes/posts.ts';
@@ -44,7 +46,10 @@ const app = Fastify({
 await app.register(cors, {
   origin: (origin, cb) => cb(null, !origin || config.corsOrigins.includes(origin)),
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  // App 跨域请求要能读到服务器处理时间，才能算出网络花了多久
+  exposedHeaders: ['X-Server-Time'],
 });
+installMetrics(app);
 await app.register(rateLimit, { max: 600, timeWindow: '1 minute' });
 await app.register(multipart, { limits: { fileSize: config.maxUploadBytes, files: 1 } });
 
@@ -116,6 +121,7 @@ await app.register(
     await api.register(eventRoutes);
     await api.register(videoRoutes);
     await api.register(emojiPackRoutes);
+    await api.register(loadRoutes);
   },
   { prefix: '/api' },
 );

@@ -122,13 +122,17 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
     body = JSON.stringify(opts.body);
   }
   let res: Response;
+  const t0 = performance.now();
   try {
     res = await fetch(`${API_BASE}/api${path}`, { method: opts.method ?? (body ? 'POST' : 'GET'), headers, body });
   } catch {
+    perf.fail++;
     // App 里连到别的网站（没有校墙的跨域头）也会落到这里，所以一并提示检查地址
     throw new ApiError(IS_APP_BUILD ? '连不上服务器，请检查网络和服务器地址' : '网络连接失败，请检查网络', 0);
   }
   const text = await res.text().catch(() => '');
+  // 传文件的请求主要看带宽，不算进响应时间
+  if (!opts.form) notePerf(performance.now() - t0, res);
   let data;
   try {
     data = text ? JSON.parse(text) : null;
@@ -148,6 +152,62 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
     throw new ApiError(data?.error ?? `请求失败 (${res.status})`, res.status, data ?? {});
   }
   return data as T;
+}
+
+/* ---------- 负载统计：记下每个请求花了多久，攒一批交给服务器 ----------
+ * 服务器在响应头 X-Server-Time 里给出它自己处理了多久，总时间减去它就是网络（和反代）花的时间。
+ * 只在登录后上报，不记地址和内容。 */
+const perf = { samples: [] as { d: number; s: number | null }[], fail: 0, page: undefined as number | undefined, timer: 0 };
+
+function notePerf(ms: number, res: Response) {
+  if (!token || document.visibilityState === 'hidden') return;
+  const h = res.headers.get('X-Server-Time');
+  const s = h === null ? NaN : Number(h);
+  perf.samples.push({ d: Math.min(120_000, Math.round(ms)), s: Number.isFinite(s) ? Math.min(120_000, Math.round(s)) : null });
+  if (perf.samples.length >= 60) flushPerf();
+  else if (!perf.timer) perf.timer = window.setTimeout(flushPerf, 60_000);
+}
+
+function connLabel() {
+  const c = (navigator as Navigator & { connection?: { type?: string; effectiveType?: string } }).connection;
+  if (!c) return '';
+  return [c.type, c.effectiveType].filter(Boolean).join(' ').slice(0, 24);
+}
+
+function pageLoadMs() {
+  if (IS_APP_BUILD) return undefined;
+  const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+  return nav && nav.loadEventEnd > 0 ? Math.min(120_000, Math.round(nav.loadEventEnd)) : undefined;
+}
+
+function flushPerf() {
+  clearTimeout(perf.timer);
+  perf.timer = 0;
+  if (!token || (!perf.samples.length && !perf.fail)) return;
+  // 页面打开时间每次打开只报一次；load 事件还没结束就留到下一批
+  const page = perf.page === undefined ? pageLoadMs() : undefined;
+  const body = {
+    app: IS_APP_BUILD,
+    conn: connLabel(),
+    samples: perf.samples.splice(0, 60),
+    fail: Math.min(60, perf.fail),
+    ...(page !== undefined ? { page } : {}),
+  };
+  perf.fail = 0;
+  if (page !== undefined) perf.page = page;
+  // keepalive：切到后台、关页面时也能发出去
+  void fetch(`${API_BASE}/api/metrics/client`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    keepalive: true,
+  }).catch(() => {});
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPerf();
+  });
 }
 
 export function getMediaSession() {

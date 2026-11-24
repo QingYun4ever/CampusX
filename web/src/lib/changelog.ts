@@ -9,6 +9,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.21.0',
+    date: '2026-11-24',
+    title: '排查卡顿',
+    changes: [
+      ['new', 'App 和网页会把每个请求花了多久报给服务器（不含内容），管理员能看出卡顿是服务器忙还是网络慢。数据只放在服务器内存里，最多 6 小时，详见隐私政策。'],
+      ['new', '管理后台新增「负载」：响应时间、CPU、事件循环延迟、最耗时的接口和 SQL、网络最慢的同学。'],
+    ],
+  },
+  {
     version: '0.20.1',
     date: '2026-11-24',
     title: '视频的修复',

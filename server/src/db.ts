@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync, type StatementSync, type SQLInputValue } from 'node:sqlite';
 import { config, uploadsDir } from './config.ts';
+import { recordQuery } from './metrics.ts';
 
 fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(uploadsDir, { recursive: true });
@@ -149,19 +150,30 @@ function pick(sql: string, params: Params): Record<string, SQLInputValue> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Row = Record<string, any>;
 
+/** 记下每条 SQL 花了多久（负载统计用） */
+function timed<T>(sql: string, fn: () => T): T {
+  const t = performance.now();
+  try {
+    return fn();
+  } finally {
+    recordQuery(sql, performance.now() - t);
+  }
+}
+
 export function all<T = Row>(sql: string, params: Params = {}): T[] {
-  return stmt(sql).all(pick(sql, params)) as T[];
+  return timed(sql, () => stmt(sql).all(pick(sql, params)) as T[]);
 }
 export function get<T = Row>(sql: string, params: Params = {}): T | undefined {
-  return stmt(sql).get(pick(sql, params)) as T | undefined;
+  return timed(sql, () => stmt(sql).get(pick(sql, params)) as T | undefined);
 }
 export function run(sql: string, params: Params = {}) {
-  const r = stmt(sql).run(pick(sql, params));
+  const r = timed(sql, () => stmt(sql).run(pick(sql, params)));
   return { changes: Number(r.changes), lastId: Number(r.lastInsertRowid) };
 }
 
 export function tx<T>(fn: () => T): T {
-  db.exec('BEGIN IMMEDIATE');
+  // 等写锁的时间也记下来（别的连接，比如备份，占着锁时会卡在这里）
+  timed('BEGIN IMMEDIATE', () => db.exec('BEGIN IMMEDIATE'));
   try {
     const result = fn();
     db.exec('COMMIT');

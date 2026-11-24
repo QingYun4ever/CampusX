@@ -213,6 +213,8 @@ const fitScale = (edge: number) => `scale=w='if(gte(iw,ih),trunc(min(${edge},iw)
 /* ---------------- 处理队列 ---------------- */
 
 const queue: string[] = [];
+/** 负载统计用：排队和正在转码的视频数 */
+export const videoQueueStats = () => ({ queued: queue.length, running: running.size });
 let busy = 0;
 const CONCURRENCY = positiveEnv('VIDEO_CONCURRENCY', 1);
 

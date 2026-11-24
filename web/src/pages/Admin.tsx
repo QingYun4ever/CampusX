@@ -17,6 +17,7 @@ import {
   ScanEye,
   Search,
   Smile,
+  Gauge,
   Ticket,
   Trash2,
   Users as UsersIcon,
@@ -32,6 +33,7 @@ import { refreshStatus } from '../lib/site';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
 import { StickersAdminPage } from './AdminStickers';
+import { LoadAdminPage } from './AdminLoad';
 
 /* ---------------- 类型 ---------------- */
 interface Stats {
@@ -853,6 +855,7 @@ export function Admin() {
     ['/admin/reports', '举报', Flag, reports.data?.count],
     ['/admin/events', '活动', PartyPopper, entries.data?.n],
     ['/admin/stickers', '表情包', Smile, packs.data?.n],
+    ['/admin/load', '负载', Gauge],
     ['/admin/site', '站点', Megaphone],
     ['/admin/assistant', 'AI 助手', Bot],
     ['/admin/invites', '邀请码', Ticket],
@@ -889,6 +892,7 @@ export function Admin() {
             <Route path="reports" element={<Reports />} />
             <Route path="events" element={<EventsAdminPage />} />
             <Route path="stickers" element={<StickersAdminPage head={(right) => <PageHead title="表情包" sub="同学做的表情包审核通过才上架；官方包在这里新建和维护" right={right} />} />} />
+            <Route path="load" element={<LoadAdminPage head={(right) => <PageHead title="负载" sub="卡顿是服务器慢还是网络慢" right={right} />} />} />
             <Route path="site" element={<SitePage />} />
             <Route path="assistant" element={<AssistantPage />} />
             <Route path="invites" element={<InvitesPage />} />

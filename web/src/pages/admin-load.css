@@ -1,0 +1,233 @@
+/* ---------- 管理后台：负载 ---------- */
+.load-page {
+  /* 两个系列的颜色：深色底（默认）和浅色底各选一套，已校验色盲可分 */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+}
+:root[data-theme='light'] .load-page {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+}
+
+.load-verdict {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.load-verdict > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.load-verdict b {
+  font-size: 16px;
+}
+.load-verdict p {
+  margin: 4px 0 0;
+  color: var(--text-2);
+}
+.load-verdict.ok > svg {
+  color: var(--repost);
+}
+.load-verdict.warn > svg {
+  color: #e0a800;
+}
+.load-verdict.bad > svg {
+  color: var(--danger);
+}
+.load-verdict.bad {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+}
+
+.load-tiles .stat-tile b {
+  font-size: 24px;
+}
+.load-foot {
+  margin: 10px 0 20px;
+}
+.load-foot svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
+.load-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.load-chart {
+  min-width: 0;
+  margin: 0;
+  padding: 14px 14px 8px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+}
+.load-chart figcaption h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.load-chart figcaption p {
+  margin: 2px 0 0;
+}
+.load-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.load-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.load-legend i,
+.load-tip i {
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+}
+.load-plot {
+  position: relative;
+  /* 宽度跟着容器走，不能让 SVG 反过来把容器撑宽 */
+  width: 100%;
+  height: 180px;
+  margin-top: 6px;
+  touch-action: pan-y;
+  user-select: none;
+}
+.load-plot svg {
+  position: absolute;
+  inset: 0 auto auto 0;
+  display: block;
+  overflow: visible;
+}
+.load-plot .grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.load-plot .axis {
+  fill: var(--text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.load-plot .end-label {
+  fill: var(--text-2);
+  font-size: 12px;
+}
+.load-plot .crosshair {
+  stroke: var(--text-3);
+  stroke-width: 1;
+}
+.load-plot .dot {
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+.load-tip {
+  position: absolute;
+  top: 4px;
+  z-index: 2;
+  min-width: 140px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--menu-bg, var(--bg));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-pop);
+  font-size: 12px;
+  line-height: 1.6;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.load-tip .row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+}
+.load-tip b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.load-raw {
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+.load-raw summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+.load-table-wrap {
+  overflow-x: auto;
+  margin: 8px 0 4px;
+}
+.load-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.load-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.load-table th,
+.load-table td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.load-table td {
+  white-space: nowrap;
+}
+.load-table tr.slow td:first-child {
+  box-shadow: inset 3px 0 0 #e0a800;
+  padding-left: 8px;
+}
+.load-table .mono-cell {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 180px;
+}
+.load-table .sql {
+  max-width: 420px;
+}
+.load-err {
+  color: var(--danger);
+  font-weight: 600;
+}
+.load-logs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0 24px;
+}
+.load-log {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.load-log li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.load-log code {
+  font-size: 12px;
+  color: var(--text-2);
+}
