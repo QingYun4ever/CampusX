@@ -35,7 +35,7 @@ export const publicPost = (alias: string) => `(${alias}.status = 'ok' AND ${alia
 /** 通知列表、推送和未读数都以收件人当前的帖子权限为准。 */
 export const visibleNotification = `(
   -- 举报结果、活动审核结果是系统通知，不因为拉黑了处理的管理员就收不到
-  (n.type IN ('report', 'event', 'invite') OR NOT EXISTS (SELECT 1 FROM blocks nb WHERE nb.blocker_id = $me AND nb.blocked_id = n.actor_id))
+  (n.type IN ('report', 'event', 'invite', 'pack') OR NOT EXISTS (SELECT 1 FROM blocks nb WHERE nb.blocker_id = $me AND nb.blocked_id = n.actor_id))
   AND (n.post_id IS NULL OR EXISTS (
     SELECT 1 FROM posts vp WHERE vp.id = n.post_id AND vp.deleted = 0
       AND (vp.status = 'ok' OR (vp.status = 'pending' AND vp.author_id = $me)) AND ${visibleTo('vp.')}

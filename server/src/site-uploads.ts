@@ -152,7 +152,8 @@ export function consumeDraftUploads(urls: string[], ownerId: number, maxBytes?: 
   }
 }
 
-export function storeSiteUpload(ownerId: number, buffer: Buffer, ext: string) {
+/** ownerId 为 null：官方表情包这类站点自己的文件，只算站点总额度，不占哪个人的 */
+export function storeSiteUpload(ownerId: number | null, buffer: Buffer, ext: string) {
   const name = `${randomBytes(12).toString('base64url')}.${ext}`;
   const target = path.join(uploadsDir, name);
   const size = buffer.length;
@@ -163,7 +164,7 @@ export function storeSiteUpload(ownerId: number, buffer: Buffer, ext: string) {
       run('INSERT INTO site_uploads (name, owner_id, size, created_at, used) VALUES ($name, $ownerId, $size, $t, 0)', {
         name, ownerId, size, t: now(),
       });
-      const ownerBytes = get<{ bytes: number }>('SELECT COALESCE(SUM(charge), 0) AS bytes FROM site_uploads WHERE owner_id = $ownerId', { ownerId })!.bytes;
+      const ownerBytes = ownerId === null ? 0 : get<{ bytes: number }>('SELECT COALESCE(SUM(charge), 0) AS bytes FROM site_uploads WHERE owner_id = $ownerId', { ownerId })!.bytes;
       const siteBytes = get<{ bytes: number }>('SELECT bytes FROM site_upload_usage WHERE id = 1')!.bytes;
       if (ownerBytes > accountLimit) throw new HttpError(413, '你已达到图片存储上限');
       if (siteBytes > siteLimit) throw new HttpError(413, '站点图片存储空间已满');
@@ -326,6 +327,7 @@ function collectExpiredUploads() {
              AND NOT EXISTS (SELECT 1 FROM users WHERE avatar = '/uploads/' || su.name OR banner = '/uploads/' || su.name)
              AND NOT EXISTS (SELECT 1 FROM boards WHERE avatar = '/uploads/' || su.name)
              AND NOT EXISTS (SELECT 1 FROM custom_emojis WHERE file = su.name AND (removed = 0 OR sent = 1))
+             AND NOT EXISTS (SELECT 1 FROM emoji_pack_items WHERE file = su.name AND (removed = 0 OR sent = 1))
            ORDER BY su.name LIMIT $limit`,
           { cursor, cutoff, t, limit: gcBatchSize },
         );

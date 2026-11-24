@@ -1,0 +1,1434 @@
+{
+ "slug": "kipfel",
+ "name": "Kipfel",
+ "description": "Kipfel 的表情，大多是动图，卖萌、犯困、炸毛都有。",
+ "credit": "整理自 GitHub momo-OwO-qwq/astrbot-meme-pack-kipfel，素材版权归原作者。",
+ "cover": "0157.webp",
+ "items": [
+  {
+   "file": "0157.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0158.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0159.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0160.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0161.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0162.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0163.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0164.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0165.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0166.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0167.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0168.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0169.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0170.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0171.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0172.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0173.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0174.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0175.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0176.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0177.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0178.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0179.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0180.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0181.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0182.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0183.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0184.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0185.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0186.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0187.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0188.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0189.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0190.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0191.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0192.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0193.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0194.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0195.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0196.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0197.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0198.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0199.webp",
+   "group": "开心",
+   "animated": true
+  },
+  {
+   "file": "0237.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0238.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0239.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0240.webp",
+   "group": "害羞",
+   "animated": true
+  },
+  {
+   "file": "0241.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0242.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0243.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0244.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0245.webp",
+   "group": "害羞",
+   "animated": true
+  },
+  {
+   "file": "0246.webp",
+   "group": "害羞",
+   "animated": true
+  },
+  {
+   "file": "0247.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0248.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0249.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0001.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0002.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0003.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0004.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0005.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0006.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0007.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0008.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0009.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0010.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0011.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0012.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0013.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0014.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0015.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0016.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0017.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0018.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0019.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0020.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0021.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0022.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0023.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0024.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0025.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0026.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0027.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0028.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0029.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0030.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0031.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0032.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0033.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0034.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0035.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0036.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0037.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0038.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0039.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0040.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0041.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0042.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0043.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0044.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0045.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0046.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0047.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0048.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0049.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0050.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0051.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0052.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0053.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0054.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0055.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0056.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0057.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0058.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0059.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0060.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0061.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0062.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0063.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0064.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0065.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0066.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0067.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0068.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0069.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0070.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0071.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0072.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0073.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0074.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0075.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0076.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0077.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0078.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0079.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0080.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0081.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0082.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0083.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0084.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0085.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0086.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0087.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0088.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0089.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0090.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0091.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0092.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0093.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0094.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0095.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0096.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0097.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0098.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0099.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0100.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0101.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0102.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0103.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0104.webp",
+   "group": "日常",
+   "animated": true
+  },
+  {
+   "file": "0105.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0106.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0107.webp",
+   "group": "日常",
+   "animated": false
+  },
+  {
+   "file": "0273.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0274.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0275.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0276.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0277.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0278.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0279.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0280.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0281.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0282.webp",
+   "group": "惊讶",
+   "animated": true
+  },
+  {
+   "file": "0283.webp",
+   "group": "惊讶",
+   "animated": true
+  },
+  {
+   "file": "0284.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0285.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0140.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0141.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0142.webp",
+   "group": "疑惑",
+   "animated": true
+  },
+  {
+   "file": "0143.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0144.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0145.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0146.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0147.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0148.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0149.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0150.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0151.webp",
+   "group": "疑惑",
+   "animated": true
+  },
+  {
+   "file": "0152.webp",
+   "group": "疑惑",
+   "animated": true
+  },
+  {
+   "file": "0153.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0154.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0155.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0156.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0217.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0218.webp",
+   "group": "难过",
+   "animated": true
+  },
+  {
+   "file": "0219.webp",
+   "group": "难过",
+   "animated": true
+  },
+  {
+   "file": "0220.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0221.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0222.webp",
+   "group": "难过",
+   "animated": true
+  },
+  {
+   "file": "0223.webp",
+   "group": "难过",
+   "animated": true
+  },
+  {
+   "file": "0224.webp",
+   "group": "难过",
+   "animated": true
+  },
+  {
+   "file": "0225.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0226.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0227.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0228.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0229.webp",
+   "group": "难过",
+   "animated": true
+  },
+  {
+   "file": "0230.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0231.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0232.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0233.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0234.webp",
+   "group": "难过",
+   "animated": true
+  },
+  {
+   "file": "0235.webp",
+   "group": "难过",
+   "animated": true
+  },
+  {
+   "file": "0236.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0116.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0117.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0118.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0119.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0120.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0121.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0122.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0123.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0124.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0125.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0126.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0127.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0128.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0129.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0130.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0131.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0132.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0133.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0134.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0135.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0136.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0137.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0138.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0139.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0108.webp",
+   "group": "害怕",
+   "animated": false
+  },
+  {
+   "file": "0109.webp",
+   "group": "害怕",
+   "animated": false
+  },
+  {
+   "file": "0110.webp",
+   "group": "害怕",
+   "animated": false
+  },
+  {
+   "file": "0111.webp",
+   "group": "害怕",
+   "animated": false
+  },
+  {
+   "file": "0112.webp",
+   "group": "害怕",
+   "animated": false
+  },
+  {
+   "file": "0113.webp",
+   "group": "害怕",
+   "animated": false
+  },
+  {
+   "file": "0114.webp",
+   "group": "害怕",
+   "animated": false
+  },
+  {
+   "file": "0115.webp",
+   "group": "害怕",
+   "animated": false
+  },
+  {
+   "file": "0250.webp",
+   "group": "睡觉",
+   "animated": false
+  },
+  {
+   "file": "0251.webp",
+   "group": "睡觉",
+   "animated": true
+  },
+  {
+   "file": "0252.webp",
+   "group": "睡觉",
+   "animated": false
+  },
+  {
+   "file": "0253.webp",
+   "group": "睡觉",
+   "animated": true
+  },
+  {
+   "file": "0254.webp",
+   "group": "睡觉",
+   "animated": true
+  },
+  {
+   "file": "0255.webp",
+   "group": "睡觉",
+   "animated": false
+  },
+  {
+   "file": "0256.webp",
+   "group": "睡觉",
+   "animated": true
+  },
+  {
+   "file": "0257.webp",
+   "group": "睡觉",
+   "animated": false
+  },
+  {
+   "file": "0258.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0259.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0260.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0261.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0262.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0263.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0264.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0265.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0266.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0267.webp",
+   "group": "不屑",
+   "animated": true
+  },
+  {
+   "file": "0268.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0269.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0270.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0271.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0272.webp",
+   "group": "不屑",
+   "animated": false
+  },
+  {
+   "file": "0200.webp",
+   "group": "梗图",
+   "animated": true
+  },
+  {
+   "file": "0201.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0202.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0203.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0204.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0205.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0206.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0207.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0208.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0209.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0210.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0211.webp",
+   "group": "梗图",
+   "animated": true
+  },
+  {
+   "file": "0212.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0213.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0214.webp",
+   "group": "梗图",
+   "animated": true
+  },
+  {
+   "file": "0215.webp",
+   "group": "梗图",
+   "animated": false
+  },
+  {
+   "file": "0216.webp",
+   "group": "梗图",
+   "animated": false
+  }
+ ]
+}

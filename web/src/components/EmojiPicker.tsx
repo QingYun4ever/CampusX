@@ -6,10 +6,14 @@ import { BUNDLED_EMOJI, EMOJI_PACKS, setEmojiPackInstalled, useInstalledEmojiPac
 import { useEscape } from '../lib/escape';
 import { Emoji, Spinner, toast } from './ui';
 import { MediaImage } from './MediaImage';
-import { EMOJI_TYPES, emojiToken, useEmojiActions, useMyEmojis } from '../lib/customEmoji';
+import { EMOJI_TYPES, emojiSrc, emojiToken, useEmojiActions, useMyEmojis } from '../lib/customEmoji';
+import { groupItems, useInstalledStickerPacks, useStickerActions, useStickerCatalog } from '../lib/stickerPacks';
+import type { InstalledPack } from '../lib/api';
 import './EmojiPicker.css';
 
 const MINE = '__mine';
+/** 图片表情包在面板里的 id：s:包 id */
+const stickerKey = (id: number) => `s:${id}`;
 
 const MODES = [
   { id: 'picker', label: '表情', icon: Smile },
@@ -123,6 +127,35 @@ function MyEmojis({ onPick }: { onPick: (emoji: string) => void }) {
   );
 }
 
+/** 装上的图片表情包：按分组排，点一下插入 */
+function StickerGrid({ pack, onPick }: { pack: InstalledPack; onPick: (emoji: string) => void }) {
+  const groups = groupItems(pack.items);
+  return (
+    <>
+      <h3>{pack.name}</h3>
+      {groups.map(([group, items]) => (
+        <section key={group || '_'}>
+          {groups.length > 1 && <h4 className="sticker-group">{group || '其他'}</h4>}
+          <div className="my-emoji-grid sticker-grid">
+            {items.map((e) => (
+              <button
+                type="button"
+                key={e.file}
+                className="my-emoji-tile"
+                aria-label={`插入表情${group ? `（${group}）` : ''}`}
+                onMouseDown={(ev) => ev.preventDefault()}
+                onClick={() => onPick(emojiToken(e.file))}
+              >
+                <MediaImage src={emojiSrc(e.file)} alt="" loading="lazy" decoding="async" draggable={false} />
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+    </>
+  );
+}
+
 function EmojiPanel({ id, style, onPick, onClose }: {
   id: string;
   style: CSSProperties;
@@ -135,6 +168,26 @@ function EmojiPanel({ id, style, onPick, onClose }: {
   const installedIds = useInstalledEmojiPacks();
   const packs = EMOJI_PACKS.filter((pack) => installedIds.includes(pack.id));
   const activePack = packs.find((pack) => pack.id === activeId);
+  const stickers = useInstalledStickerPacks();
+  const installedStickers = stickers.data?.items ?? [];
+  const activeSticker = installedStickers.find((p) => stickerKey(p.id) === activeId);
+  const catalog = useStickerCatalog(mode === 'catalog');
+  const { setInstalled } = useStickerActions();
+  const [busyPack, setBusyPack] = useState<number | null>(null);
+  const toggleSticker = async (packId: number, on: boolean) => {
+    setBusyPack(packId);
+    try {
+      await setInstalled(packId, on);
+      if (on) {
+        setActiveId(stickerKey(packId));
+        setMode('picker');
+      } else if (activeId === stickerKey(packId)) setActiveId(null);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusyPack(null);
+    }
+  };
 
   const changeInstallation = (packId: string, install: boolean) => {
     if (!setEmojiPackInstalled(packId, install)) toast('无法保存本机表情包设置', 'error');
@@ -160,6 +213,20 @@ function EmojiPanel({ id, style, onPick, onClose }: {
         <nav className="emoji-picker-packs" aria-label="选择表情包">
           <button type="button" aria-pressed={!activePack && activeId !== MINE} onClick={() => setActiveId(null)}>常用</button>
           <button type="button" aria-pressed={activeId === MINE} onClick={() => setActiveId(MINE)}>我的</button>
+          {installedStickers.map((pack) => (
+            <button
+              type="button"
+              key={pack.id}
+              className="sticker-tab"
+              aria-pressed={activeSticker?.id === pack.id}
+              aria-label={pack.name}
+              title={pack.name}
+              onClick={() => setActiveId(stickerKey(pack.id))}
+            >
+              {pack.cover && <MediaImage src={emojiSrc(pack.cover)} alt="" draggable={false} />}
+              <span>{pack.name}</span>
+            </button>
+          ))}
           {packs.map((pack) => (
             <button type="button" key={pack.id} aria-pressed={activePack?.id === pack.id} onClick={() => setActiveId(pack.id)}>
               {pack.name}
@@ -167,9 +234,10 @@ function EmojiPanel({ id, style, onPick, onClose }: {
           ))}
         </nav>
       )}
-      <div className="emoji-picker-content" key={mode === 'picker' ? activeId === MINE ? MINE : activePack?.id ?? 'basic' : mode}>
+      <div className="emoji-picker-content" key={mode === 'picker' ? activeId === MINE ? MINE : activeSticker ? stickerKey(activeSticker.id) : activePack?.id ?? 'basic' : mode}>
         {mode === 'picker' && activeId === MINE && <MyEmojis onPick={onPick} />}
-        {mode === 'picker' && activeId !== MINE && (
+        {mode === 'picker' && activeSticker && <StickerGrid pack={activeSticker} onPick={onPick} />}
+        {mode === 'picker' && activeId !== MINE && !activeSticker && (
           <>
             <h3>{activePack?.name ?? '常用表情'}</h3>
             <div className="emoji-menu">
@@ -187,6 +255,26 @@ function EmojiPanel({ id, style, onPick, onClose }: {
             <p className="emoji-picker-hint">
               免费使用，安装后会出现在你的表情面板。<Link to="/market" className="emoji-picker-link" onClick={onClose}>在商场里看全部</Link>
             </p>
+            {catalog.isPending && <Spinner inline />}
+            {catalog.data?.items.map((pack) => (
+              <article className="emoji-picker-card" key={`s${pack.id}`}>
+                <div className="emoji-picker-card-head">
+                  {pack.cover && <MediaImage className="sticker-card-cover" src={emojiSrc(pack.cover)} alt="" draggable={false} />}
+                  <div>
+                    <h4>{pack.name} <small>{pack.count} 个表情</small></h4>
+                    <p>{pack.official ? '官方' : pack.owner ? `@${pack.owner.username} 制作` : '同学制作'}</p>
+                  </div>
+                  {pack.installed ? (
+                    <button type="button" className="emoji-picker-action" onClick={() => { setActiveId(stickerKey(pack.id)); setMode('picker'); }}>使用</button>
+                  ) : (
+                    <button type="button" className="emoji-picker-action" disabled={busyPack === pack.id} aria-label={`安装${pack.name}`} onClick={() => void toggleSticker(pack.id, true)}>安装</button>
+                  )}
+                </div>
+                <div className="sticker-card-samples" aria-hidden="true">
+                  {pack.preview.slice(0, 5).map((f) => <MediaImage key={f} src={emojiSrc(f)} alt="" loading="lazy" draggable={false} />)}
+                </div>
+              </article>
+            ))}
             {EMOJI_PACKS.map((pack) => {
               const expanded = previewId === pack.id;
               const installed = installedIds.includes(pack.id);
@@ -219,8 +307,18 @@ function EmojiPanel({ id, style, onPick, onClose }: {
         {mode === 'manage' && (
           <>
             <h3>已安装的表情包</h3>
-            <p className="emoji-picker-hint">安装记录只保存在本机，移除不会影响已经发布的表情。</p>
-            {!installedIds.length && <p className="emoji-picker-hint">还没有安装表情包。</p>}
+            <p className="emoji-picker-hint">移除不会影响已经发出去的表情。</p>
+            {!installedIds.length && !installedStickers.length && <p className="emoji-picker-hint">还没有安装表情包。</p>}
+            {installedStickers.map((pack) => (
+              <article className="emoji-picker-card emoji-picker-card-head" key={`s${pack.id}`}>
+                {pack.cover && <MediaImage className="sticker-card-cover" src={emojiSrc(pack.cover)} alt="" draggable={false} />}
+                <div>
+                  <h4>{pack.name}</h4>
+                  <p>{pack.items.length} 个表情</p>
+                </div>
+                <button type="button" className="emoji-picker-action emoji-picker-remove" disabled={busyPack === pack.id} aria-label={`移除${pack.name}`} onClick={() => void toggleSticker(pack.id, false)}>移除</button>
+              </article>
+            ))}
             {installedIds.map((packId) => {
               const pack = packs.find((item) => item.id === packId);
               return (

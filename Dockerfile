@@ -27,6 +27,8 @@ COPY server/package.json server/
 COPY web/package.json web/
 RUN npm ci --omit=dev --workspace=server --no-audit --no-fund && npm cache clean --force
 COPY server/src server/src
+# 随代码带的官方表情包，第一次启动时导入
+COPY server/emoji-packs server/emoji-packs
 COPY --from=build /app/web/dist web/dist
 # 数据库和上传的图片都在 /data，用卷持久化；以非 root 用户运行
 RUN mkdir -p /data && chown node:node /data

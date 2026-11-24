@@ -163,12 +163,20 @@ function storedImages(serialized: string) {
 /** 一条帖子或私信里最多用几种自定义表情（都要送审） */
 const MAX_EMOJI_KINDS = 8;
 
+/**
+ * 站内登记过的表情：自己上传或收藏的（custom_emojis），或者表情包里的（emoji_pack_items）。
+ * trusted：表情包里管理员看过的表情，发帖时不用再送 AI 审核
+ */
 function registeredEmoji(file: string) {
-  const row = get<{ sent: number }>(
+  const own = get<{ sent: number }>(
     'SELECT ce.sent FROM custom_emojis ce JOIN site_uploads su ON su.name = ce.file WHERE ce.file = $f', { f: file },
   );
-  if (!row) throw new AttachmentError('有表情已经失效了，删掉再发吧');
-  return row;
+  if (own) return { sent: own.sent, pack: false, trusted: false };
+  const item = get<{ sent: number; reviewed: number }>(
+    'SELECT i.sent, i.reviewed FROM emoji_pack_items i JOIN site_uploads su ON su.name = i.file WHERE i.file = $f', { f: file },
+  );
+  if (!item) throw new AttachmentError('有表情已经失效了，删掉再发吧');
+  return { sent: item.sent, pack: true, trusted: !!item.reviewed };
 }
 
 /** 发帖、发私信前：正文里的表情必须是站内登记过的，种类不能太多 */
@@ -180,7 +188,8 @@ export function assertEmojis(files: readonly string[]) {
 /** 在写入事务中复查并锁定引用：异步审核或上传期间，未使用的表情可能已被清理。 */
 export function markEmojisSent(files: readonly string[]) {
   for (const file of files) {
-    if (!registeredEmoji(file).sent) run('UPDATE custom_emojis SET sent = 1 WHERE file = $f', { f: file });
+    const e = registeredEmoji(file);
+    if (!e.sent) run(`UPDATE ${e.pack ? 'emoji_pack_items' : 'custom_emojis'} SET sent = 1 WHERE file = $f`, { f: file });
   }
 }
 
@@ -189,7 +198,8 @@ async function emojiImages(files: readonly string[], c: ModConfig): Promise<Img[
   if (!c.reviewImages) return [];
   const out: Img[] = [];
   for (const file of files) {
-    registeredEmoji(file);
+    // 表情包里管理员看过的不用再审
+    if (registeredEmoji(file).trusted) continue;
     const image = await validateReviewImage(() => readStoredUpload(emojiSrc(file), MAX_REVIEW_IMAGE_BYTES));
     out.push({ mime: image.mime, data: image.buffer.toString('base64') });
   }
@@ -211,7 +221,7 @@ function withVideoNote(context: string, frames: number) {
 /** 有表情图时，告诉模型后面几张是表情 */
 function withEmojiNote(context: string, attachments: number, emojis: number) {
   if (!emojis) return context;
-  const note = `正文里的 [e:文件名] 是同学自己上传的表情图片，按出现顺序放在${attachments ? `帖子的 ${attachments} 张图片之后` : '上方'}，共 ${emojis} 张，同样需要审核。`;
+  const note = `正文里的 [e:文件名] 是同学自己上传的表情图片（表情包里审核过的不再附图），按出现顺序放在${attachments ? `帖子的 ${attachments} 张图片之后` : '上方'}，共 ${emojis} 张，同样需要审核。`;
   return context ? `${context}\n\n${note}` : note;
 }
 

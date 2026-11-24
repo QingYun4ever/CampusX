@@ -323,3 +323,57 @@
     animation: none;
   }
 }
+
+/* 图片表情包 */
+.emoji-picker-packs > button.sticker-tab {
+  gap: 5px;
+  padding: 0 8px 0 5px;
+}
+.sticker-tab img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  pointer-events: none;
+}
+.sticker-tab span {
+  max-width: 6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sticker-group {
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+  margin: 6px -10px 4px;
+  padding: 6px 12px 4px;
+  background: var(--menu-bg, var(--bg));
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+.sticker-grid {
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 4px;
+}
+.sticker-grid .my-emoji-tile {
+  padding: 4px;
+}
+.sticker-grid .my-emoji-tile:hover {
+  background: var(--hover-2);
+}
+.sticker-card-cover {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+.sticker-card-samples {
+  display: flex;
+  gap: 6px;
+  padding-top: 8px;
+}
+.sticker-card-samples img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}

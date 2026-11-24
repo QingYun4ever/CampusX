@@ -1,0 +1,424 @@
+{
+ "slug": "murasame",
+ "name": "丛雨",
+ "description": "《千恋＊万花》的丛雨，开心、生气、贴贴都有。",
+ "credit": "整理自 GitHub anka-afk/congyu-meme-pack，仅限非商业使用，角色和素材版权归原作者。",
+ "cover": "0001.webp",
+ "items": [
+  {
+   "file": "0001.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0002.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0003.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0004.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0005.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0006.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0007.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0008.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0009.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0010.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0011.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0012.webp",
+   "group": "生气",
+   "animated": true
+  },
+  {
+   "file": "0013.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0014.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0015.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0016.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0017.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0018.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0019.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0020.webp",
+   "group": "生气",
+   "animated": false
+  },
+  {
+   "file": "0021.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0022.webp",
+   "group": "难过",
+   "animated": true
+  },
+  {
+   "file": "0023.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0024.webp",
+   "group": "难过",
+   "animated": true
+  },
+  {
+   "file": "0025.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0026.webp",
+   "group": "难过",
+   "animated": false
+  },
+  {
+   "file": "0027.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0028.webp",
+   "group": "疑惑",
+   "animated": false
+  },
+  {
+   "file": "0029.webp",
+   "group": "疑惑",
+   "animated": true
+  },
+  {
+   "file": "0030.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0031.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0032.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0033.webp",
+   "group": "害羞",
+   "animated": true
+  },
+  {
+   "file": "0034.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0035.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0036.webp",
+   "group": "累了",
+   "animated": true
+  },
+  {
+   "file": "0037.webp",
+   "group": "累了",
+   "animated": false
+  },
+  {
+   "file": "0038.webp",
+   "group": "累了",
+   "animated": false
+  },
+  {
+   "file": "0039.webp",
+   "group": "吃吃",
+   "animated": true
+  },
+  {
+   "file": "0040.webp",
+   "group": "吃吃",
+   "animated": true
+  },
+  {
+   "file": "0041.webp",
+   "group": "吃吃",
+   "animated": true
+  },
+  {
+   "file": "0042.webp",
+   "group": "贴贴",
+   "animated": true
+  },
+  {
+   "file": "0043.webp",
+   "group": "贴贴",
+   "animated": false
+  },
+  {
+   "file": "0044.webp",
+   "group": "贴贴",
+   "animated": true
+  },
+  {
+   "file": "0045.webp",
+   "group": "贴贴",
+   "animated": false
+  },
+  {
+   "file": "0046.webp",
+   "group": "贴贴",
+   "animated": true
+  },
+  {
+   "file": "0047.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0048.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0049.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0050.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0051.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0052.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0053.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0054.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0055.webp",
+   "group": "调侃",
+   "animated": true
+  },
+  {
+   "file": "0056.webp",
+   "group": "调侃",
+   "animated": true
+  },
+  {
+   "file": "0057.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0058.webp",
+   "group": "调侃",
+   "animated": true
+  },
+  {
+   "file": "0059.webp",
+   "group": "调侃",
+   "animated": true
+  },
+  {
+   "file": "0060.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0061.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0062.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0063.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0064.webp",
+   "group": "调侃",
+   "animated": true
+  },
+  {
+   "file": "0065.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0066.webp",
+   "group": "调侃",
+   "animated": true
+  },
+  {
+   "file": "0067.webp",
+   "group": "调侃",
+   "animated": false
+  },
+  {
+   "file": "0068.webp",
+   "group": "调侃",
+   "animated": true
+  },
+  {
+   "file": "0069.webp",
+   "group": "调侃",
+   "animated": true
+  },
+  {
+   "file": "0070.webp",
+   "group": "赞同",
+   "animated": false
+  },
+  {
+   "file": "0071.webp",
+   "group": "赞同",
+   "animated": false
+  },
+  {
+   "file": "0072.webp",
+   "group": "赞同",
+   "animated": false
+  },
+  {
+   "file": "0073.webp",
+   "group": "赞同",
+   "animated": true
+  },
+  {
+   "file": "0074.webp",
+   "group": "回应",
+   "animated": true
+  },
+  {
+   "file": "0075.webp",
+   "group": "回应",
+   "animated": false
+  },
+  {
+   "file": "0076.webp",
+   "group": "回应",
+   "animated": true
+  },
+  {
+   "file": "0077.webp",
+   "group": "回应",
+   "animated": true
+  },
+  {
+   "file": "0078.webp",
+   "group": "回应",
+   "animated": false
+  },
+  {
+   "file": "0079.webp",
+   "group": "回应",
+   "animated": false
+  },
+  {
+   "file": "0080.webp",
+   "group": "回应",
+   "animated": false
+  },
+  {
+   "file": "0081.webp",
+   "group": "回应",
+   "animated": true
+  },
+  {
+   "file": "0082.webp",
+   "group": "回应",
+   "animated": false
+  },
+  {
+   "file": "0083.webp",
+   "group": "回应",
+   "animated": false
+  }
+ ]
+}

@@ -352,8 +352,11 @@ export async function safetyRoutes(app: FastifyInstance) {
     const user = me(req);
     const { file } = parse(z.object({ file: z.string().max(60) }), req.body);
     if (!EMOJI_TOKEN_ONE.test(emojiToken(file))) throw new HttpError(400, '表情不存在');
+    // 别人发过的表情，或者表情包里审核过的表情
     const source = get<{ animated: number; origin: string | null }>(
       'SELECT animated, origin FROM custom_emojis WHERE file = $f AND sent = 1', { f: file },
+    ) ?? get<{ animated: number; origin: string | null }>(
+      'SELECT animated, NULL AS origin FROM emoji_pack_items WHERE file = $f AND reviewed = 1', { f: file },
     );
     if (!source) throw new HttpError(404, '这个表情不能添加');
     const root = source.origin ?? file;

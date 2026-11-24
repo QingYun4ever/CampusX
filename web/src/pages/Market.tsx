@@ -10,6 +10,7 @@ import { useSetWallet, useWallet } from '../lib/crystals';
 import { useAuth, useMe } from '../lib/auth';
 import { DECORATIONS } from '../lib/decorations';
 import { EMOJI_PACKS, setEmojiPackInstalled, useInstalledEmojiPacks } from '../lib/emojiPacks';
+import { StickerPackList } from './Stickers';
 import './market.css';
 
 type Tab = 'emoji' | 'halo';
@@ -22,7 +23,9 @@ function EmojiPacks() {
   };
   return (
     <>
-      <p className="market-intro">安装后会出现在发帖、回复和私信的表情面板里。安装记录只保存在这台设备上。</p>
+      <StickerPackList />
+      <h2 className="market-subhead">Emoji 表情</h2>
+      <p className="market-intro">系统自带的 Emoji 按主题分好的组，安装记录只保存在这台设备上。</p>
       <div className="market-list">
         {EMOJI_PACKS.map((pack, i) => {
           const on = installed.includes(pack.id);

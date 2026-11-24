@@ -30,6 +30,9 @@ const Search = lazy(() => import('./pages/Search').then(({ Search }) => ({ defau
 const Settings = lazy(() => import('./pages/Settings').then(({ Settings }) => ({ default: Settings })));
 const Bookmarks = lazy(() => import('./pages/Bookmarks').then(({ Bookmarks }) => ({ default: Bookmarks })));
 const Market = lazy(() => import('./pages/Market').then(({ Market }) => ({ default: Market })));
+const StickerPackPage = lazy(() => import('./pages/Stickers').then(({ StickerPackPage }) => ({ default: StickerPackPage })));
+const MyStickerPacks = lazy(() => import('./pages/Stickers').then(({ MyStickerPacks }) => ({ default: MyStickerPacks })));
+const StickerPackEditor = lazy(() => import('./pages/Stickers').then(({ StickerPackEditor }) => ({ default: StickerPackEditor })));
 const Crystals = lazy(() => import('./pages/Crystals').then(({ Crystals }) => ({ default: Crystals })));
 const InvitePage = lazy(() => import('./pages/Invite').then(({ InvitePage }) => ({ default: InvitePage })));
 const EventPage = lazy(() => import('./pages/Events').then(({ EventPage }) => ({ default: EventPage })));
@@ -151,6 +154,9 @@ export function App() {
           <Route path="/t/:tag" element={<TagPage />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/market" element={<Market />} />
+          <Route path="/stickers/mine" element={<MyStickerPacks />} />
+          <Route path="/stickers/:id" element={<StickerPackPage />} />
+          <Route path="/stickers/:id/edit" element={<StickerPackEditor />} />
           <Route path="/crystals" element={<Crystals />} />
           <Route path="/invite" element={<InvitePage />} />
           <Route path="/events" element={<EventsPage />} />

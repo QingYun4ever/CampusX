@@ -239,6 +239,18 @@ export async function appRoutes(app: FastifyInstance) {
           });
           continue;
         }
+        if (r.type === 'pack') {
+          let x: { packId?: number; name?: string; rejected?: boolean; note?: string } = {};
+          try { x = JSON.parse(r.extra ?? '{}'); } catch { /* 忽略 */ }
+          items.push({
+            id: `n-${r.id}`,
+            kind: 'interactions',
+            title: x.rejected ? `表情包「${x.name}」没有通过审核` : `表情包「${x.name}」审核通过了`,
+            body: x.rejected ? (x.note ? `理由：${x.note}` : '改一改可以再提交') : '已经在商场上架，大家都能装上用',
+            path: x.packId ? `/stickers/${x.packId}` : '/notifications',
+          });
+          continue;
+        }
         if (r.type === 'event') {
           let x: { title?: string; eventId?: number; gained?: number; rejected?: boolean; note?: string } = {};
           try { x = JSON.parse(r.extra ?? '{}'); } catch { /* 忽略 */ }

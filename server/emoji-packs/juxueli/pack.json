@@ -1,0 +1,199 @@
+{
+ "slug": "juxueli",
+ "name": "橘雪莉",
+ "description": "橘雪莉的静态表情，夸夸、疑问、道歉、投降。",
+ "credit": "整理自 GitHub anka-afk/juxueli-meme-pack，仅限非商业使用，角色和素材版权归原作者。",
+ "cover": "0001.webp",
+ "items": [
+  {
+   "file": "0001.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0002.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0003.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0004.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0005.webp",
+   "group": "开心",
+   "animated": false
+  },
+  {
+   "file": "0006.webp",
+   "group": "赞同",
+   "animated": false
+  },
+  {
+   "file": "0007.webp",
+   "group": "赞同",
+   "animated": false
+  },
+  {
+   "file": "0008.webp",
+   "group": "赞同",
+   "animated": false
+  },
+  {
+   "file": "0009.webp",
+   "group": "赞同",
+   "animated": false
+  },
+  {
+   "file": "0010.webp",
+   "group": "赞同",
+   "animated": false
+  },
+  {
+   "file": "0011.webp",
+   "group": "疑问",
+   "animated": false
+  },
+  {
+   "file": "0012.webp",
+   "group": "疑问",
+   "animated": false
+  },
+  {
+   "file": "0013.webp",
+   "group": "疑问",
+   "animated": false
+  },
+  {
+   "file": "0014.webp",
+   "group": "疑问",
+   "animated": false
+  },
+  {
+   "file": "0015.webp",
+   "group": "疑问",
+   "animated": false
+  },
+  {
+   "file": "0016.webp",
+   "group": "疑问",
+   "animated": false
+  },
+  {
+   "file": "0017.webp",
+   "group": "疑问",
+   "animated": false
+  },
+  {
+   "file": "0018.webp",
+   "group": "疑问",
+   "animated": false
+  },
+  {
+   "file": "0019.webp",
+   "group": "疑问",
+   "animated": false
+  },
+  {
+   "file": "0020.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0021.webp",
+   "group": "惊讶",
+   "animated": false
+  },
+  {
+   "file": "0022.webp",
+   "group": "道歉",
+   "animated": false
+  },
+  {
+   "file": "0023.webp",
+   "group": "道歉",
+   "animated": false
+  },
+  {
+   "file": "0024.webp",
+   "group": "出击",
+   "animated": false
+  },
+  {
+   "file": "0025.webp",
+   "group": "出击",
+   "animated": false
+  },
+  {
+   "file": "0026.webp",
+   "group": "出击",
+   "animated": false
+  },
+  {
+   "file": "0027.webp",
+   "group": "投降",
+   "animated": false
+  },
+  {
+   "file": "0028.webp",
+   "group": "吃吃",
+   "animated": false
+  },
+  {
+   "file": "0029.webp",
+   "group": "吃吃",
+   "animated": false
+  },
+  {
+   "file": "0030.webp",
+   "group": "吃吃",
+   "animated": false
+  },
+  {
+   "file": "0031.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0032.webp",
+   "group": "害羞",
+   "animated": false
+  },
+  {
+   "file": "0033.webp",
+   "group": "互动",
+   "animated": false
+  },
+  {
+   "file": "0034.webp",
+   "group": "互动",
+   "animated": false
+  },
+  {
+   "file": "0035.webp",
+   "group": "互动",
+   "animated": false
+  },
+  {
+   "file": "0036.webp",
+   "group": "互动",
+   "animated": false
+  },
+  {
+   "file": "0037.webp",
+   "group": "互动",
+   "animated": false
+  },
+  {
+   "file": "0038.webp",
+   "group": "互动",
+   "animated": false
+  }
+ ]
+}

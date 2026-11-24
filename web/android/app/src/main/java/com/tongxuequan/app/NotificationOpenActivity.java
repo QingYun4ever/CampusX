@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 public class NotificationOpenActivity extends Activity {
     private static final String EXTRA_PATH = "campus_path";
     private static final Pattern ROUTE = Pattern.compile(
-        "/notifications|/\\?tab=following|/post/[1-9][0-9]{0,18}|/messages/[A-Za-z0-9_]{3,20}|/events/[1-9][0-9]{0,18}"
+        "/notifications|/\\?tab=following|/post/[1-9][0-9]{0,18}|/messages/[A-Za-z0-9_]{3,20}|/events/[1-9][0-9]{0,18}|/stickers/[1-9][0-9]{0,18}"
     );
     private static final AtomicReference<Destination> pending = new AtomicReference<>();
 

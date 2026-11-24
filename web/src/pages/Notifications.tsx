@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AtSign, Heart, MessageCircle, Quote, PartyPopper, Repeat2, ShieldAlert, ShieldCheck, TrendingUp, UserPlus } from 'lucide-react';
+import { AtSign, Heart, MessageCircle, Quote, PartyPopper, Repeat2, ShieldAlert, ShieldCheck, Smile, TrendingUp, UserPlus } from 'lucide-react';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { PostCard } from '../components/PostCard';
 import { Avatar, Emoji, Empty, TopBar } from '../components/ui';
@@ -24,6 +24,7 @@ const META: Record<Notification['type'], { icon: ReactNode; text: string }> = {
   event: { icon: null, text: '' },
   boost: { icon: <TrendingUp size={24} color="var(--crystal-text)" strokeWidth={2.4} />, text: '帮你的帖子推流了' },
   invite: { icon: <UserPlus size={24} color="var(--accent)" />, text: '用你的邀请码加入了校墙' },
+  pack: { icon: null, text: '' },
 };
 
 /** 举报处理完成 */
@@ -116,6 +117,36 @@ function EventItem({ n }: { n: Notification }) {
   );
 }
 
+/** 表情包审核结果 */
+function PackItem({ n }: { n: Notification }) {
+  let info: { packId?: number; name?: string; rejected?: boolean; note?: string; first?: boolean; listed?: boolean } = {};
+  try {
+    info = JSON.parse(n.extra || '{}');
+  } catch {
+    /* 忽略 */
+  }
+  const body = (
+    <>
+      <div className="notif-icon">
+        <Smile size={24} color={info.rejected ? 'var(--danger)' : 'var(--accent)'} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div>
+          {info.rejected ? (
+            <><b>表情包「{info.name}」</b>：{info.listed ? '新加的表情' : '这次'}没有通过审核，改一改可以再提交</>
+          ) : (
+            <><b>表情包「{info.name}」</b>：{info.first === false ? '新加的表情审核通过了' : '审核通过，已经在商场上架'}</>
+          )}
+          <span className="faint"> · {timeAgo(n.createdAt)}</span>
+        </div>
+        {info.rejected && info.note && <div className="notif-reason">理由：{info.note}</div>}
+      </div>
+    </>
+  );
+  const cls = `notif notif-system ${n.read ? '' : 'unread'}`;
+  return info.packId ? <Link to={info.rejected ? `/stickers/${info.packId}/edit` : `/stickers/${info.packId}`} className={cls}>{body}</Link> : <div className={cls}>{body}</div>;
+}
+
 /** 邀请：TA 刚注册，或者 TA 签到满 3 天、奖励到账 */
 function inviteText(extra?: string | null) {
   try {
@@ -132,6 +163,7 @@ function Item({ n }: { n: Notification }) {
   if (n.type === 'moderation') return <ModerationItem n={n} />;
   if (n.type === 'event') return <EventItem n={n} />;
   if (n.type === 'report') return <ReportItem n={n} />;
+  if (n.type === 'pack') return <PackItem n={n} />;
   // 回复和 @ 直接展示完整帖子，可以就地互动
   if ((n.type === 'reply' || n.type === 'mention') && n.post) {
     return (

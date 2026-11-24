@@ -16,6 +16,7 @@ import {
   PartyPopper,
   ScanEye,
   Search,
+  Smile,
   Ticket,
   Trash2,
   Users as UsersIcon,
@@ -30,6 +31,7 @@ import { api, ApiError, WEB_ORIGIN, type Announcement, type CampusEvent, type Ev
 import { refreshStatus } from '../lib/site';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
+import { StickersAdminPage } from './AdminStickers';
 
 /* ---------------- 类型 ---------------- */
 interface Stats {
@@ -818,6 +820,12 @@ export function Admin() {
     enabled: me.role === 'admin',
     refetchInterval: 60_000,
   });
+  const packs = useQuery({
+    queryKey: ['admin-packs-count'],
+    queryFn: () => api<{ n: number }>('/admin/emoji-packs/count'),
+    enabled: me.role === 'admin',
+    refetchInterval: 60_000,
+  });
   const reports = useQuery({
     queryKey: ['admin-reports-count'],
     queryFn: () => api<{ count: number }>('/admin/reports/count'),
@@ -844,6 +852,7 @@ export function Admin() {
     ['/admin/moderation', '内容审核', ScanEye, stats.data?.pending],
     ['/admin/reports', '举报', Flag, reports.data?.count],
     ['/admin/events', '活动', PartyPopper, entries.data?.n],
+    ['/admin/stickers', '表情包', Smile, packs.data?.n],
     ['/admin/site', '站点', Megaphone],
     ['/admin/assistant', 'AI 助手', Bot],
     ['/admin/invites', '邀请码', Ticket],
@@ -879,6 +888,7 @@ export function Admin() {
             <Route path="moderation" element={<Moderation />} />
             <Route path="reports" element={<Reports />} />
             <Route path="events" element={<EventsAdminPage />} />
+            <Route path="stickers" element={<StickersAdminPage head={(right) => <PageHead title="表情包" sub="同学做的表情包审核通过才上架；官方包在这里新建和维护" right={right} />} />} />
             <Route path="site" element={<SitePage />} />
             <Route path="assistant" element={<AssistantPage />} />
             <Route path="invites" element={<InvitesPage />} />

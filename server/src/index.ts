@@ -17,6 +17,8 @@ import { authRoutes } from './routes/auth.ts';
 import { boardRoutes } from './routes/boards.ts';
 import { crystalRoutes } from './routes/crystals.ts';
 import { eventRoutes } from './routes/events.ts';
+import { emojiPackRoutes } from './routes/emoji-packs.ts';
+import { seedEmojiPacks } from './emoji-packs.ts';
 import { dmRoutes } from './routes/dm.ts';
 import { miscRoutes } from './routes/misc.ts';
 import { postRoutes } from './routes/posts.ts';
@@ -113,6 +115,7 @@ await app.register(
     await api.register(crystalRoutes);
     await api.register(eventRoutes);
     await api.register(videoRoutes);
+    await api.register(emojiPackRoutes);
   },
   { prefix: '/api' },
 );
@@ -165,3 +168,5 @@ if (!get('SELECT 1 FROM users LIMIT 1')) {
 await app.listen({ port: config.port, host: config.host });
 resumePending();
 resumeAssistant();
+// 随代码带的官方表情包：第一次启动时导入（后台慢慢导，不耽误启动）
+void seedEmojiPacks().catch((err) => app.log.error({ err }, '导入官方表情包失败'));

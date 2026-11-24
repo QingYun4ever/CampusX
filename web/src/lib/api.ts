@@ -425,7 +425,7 @@ export interface Page<T> {
 
 /** 这个版本认识的通知类型。请求时带上，服务器只返回这些（加了新类型的服务器不会让旧版通知页崩掉） */
 export const NOTIFICATION_TYPES = [
-  'like', 'reply', 'repost', 'quote', 'follow', 'mention', 'reaction', 'moderation', 'report', 'tip', 'boost', 'event', 'invite',
+  'like', 'reply', 'repost', 'quote', 'follow', 'mention', 'reaction', 'moderation', 'report', 'tip', 'boost', 'event', 'invite', 'pack',
 ] as const;
 export const NOTIFICATION_QUERY = `types=${NOTIFICATION_TYPES.join(',')}`;
 
@@ -555,6 +555,54 @@ export interface EventEntry {
   event: { id: number; title: string; tag: string };
   user: User | null;
   post: Post | null;
+}
+
+/** 表情包（商场里的、自己做的） */
+export interface StickerPack {
+  id: number;
+  name: string;
+  description: string;
+  /** 来源和版权说明 */
+  credit: string;
+  official: boolean;
+  /** 同学做的包的作者；官方包为 null */
+  owner: User | null;
+  status: 'draft' | 'pending' | 'rejected' | 'ok';
+  listed: boolean;
+  /** 驳回理由（只有作者看得到） */
+  note: string;
+  cover: string | null;
+  /** 公开的表情数 */
+  count: number;
+  /** 作者和管理员才有 */
+  total?: number;
+  unreviewed?: number;
+  editable?: boolean;
+  installs: number;
+  installed: boolean;
+  preview: string[];
+  createdAt: number;
+  submittedAt: number | null;
+  reviewedAt: number | null;
+  items?: StickerItem[];
+}
+
+export interface StickerItem {
+  id: number;
+  file: string;
+  group: string;
+  animated: boolean;
+  /** 管理员看过了；没看过的只有作者和管理员看得到 */
+  reviewed: boolean;
+}
+
+/** 装上的包（表情面板用） */
+export interface InstalledPack {
+  id: number;
+  name: string;
+  official: boolean;
+  cover: string | null;
+  items: { file: string; group: string }[];
 }
 
 export interface CustomEmoji {

@@ -584,6 +584,54 @@ if (addColumn('custom_emojis', 'sent', 'INTEGER NOT NULL DEFAULT 0')) {
 // origin：从别人那里收藏来的表情，记下最初的文件，避免同一个表情重复收藏
 addColumn('custom_emojis', 'origin', 'TEXT');
 
+db.exec(`
+-- 表情包：官方包（official = 1，管理员维护）和同学自己做的包（审核通过才上架）。
+-- 不硬删：删包只是 status = 'deleted'、表情标成 removed，发出去过的表情文件还要留着显示。
+-- AUTOINCREMENT：ID 不复用，免得旧的安装记录、通知指到新包上
+CREATE TABLE IF NOT EXISTS emoji_packs (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug        TEXT UNIQUE,              -- 随代码分发的官方包的标识，导入过就不再导入
+  owner_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  official    INTEGER NOT NULL DEFAULT 0,
+  name        TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  credit      TEXT NOT NULL DEFAULT '', -- 来源和版权说明
+  status      TEXT NOT NULL DEFAULT 'draft', -- draft | pending | rejected | ok | deleted
+  listed      INTEGER NOT NULL DEFAULT 0,    -- 在商场里公开（审核通过过一次就上架，之后改动再审不影响已上架的表情）
+  note        TEXT NOT NULL DEFAULT '',      -- 驳回理由
+  cover       TEXT,                          -- 封面：包里某个表情的文件名
+  installs    INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  submitted_at INTEGER,
+  reviewed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_emoji_packs_owner ON emoji_packs(owner_id, status);
+CREATE INDEX IF NOT EXISTS idx_emoji_packs_status ON emoji_packs(status, submitted_at);
+
+-- 包里的表情。reviewed = 1：管理员看过（官方包上传即算），上架后只显示看过的；
+-- sent = 1：发到过帖子或私信里，移除后文件也要留着
+CREATE TABLE IF NOT EXISTS emoji_pack_items (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  pack_id    INTEGER NOT NULL REFERENCES emoji_packs(id) ON DELETE CASCADE,
+  file       TEXT NOT NULL UNIQUE,
+  grp        TEXT NOT NULL DEFAULT '',  -- 分组：开心、难过……
+  animated   INTEGER NOT NULL DEFAULT 0,
+  reviewed   INTEGER NOT NULL DEFAULT 0,
+  removed    INTEGER NOT NULL DEFAULT 0,
+  sent       INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_emoji_pack_items_pack ON emoji_pack_items(pack_id, removed, id);
+
+CREATE TABLE IF NOT EXISTS emoji_pack_installs (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  pack_id    INTEGER NOT NULL REFERENCES emoji_packs(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, pack_id)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_emoji_pack_installs_pack ON emoji_pack_installs(pack_id);
+`);
+
 
 /* ---------------- 紫水晶（全站点数） ---------------- */
 db.exec(`
