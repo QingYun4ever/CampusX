@@ -603,6 +603,15 @@ CREATE TABLE IF NOT EXISTS crystal_log (
 CREATE INDEX IF NOT EXISTS idx_crystal_log_user ON crystal_log(user_id, id);
 CREATE INDEX IF NOT EXISTS idx_crystal_log_day ON crystal_log(user_id, kind, day);
 CREATE INDEX IF NOT EXISTS idx_crystal_log_post ON crystal_log(post_id) WHERE post_id IS NOT NULL;
+-- 帖子被硬删（删吧）后 id 可能被新帖复用：紫水晶流水不能再指向它，否则新帖被当违规删除时会扣到旧帖作者头上
+CREATE TRIGGER IF NOT EXISTS crystal_log_post_detached AFTER DELETE ON posts BEGIN
+  UPDATE crystal_log SET post_id = NULL WHERE post_id = OLD.id;
+END;
+-- 加触发器之前删吧留下的：帖子已经不在，或者流水比帖子还早（id 被新帖复用了）
+UPDATE crystal_log SET post_id = NULL
+  WHERE post_id IS NOT NULL
+    AND (NOT EXISTS (SELECT 1 FROM posts p WHERE p.id = crystal_log.post_id)
+         OR created_at < (SELECT p.created_at FROM posts p WHERE p.id = crystal_log.post_id));
 
 -- 已解锁的头像装扮
 CREATE TABLE IF NOT EXISTS user_decorations (
@@ -648,6 +657,15 @@ CREATE TABLE IF NOT EXISTS boost_views (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (post_id, user_id)
 );
+-- 已分发但还没收到浏览上报；结束订单时清理，不占曝光额度。
+CREATE TABLE IF NOT EXISTS boost_pending_views (
+  post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  boost_id   INTEGER NOT NULL REFERENCES boosts(id) ON DELETE CASCADE,
+  PRIMARY KEY (post_id, user_id)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_boost_pending_order ON boost_pending_views(boost_id);
+CREATE INDEX IF NOT EXISTS idx_posts_root_author ON posts(root_id, author_id) WHERE root_id IS NOT NULL;
 
 -- 活动：管理员办，期间带指定话题发帖得紫水晶（每人一次），签到可以翻倍
 CREATE TABLE IF NOT EXISTS events (

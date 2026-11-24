@@ -122,8 +122,10 @@ export async function eventRoutes(app: FastifyInstance) {
     });
 
     /** 提前结束。已经发出去的奖励不收回 */
-    admin.post('/admin/events/:id/end', async (req) => {
-      const r = run('UPDATE events SET ended = 1 WHERE id = $id', { id: Number((req.params as { id: string }).id) });
+    admin.post<{ Params: { id: string } }>('/admin/events/:id/end', async (req) => {
+      const r = run('UPDATE events SET ended = 1, ends_at = MIN(ends_at, $t) WHERE id = $id', {
+        id: Number(req.params.id), t: now(),
+      });
       if (!r.changes) throw new HttpError(404, '活动不存在');
       return { ok: true };
     });

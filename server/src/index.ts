@@ -6,9 +6,10 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyError } from 'fastify';
 import { type SessionUser, touchSeen, userFromToken } from './auth.ts';
 import { config } from './config.ts';
-import { get, now } from './db.ts';
+import { get, now, tx } from './db.ts';
 import { resumePending } from './moderation.ts';
 import { resumeAssistant } from './assistant.ts';
+import { endBoosts } from './boosts.ts';
 import { registerSiteUploadRoutes, startSiteUploads } from './site-uploads.ts';
 import { registerVideoFiles, startVideos, videoRoutes } from './videos.ts';
 import { appRoutes } from './routes/app.ts';
@@ -120,6 +121,17 @@ startSiteUploads();
 registerSiteUploadRoutes(app);
 await startVideos();
 registerVideoFiles(app);
+
+const settleBoosts = () => {
+  try {
+    tx(endBoosts);
+  } catch (err) {
+    app.log.error({ err }, '推流结算失败');
+  }
+};
+settleBoosts();
+const boostTimer = setInterval(settleBoosts, 60_000).unref();
+app.addHook('onClose', async () => { clearInterval(boostTimer); });
 
 // 生产环境：同时托管前端构建产物（SPA）
 const hasWeb = fs.existsSync(config.webDist);

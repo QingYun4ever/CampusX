@@ -1,16 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AtSign, Heart, MessageCircle, Quote, PartyPopper, Repeat2, ShieldAlert, ShieldCheck, TrendingUp, UserPlus } from 'lucide-react';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { PostCard } from '../components/PostCard';
 import { Avatar, Emoji, Empty, TopBar } from '../components/ui';
-import { api, type Notification } from '../lib/api';
+import { api, NOTIFICATION_QUERY, type Notification } from '../lib/api';
 import { PushAsk } from './AppSettings';
 import { CrystalIcon } from '../components/Crystal';
 import { timeAgo } from '../lib/format';
 
-const META = {
+const META: Record<Notification['type'], { icon: ReactNode; text: string }> = {
   like: { icon: <Heart size={24} fill="var(--like)" color="var(--like)" />, text: '喜欢了你的帖子' },
   repost: { icon: <Repeat2 size={24} color="var(--repost)" strokeWidth={2.4} />, text: '转发了你的帖子' },
   quote: { icon: <Quote size={24} color="var(--accent)" />, text: '引用了你的帖子' },
@@ -140,7 +140,9 @@ function Item({ n }: { n: Notification }) {
       </div>
     );
   }
-  const m = META[n.type];
+  // 万一服务器发来不认识的类型：跳过这一条，不要让整个列表崩掉
+  const m = META[n.type] as (typeof META)[Notification['type']] | undefined;
+  if (!m) return null;
   return (
     <div
       className={`notif ${n.read ? '' : 'unread'}`}
@@ -176,7 +178,7 @@ function Item({ n }: { n: Notification }) {
 
 export function Notifications() {
   const qc = useQueryClient();
-  const q = useInfiniteList<Notification>(['notifications'], '/notifications');
+  const q = useInfiniteList<Notification>(['notifications'], `/notifications?${NOTIFICATION_QUERY}`);
 
   // 进入页面后把未读标记为已读（列表里的高亮保留到下次进入）
   useEffect(() => {

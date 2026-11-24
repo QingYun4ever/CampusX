@@ -33,7 +33,7 @@ import {
   Bookmark,
   User as UserIcon,
 } from 'lucide-react';
-import { api, type Board, type SiteStats, type User } from '../lib/api';
+import { api, NOTIFICATION_QUERY, type Board, type SiteStats, type User } from '../lib/api';
 import { CURRENT, hasUnseen } from '../lib/changelog';
 import { useAuth, useMe } from '../lib/auth';
 import { useEscape } from '../lib/escape';
@@ -57,7 +57,7 @@ function useDmUnread() {
 function useUnread() {
   return useQuery({
     queryKey: ['unread'],
-    queryFn: () => api<{ count: number }>('/notifications/unread-count'),
+    queryFn: () => api<{ count: number }>(`/notifications/unread-count?${NOTIFICATION_QUERY}`),
     refetchInterval: 30_000,
     select: (d) => d.count,
   });

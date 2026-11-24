@@ -14,6 +14,16 @@ import { getSignup, isPrivateIp, saveSignup } from '../invites.ts';
 import { videoUrls } from '../videos.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
 
+/**
+ * 客户端能显示的通知类型。旧版 App 遇到不认识的类型整个通知页会崩（0.16 不认识 boost，0.17.0 不认识 event，
+ * 0.17.1 不认识 invite），所以只给它们 0.14 起都认识的这几种；0.19.1 起客户端用 types 声明自己认识哪些。
+ */
+const LEGACY_NOTIFICATION_TYPES = ['like', 'repost', 'quote', 'follow', 'reply', 'mention', 'reaction', 'moderation', 'report'];
+function clientTypes(raw: string | undefined) {
+  const list = raw === undefined ? LEGACY_NOTIFICATION_TYPES : raw.split(',').filter((t) => /^[a-z_]{1,20}$/.test(t)).slice(0, 40);
+  return JSON.stringify(list);
+}
+
 export async function miscRoutes(app: FastifyInstance) {
   /* ---------- 图片上传 ---------- */
   app.post('/upload', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
@@ -28,13 +38,14 @@ export async function miscRoutes(app: FastifyInstance) {
   /* ---------- 通知 ---------- */
   app.get('/notifications', async (req) => {
     const user = me(req);
-    const q = req.query as { cursor?: string };
+    const q = req.query as { cursor?: string; types?: string };
     const rows = all(
       `SELECT n.id AS nid, n.type, n.post_id, n.read, n.extra, n.created_at AS n_created_at, ${USER_COLS}
        FROM notifications n JOIN users u ON u.id = n.actor_id
        WHERE n.user_id = $me AND ${visibleNotification} AND ($cursor IS NULL OR n.id < $cursor)
+         AND n.type IN (SELECT value FROM json_each($types))
        ORDER BY n.id DESC LIMIT 30`,
-      { me: user.id, cursor: cursorNum(q.cursor) },
+      { me: user.id, cursor: cursorNum(q.cursor), types: clientTypes(q.types) },
     );
     const posts = new Map(
       postsByIds([...new Set(rows.map((r) => r.post_id).filter(Boolean))], user.id).map((p) => [p.id, p]),
@@ -78,8 +89,9 @@ export async function miscRoutes(app: FastifyInstance) {
 
   app.get('/notifications/unread-count', async (req) => {
     const r = get<{ c: number }>(
-      `SELECT COUNT(*) AS c FROM notifications n WHERE n.user_id = $me AND n.read = 0 AND ${visibleNotification}`,
-      { me: me(req).id },
+      `SELECT COUNT(*) AS c FROM notifications n WHERE n.user_id = $me AND n.read = 0 AND ${visibleNotification}
+         AND n.type IN (SELECT value FROM json_each($types))`,
+      { me: me(req).id, types: clientTypes((req.query as { types?: string }).types) },
     );
     return { count: r?.c ?? 0 };
   });

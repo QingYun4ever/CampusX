@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, PartyPopper, X } from 'lucide-react';
 import { api, type CampusEvent } from '../lib/api';
-import { eventMine, eventPerks, eventWhen } from '../lib/events';
+import { eventMine, eventPerks, eventRefreshDelay, eventWhen } from '../lib/events';
 import '../pages/events.css';
 
 const DISMISS_KEY = 'txq_event_dismissed';
@@ -22,6 +22,8 @@ export function EventCards() {
     queryKey: ['events', 'current'],
     queryFn: () => api<CampusEvent[]>('/events/current'),
     staleTime: 5 * 60_000,
+    refetchInterval: (query) => eventRefreshDelay(query.state.data),
+    refetchIntervalInBackground: true,
     retry: false,
   });
   const list = (q.data ?? []).filter((e) => !dismissed.includes(e.id));

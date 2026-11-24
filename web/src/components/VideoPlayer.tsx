@@ -157,7 +157,7 @@ export function InlineVideo({ video }: { video: Video }) {
         ) : showPlay ? (
           <span className="vi-center vi-big" aria-hidden><Play size={28} fill="currentColor" /></span>
         ) : waiting ? (
-          <span className="vi-center vi-spin" aria-hidden />
+          <span className="vi-spin" aria-hidden />
         ) : null}
         <span className="vi-time">{formatDuration(state === 'idle' || state === 'ended' ? video.duration : left)}</span>
         {state !== 'idle' && state !== 'error' && (
@@ -369,7 +369,7 @@ function VideoViewer({ video, start, onClose }: { video: Video; start: number; o
             {ended ? <RotateCcw size={30} /> : <Play size={32} fill="currentColor" />}
           </button>
         ) : waiting ? (
-          <span className="vv-center vi-spin" aria-hidden />
+          <span className="vi-spin" aria-hidden />
         ) : null}
       </div>
       <div className="vv-top" style={{ opacity: dragY ? 0 : undefined }}>

@@ -1,5 +1,22 @@
 import type { CampusEvent } from './api';
 
+function eventBoundary(e: CampusEvent) {
+  return e.status === 'upcoming' ? e.startsAt : e.status === 'active' ? e.endsAt : Infinity;
+}
+
+/** 在服务器返回的下一次活动状态变化时刷新；长时间分段等待，时钟有偏差时避免立即重试。 */
+export function eventRefreshDelay(data: CampusEvent | CampusEvent[] | undefined) {
+  let next = Infinity;
+  if (Array.isArray(data)) {
+    for (const e of data) next = Math.min(next, eventBoundary(e));
+  } else if (data) {
+    next = eventBoundary(data);
+  }
+  if (!Number.isFinite(next)) return false;
+  const delay = next - Date.now();
+  return delay > 0 ? Math.min(delay, 2_147_483_647) : 5_000;
+}
+
 /** 「还剩 3 天」「6 小时后开始」 */
 export function eventWhen(e: CampusEvent, t = Date.now()) {
   const span = (ms: number) => {

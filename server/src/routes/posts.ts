@@ -9,7 +9,7 @@ import { consumeDraftUploads, holdDraftUploads, MAX_REVIEW_IMAGE_BYTES, siteUplo
 import { USER_COLS, userPublic } from './users-common.ts';
 import { grantForLike, revokeForPost } from '../levels.ts';
 import { crystalForLike, revokeCrystalsForPost } from '../crystals.ts';
-import { endBoosts, takeBoost } from '../boosts.ts';
+import { confirmBoostView, takeBoost } from '../boosts.ts';
 import { rankedFeed } from '../ranking.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 import { getAssistantConfig } from '../assistant.ts';
@@ -159,10 +159,8 @@ export async function postRoutes(app: FastifyInstance) {
 
     // 推流：「推荐」和「最新」里每页最多插 1 条。要前端带 promo=1（「有新帖子」的轮询不带，不算曝光）
     if (tab !== 'following' && q.promo === '1' && items.length) {
-      const boostedId = tx(() => {
-        endBoosts();
-        return takeBoost(user.id, before, shown);
-      });
+      for (const item of items) if (item.repostOf) shown.push(item.repostOf.id);
+      const boostedId = tx(() => takeBoost(user.id, before, shown));
       const boosted = boostedId && hydrate(all(`${postSelect()} WHERE p.id = $id`, { me: user.id, id: boostedId }), user.id)[0];
       if (boosted) items.splice(Math.min(4, items.length), 0, { ...boosted, boosted: true });
     }
@@ -511,7 +509,10 @@ export async function postRoutes(app: FastifyInstance) {
         );
         if (!p) continue;
         const r = run('INSERT OR IGNORE INTO post_views (post_id, user_id, created_at) VALUES ($p, $u, $t)', { p: id, u: user.id, t });
-        if (r.changes) run('UPDATE posts SET view_count = view_count + 1 WHERE id = $id', { id });
+        if (r.changes) {
+          run('UPDATE posts SET view_count = view_count + 1 WHERE id = $id', { id });
+          confirmBoostView(user.id, id, t);
+        }
       }
     });
     return { ok: true };

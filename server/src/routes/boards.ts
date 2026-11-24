@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { all, get, now, run, tx, type Row } from '../db.ts';
+import { endBoostsInBoard } from '../boosts.ts';
 import type { SessionUser } from '../auth.ts';
 import { boardRole, HIDDEN_BOARDS, hydrate, postSelect } from '../serialize.ts';
 import { consumeDraftUploads, siteUploadUrl } from '../site-uploads.ts';
@@ -373,6 +374,8 @@ export async function boardRoutes(app: FastifyInstance) {
     const b = findBoard(slugOf(req), user.id);
     requireOwner(b.id, user);
     const n = tx(() => {
+      // 推流记录会随帖子硬删：先结算退款
+      endBoostsInBoard(b.id);
       const r = run('DELETE FROM posts WHERE board_id = $b', { b: b.id });
       run('DELETE FROM boards WHERE id = $b', { b: b.id });
       return r.changes as number;

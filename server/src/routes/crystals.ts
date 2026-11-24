@@ -67,7 +67,7 @@ export async function crystalRoutes(app: FastifyInstance) {
     reply.header('Cache-Control', 'private, no-store');
     const user = me(req);
     const target = resolveTarget(Number((req.params as { id: string }).id), user.id);
-    tx(() => endBoosts(true));
+    tx(endBoosts);
     return boostStatus(target.id, user.id);
   });
 

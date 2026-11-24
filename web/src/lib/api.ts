@@ -423,9 +423,15 @@ export interface Page<T> {
   nextCursor: string | null;
 }
 
+/** 这个版本认识的通知类型。请求时带上，服务器只返回这些（加了新类型的服务器不会让旧版通知页崩掉） */
+export const NOTIFICATION_TYPES = [
+  'like', 'reply', 'repost', 'quote', 'follow', 'mention', 'reaction', 'moderation', 'report', 'tip', 'boost', 'event', 'invite',
+] as const;
+export const NOTIFICATION_QUERY = `types=${NOTIFICATION_TYPES.join(',')}`;
+
 export interface Notification {
   id: number;
-  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation' | 'report' | 'tip' | 'boost' | 'event' | 'invite';
+  type: (typeof NOTIFICATION_TYPES)[number];
   read: boolean;
   /** reaction：用的哪个表情；moderation：JSON { reason, excerpt, warnings } */
   extra?: string;

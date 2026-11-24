@@ -6,7 +6,7 @@ import { Feed } from '../components/Feed';
 import { useCompose } from '../components/compose';
 import { Empty, Spinner, TopBar } from '../components/ui';
 import { api, type CampusEvent } from '../lib/api';
-import { eventMine, eventPerks, eventRange, eventWhen } from '../lib/events';
+import { eventMine, eventPerks, eventRange, eventRefreshDelay, eventWhen } from '../lib/events';
 import './events.css';
 
 const STATUS = { active: '进行中', upcoming: '即将开始', ended: '已结束' } as const;
@@ -15,7 +15,12 @@ const STATUS = { active: '进行中', upcoming: '即将开始', ended: '已结�
 export function EventPage() {
   const id = Number(useParams().id);
   const compose = useCompose();
-  const q = useQuery({ queryKey: ['events', id], queryFn: () => api<CampusEvent>(`/events/${id}`) });
+  const q = useQuery({
+    queryKey: ['events', id],
+    queryFn: () => api<CampusEvent>(`/events/${id}`),
+    refetchInterval: (query) => eventRefreshDelay(query.state.data),
+    refetchIntervalInBackground: true,
+  });
   const e = q.data;
   return (
     <>
@@ -96,7 +101,12 @@ export function EventPage() {
 
 /** 所有活动 */
 export function EventsPage() {
-  const q = useQuery({ queryKey: ['events', 'all'], queryFn: () => api<CampusEvent[]>('/events') });
+  const q = useQuery({
+    queryKey: ['events', 'all'],
+    queryFn: () => api<CampusEvent[]>('/events'),
+    refetchInterval: (query) => eventRefreshDelay(query.state.data),
+    refetchIntervalInBackground: true,
+  });
   return (
     <>
       <TopBar back title="活动" />

@@ -15,6 +15,15 @@ import { BOOST, isNewAccount, record, spend, sumToday } from './crystals.ts';
 import { publicPost } from './serialize.ts';
 import { HttpError } from './util.ts';
 
+type BoostRow = { id: number; post_id: number; buyer_id: number; reach: number; shown: number; created_at: number };
+
+/**
+ * 流水里的 ref。boosts 会随帖子一起被硬删（删吧），SQLite 之后可能把同一个 id 再分给新的推流，
+ * 只用 id 的话新推流的扣款会和旧流水撞上（409），退款会被静默丢掉，所以带上创建时间。
+ * 改版前的流水是纯数字，和这个格式不会重复。
+ */
+const boostRef = (id: number, createdAt: number) => `${id}@${createdAt}`;
+
 /** 推流对象：公开、没删、是主帖不是转发 */
 const BOOSTABLE = (alias: string) => `${publicPost(alias)} AND ${alias}.parent_id IS NULL AND ${alias}.repost_of IS NULL`;
 
@@ -50,7 +59,7 @@ export function boostPost(buyerId: number, postId: number, amount: number) {
       { p: p.id, b: buyerId, a: amount, r: reach, t, exp: t + BOOST.hours * 3_600_000 },
     ).lastId,
   );
-  spend(buyerId, 'boost', String(id), amount, p.id);
+  spend(buyerId, 'boost', boostRef(id, t), amount, p.id);
   // 帮别人推：告诉作者一声（被作者拉黑了就不说）
   if (p.author_id !== buyerId && !get('SELECT 1 FROM blocks WHERE blocker_id = $u AND blocked_id = $a', { u: p.author_id, a: buyerId })) {
     run(`INSERT INTO notifications (user_id, actor_id, type, post_id, extra, created_at) VALUES ($u, $a, 'boost', $p, $x, $t)`, {
@@ -66,7 +75,7 @@ const CANT_SEE = `(EXISTS (SELECT 1 FROM boost_views v WHERE v.post_id = p.id AN
   OR EXISTS (SELECT 1 FROM blocks k WHERE (k.blocker_id = $me AND k.blocked_id = p.author_id)
                                      OR (k.blocker_id = p.author_id AND k.blocked_id = $me))
   OR EXISTS (SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $me)
-  OR EXISTS (SELECT 1 FROM posts r WHERE r.parent_id = p.id AND r.author_id = $me))`;
+  OR EXISTS (SELECT 1 FROM posts r WHERE r.root_id = p.id AND r.author_id = $me))`;
 
 /** 这条帖子还能再推给多少人：最近两周上过线、能看到它的人，减去进行中的推流还没用完的 */
 export function boostRoom(postId: number, authorId: number) {
@@ -82,46 +91,72 @@ export function boostRoom(postId: number, authorId: number) {
   return Math.max(0, audience - pending);
 }
 
-let lastSweep = 0;
-
-/** 结束看满了、到期了、帖子没了的推流，退回没用完的。默认每分钟最多扫一次 */
-export function endBoosts(force = false) {
+/** 结束看满了、到期了、帖子没了的推流，退回没用完的。 */
+export function endBoosts() {
   const t = now();
-  if (!force && t - lastSweep < 60_000) return;
-  lastSweep = t;
-  const rows = all<{ id: number; post_id: number; buyer_id: number; reach: number; shown: number }>(
-    `SELECT b.id, b.post_id, b.buyer_id, b.reach, b.shown FROM boosts b LEFT JOIN posts p ON p.id = b.post_id
+  const rows = all<BoostRow>(
+    `SELECT b.id, b.post_id, b.buyer_id, b.reach, b.shown, b.created_at FROM boosts b LEFT JOIN posts p ON p.id = b.post_id
      WHERE b.ended_at IS NULL AND (b.shown >= b.reach OR b.expires_at <= $t OR p.id IS NULL OR NOT (${BOOSTABLE('p')}))`,
     { t },
   );
   for (const b of rows) endBoost(b, t);
 }
 
-function endBoost(b: { id: number; post_id: number; buyer_id: number; reach: number; shown: number }, t: number) {
+/** 吧要被删了（帖子会被硬删，推流记录跟着没了）：先把吧里帖子的推流结算掉，没用完的退回 */
+export function endBoostsInBoard(boardId: number) {
+  const t = now();
+  const rows = all<BoostRow>(
+    `SELECT b.id, b.post_id, b.buyer_id, b.reach, b.shown, b.created_at FROM boosts b JOIN posts p ON p.id = b.post_id
+     WHERE b.ended_at IS NULL AND p.board_id = $b`,
+    { b: boardId },
+  );
+  for (const b of rows) endBoost(b, t);
+}
+
+function endBoost(b: BoostRow, t: number) {
   const refund = Math.floor(Math.max(0, b.reach - b.shown) / BOOST.reachPer);
   const r = run('UPDATE boosts SET ended_at = $t, refund = $r WHERE id = $id AND ended_at IS NULL', { t, r: refund, id: b.id });
-  if (r.changes && refund) record(b.buyer_id, 'boost_refund', String(b.id), refund, b.post_id, t);
+  if (!r.changes) return;
+  run('DELETE FROM boost_pending_views WHERE boost_id = $id', { id: b.id });
+  if (refund) record(b.buyer_id, 'boost_refund', boostRef(b.id, b.created_at), refund, b.post_id, t);
 }
 
 /**
- * 给这个人挑一条推流帖子，并记一次曝光。
+ * 选择一条推流帖子并登记待曝光，只有浏览上报才计数。
  * before：只挑比这一页最旧的帖子还旧的（更新的那些他往下翻的时候已经看过了）；exclude：这一页里已经有的
  */
 export function takeBoost(viewerId: number, before: number, exclude: number[]) {
-  const t = now();
-  const b = get<{ id: number; post_id: number; buyer_id: number; reach: number; shown: number }>(
-    `SELECT b.id, b.post_id, b.buyer_id, b.reach, b.shown FROM boosts b JOIN posts p ON p.id = b.post_id
+  return get<{ post_id: number }>(
+    `INSERT INTO boost_pending_views (post_id, user_id, boost_id)
+     SELECT b.post_id, $me, b.id FROM boosts b JOIN posts p ON p.id = b.post_id
      WHERE b.ended_at IS NULL AND b.shown < b.reach AND b.expires_at > $t
        AND p.id < $before AND p.id NOT IN (SELECT value FROM json_each($ex))
        AND p.author_id <> $me AND ${BOOSTABLE('p')} AND NOT ${CANT_SEE}
-     ORDER BY CAST(b.shown AS REAL) / b.reach, b.id LIMIT 1`,
-    { t, before, ex: JSON.stringify(exclude), me: viewerId },
+     ORDER BY CAST(b.shown AS REAL) / b.reach, b.id LIMIT 1
+     ON CONFLICT (post_id, user_id) DO UPDATE SET boost_id = excluded.boost_id
+     RETURNING post_id`,
+    { t: now(), before, ex: JSON.stringify(exclude), me: viewerId },
+  )?.post_id ?? null;
+}
+
+/** 与首次浏览记录同事务：已结束、不再公开或看满的订单不计曝光。 */
+export function confirmBoostView(viewerId: number, postId: number, t: number) {
+  const pending = get<{ boost_id: number }>(
+    'DELETE FROM boost_pending_views WHERE post_id = $p AND user_id = $u RETURNING boost_id',
+    { p: postId, u: viewerId },
   );
-  if (!b) return null;
-  run('INSERT INTO boost_views (post_id, user_id, boost_id, created_at) VALUES ($p, $u, $b, $t)', { p: b.post_id, u: viewerId, b: b.id, t });
+  if (!pending) return;
+  const b = get<BoostRow>(
+    `SELECT b.id, b.post_id, b.buyer_id, b.reach, b.shown, b.created_at FROM boosts b JOIN posts p ON p.id = b.post_id
+     WHERE b.id = $id AND b.ended_at IS NULL AND b.shown < b.reach AND b.expires_at > $t AND ${BOOSTABLE('p')}`,
+    { id: pending.boost_id, t },
+  );
+  if (!b) return;
+  const r = run('INSERT OR IGNORE INTO boost_views (post_id, user_id, boost_id, created_at) VALUES ($p, $u, $b, $t)',
+    { p: postId, u: viewerId, b: b.id, t });
+  if (!r.changes) return;
   run('UPDATE boosts SET shown = shown + 1 WHERE id = $id', { id: b.id });
   if (b.shown + 1 >= b.reach) endBoost({ ...b, shown: b.shown + 1 }, t);
-  return b.post_id;
 }
 
 /** 一条帖子的推流情况：所有人看到的总数，加上我自己买的每一笔 */
