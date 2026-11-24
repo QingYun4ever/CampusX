@@ -68,7 +68,7 @@ export function TipDialog({ post, onClose }: { post: Post; onClose: () => void }
   );
 }
 
-/** 花紫水晶推流：让这条帖子在首页「全部」里被更多人看到 */
+/** 花紫水晶推流：让这条帖子在首页「推荐」「最新」里被更多人看到 */
 export function BoostDialog({ post, onClose }: { post: Post; onClose: () => void }) {
   const w = useWallet();
   const setWallet = useSetWallet();
@@ -81,7 +81,8 @@ export function BoostDialog({ post, onClose }: { post: Post; onClose: () => void
   const [amount, setAmount] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const balance = w.data?.balance ?? 0;
-  const per = w.data?.rules.boostReachPer ?? 5;
+  const per = w.data?.rules.boostReachPer ?? 2;
+  const room = status.data?.room;
   const send = async () => {
     if (!amount) return;
     setBusy(true);
@@ -105,7 +106,7 @@ export function BoostDialog({ post, onClose }: { post: Post; onClose: () => void
         ) : (
           <>
             <p className="boost-intro">
-              花紫水晶让这条帖子出现在更多人的首页「全部」里，标着「推流」。每个人只会看到一次，作者本人和已经赞过、回复过的人不会再看到。
+              花紫水晶让这条帖子出现在更多人的首页里，标着「推流」。只推给还没看过它的同学，每人一次。
             </p>
             {s && s.reach > 0 && (
               <div className="boost-progress">
@@ -116,18 +117,23 @@ export function BoostDialog({ post, onClose }: { post: Post; onClose: () => void
                 <div className="boost-bar"><i style={{ width: `${Math.min(100, (s.shown / s.reach) * 100)}%` }} /></div>
               </div>
             )}
+            {room !== undefined && (
+              <div className="boost-room">
+                {room > 0 ? <>最近两周活跃的同学里，还有 <b>{room}</b> 人没看过这条</> : '最近两周活跃的同学基本都看过这条了，不用推流啦'}
+              </div>
+            )}
             <div className="tip-balance">
               <span>我的紫水晶</span>
               <Link to="/crystals" onClick={onClose}><CrystalAmount n={balance} /></Link>
             </div>
             <div className="tip-amounts boost-amounts" role="radiogroup" aria-label="推流数量">
-              {(w.data?.rules.boostAmounts ?? [10, 30, 60, 100]).map((n) => (
+              {(w.data?.rules.boostAmounts ?? [10, 25, 50]).map((n) => (
                 <button
                   key={n}
                   role="radio"
                   aria-checked={amount === n}
                   className={amount === n ? 'on' : ''}
-                  disabled={n > balance}
+                  disabled={n > balance || (room !== undefined && n * per > room) || status.isPending}
                   onClick={() => setAmount(n)}
                 >
                   <span className="boost-reach">{(n * per).toLocaleString('zh-CN')} 人</span>

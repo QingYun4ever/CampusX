@@ -138,7 +138,7 @@ function Rules({ w }: { w: Wallet }) {
       <ul className="crystal-rules">
         <li><b>解锁头像装扮</b>：<Link to="/market?tab=halo">去商场看看</Link></li>
         <li><b>打赏</b>：在帖子的「…」菜单里送给作者，每天最多 {r.tipDailyCap} 颗</li>
-        <li><b>推流</b>：在帖子的「…」菜单里选「推流」，1 颗紫水晶多 {r.boostReachPer ?? 5} 个人在首页看到。可以推自己的，也可以帮别人推好帖子；72 小时内没推完的退回</li>
+        <li><b>推流</b>：在帖子的「…」菜单里选「推流」，1 颗紫水晶多 {r.boostReachPer ?? 2} 个人在首页看到。可以推自己的，也可以帮别人推好帖子；72 小时内没推完的退回</li>
       </ul>
       <p className="muted small">帖子因为违规被删除，它被赞和参加活动得到的紫水晶会扣回。</p>
     </section>

@@ -2,8 +2,9 @@
  * 推流：花紫水晶，让一条帖子被更多人看到。
  *
  * - 买的是「多少个人能看到」：1 颗 = BOOST.reachPer 人。可以推自己的帖子，也可以帮别人推好帖子
+ * - 能买多少人有上限：最近两周上过线、还没看过这条的人（减去别的推流已经占下的）。人少，不能卖出推不完的量
  * - 只出现在首页「全部」里，每一页最多插 1 条，标「推流」。同一条帖子同一个人只给他看一次
- * - 不给作者本人、赞过或回复过的人、和作者互相拉黑的人看；只推公开的主帖，发出来不超过 7 天
+ * - 不给作者本人、看过（浏览记录里有）、赞过或回复过的人、和作者互相拉黑的人看；只推公开的主帖，发出来不超过 7 天
  * - 看满、到期（72 小时）、帖子被删或者变成不公开，推流就结束，没用完的人数按比例退回紫水晶
  *
  * 函数都不开事务，调用方负责。
@@ -36,6 +37,12 @@ export function boostPost(buyerId: number, postId: number, amount: number) {
     throw new HttpError(400, `每天最多花 ${BOOST.dailyCap} 颗推流，今天还能花 ${Math.max(0, BOOST.dailyCap - spent)} 颗`);
   }
   const reach = amount * BOOST.reachPer;
+  const room = boostRoom(p.id, p.author_id);
+  if (reach > room) {
+    throw new HttpError(400, room < BOOST.amounts[0] * BOOST.reachPer
+      ? `最近两周活跃的同学里，还没看过这条的只有 ${room} 人，不用推流啦`
+      : `最近两周活跃的同学里，还没看过这条的只有 ${room} 人，选小一点的档位吧`);
+  }
   const id = Number(
     run(
       `INSERT INTO boosts (post_id, buyer_id, amount, reach, created_at, expires_at)
@@ -51,6 +58,28 @@ export function boostPost(buyerId: number, postId: number, amount: number) {
     });
   }
   return reach;
+}
+
+/** 不能看推流的人（SQL 条件，$me 是观看的人，p 是帖子） */
+const CANT_SEE = `(EXISTS (SELECT 1 FROM boost_views v WHERE v.post_id = p.id AND v.user_id = $me)
+  OR EXISTS (SELECT 1 FROM post_views pv WHERE pv.post_id = p.id AND pv.user_id = $me)
+  OR EXISTS (SELECT 1 FROM blocks k WHERE (k.blocker_id = $me AND k.blocked_id = p.author_id)
+                                     OR (k.blocker_id = p.author_id AND k.blocked_id = $me))
+  OR EXISTS (SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $me)
+  OR EXISTS (SELECT 1 FROM posts r WHERE r.parent_id = p.id AND r.author_id = $me))`;
+
+/** 这条帖子还能再推给多少人：最近两周上过线、能看到它的人，减去进行中的推流还没用完的 */
+export function boostRoom(postId: number, authorId: number) {
+  const audience = get<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM users u, posts p
+     WHERE p.id = $p AND u.id <> $a AND u.role <> 'bot' AND u.last_seen_at > $since
+       AND NOT ${CANT_SEE.replaceAll('$me', 'u.id')}`,
+    { p: postId, a: authorId, since: now() - BOOST.activeDays * 86_400_000 },
+  )!.n;
+  const pending = get<{ n: number }>(
+    'SELECT COALESCE(SUM(reach - shown), 0) AS n FROM boosts WHERE post_id = $p AND ended_at IS NULL', { p: postId },
+  )!.n;
+  return Math.max(0, audience - pending);
 }
 
 let lastSweep = 0;
@@ -84,12 +113,7 @@ export function takeBoost(viewerId: number, before: number, exclude: number[]) {
     `SELECT b.id, b.post_id, b.buyer_id, b.reach, b.shown FROM boosts b JOIN posts p ON p.id = b.post_id
      WHERE b.ended_at IS NULL AND b.shown < b.reach AND b.expires_at > $t
        AND p.id < $before AND p.id NOT IN (SELECT value FROM json_each($ex))
-       AND p.author_id <> $me AND ${BOOSTABLE('p')}
-       AND NOT EXISTS (SELECT 1 FROM boost_views v WHERE v.post_id = p.id AND v.user_id = $me)
-       AND NOT EXISTS (SELECT 1 FROM blocks k WHERE (k.blocker_id = $me AND k.blocked_id = p.author_id)
-                                              OR (k.blocker_id = p.author_id AND k.blocked_id = $me))
-       AND NOT EXISTS (SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $me)
-       AND NOT EXISTS (SELECT 1 FROM posts r WHERE r.parent_id = p.id AND r.author_id = $me)
+       AND p.author_id <> $me AND ${BOOSTABLE('p')} AND NOT ${CANT_SEE}
      ORDER BY CAST(b.shown AS REAL) / b.reach, b.id LIMIT 1`,
     { t, before, ex: JSON.stringify(exclude), me: viewerId },
   );
@@ -114,5 +138,8 @@ export function boostStatus(postId: number, meId: number) {
     id: r.id, amount: r.amount, reach: r.reach, shown: r.shown, createdAt: r.created_at,
     expiresAt: r.expires_at, endedAt: r.ended_at, refund: r.refund,
   }));
-  return { reach: total.reach, shown: total.shown, active: total.active > 0, mine };
+  const author = get<{ a: number }>('SELECT author_id AS a FROM posts WHERE id = $p', { p: postId })?.a;
+  /** 还能买多少人 */
+  const room = author === undefined ? 0 : boostRoom(postId, author);
+  return { reach: total.reach, shown: total.shown, active: total.active > 0, room, mine };
 }

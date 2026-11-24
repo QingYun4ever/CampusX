@@ -251,12 +251,14 @@ function noteOf(kind: string, ref: string) {
 /* ---------------- 推流的价格（逻辑在 boosts.ts） ---------------- */
 
 export const BOOST = {
-  /** 可选的档位 */
-  amounts: [10, 30, 60, 100] as const,
+  /** 可选的档位（站点一两百人，档位按这个量级定） */
+  amounts: [10, 25, 50] as const,
   /** 1 颗紫水晶让多少人看到 */
-  reachPer: 5,
+  reachPer: 2,
   /** 每人每天最多花多少在推流上 */
-  dailyCap: 200,
+  dailyCap: 100,
+  /** 能推给的人：最近这么多天上过线的 */
+  activeDays: 14,
   /** 推流最多持续多久，到期退回没用完的 */
   hours: 72,
   /** 只能推发出来不超过这么多天的帖子 */

@@ -243,7 +243,16 @@
   transition: width 0.3s;
 }
 .boost-amounts {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
+}
+.boost-room {
+  margin-bottom: 14px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.boost-room b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 .boost-amounts button {
   gap: 2px;

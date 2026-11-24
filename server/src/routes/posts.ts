@@ -10,6 +10,7 @@ import { USER_COLS, userPublic } from './users-common.ts';
 import { grantForLike, revokeForPost } from '../levels.ts';
 import { crystalForLike, revokeCrystalsForPost } from '../crystals.ts';
 import { endBoosts, takeBoost } from '../boosts.ts';
+import { rankedFeed } from '../ranking.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 import { getAssistantConfig } from '../assistant.ts';
 
@@ -99,36 +100,70 @@ export function resolveTarget(id: number, meId: number) {
 
 export async function postRoutes(app: FastifyInstance) {
   /* ---------- 首页时间线 ---------- */
+  /**
+   * tab=all：推荐（按热度排，见 ranking.ts），游标是 r<偏移>；推荐的排完了接着按时间往前翻，游标是帖子 id
+   * tab=latest：全站按时间；tab=following：关注的人、加入的吧，按时间
+   * 第一页带 newest（这个 tab 里最新一条帖子的 id），前端用来判断「有新帖子」
+   */
   app.get('/feed', async (req) => {
     const user = me(req);
     const q = req.query as { tab?: string; cursor?: string; promo?: string };
-    const following = q.tab === 'following';
-    const rows = all(
-      `${postSelect()}
-       WHERE p.parent_id IS NULL AND p.deleted = 0
-         AND ($cursor IS NULL OR p.id < $cursor)
-         ${
-           following
-             ? `AND (p.author_id = $me
-                  OR p.author_id IN (SELECT followee_id FROM follows WHERE follower_id = $me)
-                  OR p.board_id IN (SELECT board_id FROM board_members WHERE user_id = $me))`
-             : ''
-         }
-       ORDER BY p.id DESC LIMIT $limit`,
-      { me: user.id, cursor: cursorNum(q.cursor), limit: PAGE },
-    );
-    const items = spreadAuthors(hydrate(rows, user.id));
-    const minId = rows.reduce((m, r) => Math.min(m, r.id as number), Infinity);
-    // 推流：只在「全部」里，每页最多插 1 条。要前端带 promo=1（「有新帖子」的轮询不带，不算曝光）
-    if (!following && q.promo === '1' && rows.length) {
+    const tab = q.tab === 'following' ? 'following' : q.tab === 'latest' ? 'latest' : 'all';
+    const ranked = tab === 'all' && (!q.cursor || q.cursor.startsWith('r'));
+
+    let items: PostDTO[];
+    let nextCursor: string | null;
+    let newest: number | null = null;
+    /** 推流不能插这些（已经在这一页或者前面几页里了）；只能插比 before 更旧的 */
+    let shown: number[];
+    let before = Number.MAX_SAFE_INTEGER;
+
+    if (ranked) {
+      const offset = q.cursor ? Math.max(0, Number(q.cursor.slice(1)) || 0) : 0;
+      const r = rankedFeed(user.id, offset === 0);
+      const slice = r.ids.slice(offset, offset + PAGE);
+      const rows = slice.length
+        ? all(`${postSelect()} WHERE p.id IN (SELECT value FROM json_each($ids))`, { me: user.id, ids: JSON.stringify(slice) })
+        : [];
+      const order = new Map(slice.map((id, i) => [id, i]));
+      rows.sort((a, b) => order.get(a.id as number)! - order.get(b.id as number)!);
+      items = spreadAuthors(hydrate(rows, user.id));
+      nextCursor = offset + PAGE < r.ids.length ? `r${offset + PAGE}` : r.oldest ? String(r.oldest) : null;
+      if (offset === 0) newest = r.newest;
+      shown = r.ids.slice(0, offset + PAGE);
+    } else {
+      const rows = all(
+        `${postSelect()}
+         WHERE p.parent_id IS NULL AND p.deleted = 0
+           AND ($cursor IS NULL OR p.id < $cursor)
+           ${
+             tab === 'following'
+               ? `AND (p.author_id = $me
+                    OR p.author_id IN (SELECT followee_id FROM follows WHERE follower_id = $me)
+                    OR p.board_id IN (SELECT board_id FROM board_members WHERE user_id = $me))`
+               : ''
+           }
+         ORDER BY p.id DESC LIMIT $limit`,
+        { me: user.id, cursor: cursorNum(q.cursor), limit: PAGE },
+      );
+      items = spreadAuthors(hydrate(rows, user.id));
+      const minId = rows.reduce((m, r) => Math.min(m, r.id as number), Infinity);
+      nextCursor = rows.length >= PAGE ? String(minId) : null;
+      if (!q.cursor && rows.length) newest = rows.reduce((m, r) => Math.max(m, r.id as number), 0);
+      shown = rows.map((r) => r.id as number);
+      before = minId;
+    }
+
+    // 推流：「推荐」和「最新」里每页最多插 1 条。要前端带 promo=1（「有新帖子」的轮询不带，不算曝光）
+    if (tab !== 'following' && q.promo === '1' && items.length) {
       const boostedId = tx(() => {
         endBoosts();
-        return takeBoost(user.id, minId, rows.map((r) => r.id as number));
+        return takeBoost(user.id, before, shown);
       });
       const boosted = boostedId && hydrate(all(`${postSelect()} WHERE p.id = $id`, { me: user.id, id: boostedId }), user.id)[0];
       if (boosted) items.splice(Math.min(4, items.length), 0, { ...boosted, boosted: true });
     }
-    return { items, nextCursor: rows.length >= PAGE ? String(minId) : null };
+    return { items, nextCursor, ...(newest ? { newest } : {}) };
   });
 
   /* ---------- 发帖 / 回复 ---------- */

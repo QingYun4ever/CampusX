@@ -12,24 +12,27 @@ import { Avatar, Empty, Tabs, TopBar } from '../components/ui';
 import { api, type Page, type Post } from '../lib/api';
 import { useMe } from '../lib/auth';
 
-type Tab = 'all' | 'following';
+/** all 是「推荐」（按热度排），latest 是「最新」（按时间） */
+type Tab = 'all' | 'latest' | 'following';
 const TAB_KEY = 'txq_home_tab';
 
 /** 每分钟看一眼有没有新帖子，有的话在顶部浮出提示，点了才刷新（不打断正在读的内容） */
 function NewPostsPill({ tab }: { tab: Tab }) {
   const qc = useQueryClient();
   const [seen, setSeen] = useState<number | null>(null);
+  // 推荐不是按时间排的，看有没有新帖子要按时间查
+  const peekTab = tab === 'all' ? 'latest' : tab;
   const peek = useQuery({
-    queryKey: ['feed-peek', tab],
-    queryFn: () => api<Page<Post>>(`/feed?tab=${tab}`),
+    queryKey: ['feed-peek', peekTab],
+    queryFn: () => api<Page<Post>>(`/feed?tab=${peekTab}`),
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     staleTime: 0,
   });
-  const cached = qc.getQueryData<InfiniteData<Page<Post>>>(['feed', tab]);
-  // 首页会把同一个人连着发的帖子错开排，所以按 id 比较，不看第一条是谁
+  const cached = qc.getQueryData<InfiniteData<Page<Post> & { newest?: number }>>(['feed', tab]);
+  // 首页会把同一个人连着发的帖子错开排，所以按 id 比较，不看第一条是谁；服务器给了 newest 就用它（推荐页的第一页不一定有最新的）
   const firstPage = cached?.pages[0]?.items ?? [];
-  const topId = firstPage.length ? Math.max(...firstPage.map((p) => p.id)) : undefined;
+  const topId = cached?.pages[0]?.newest ?? (firstPage.length ? Math.max(...firstPage.filter((p) => !p.boosted).map((p) => p.id)) : undefined);
   const items = peek.data?.items ?? [];
   const fresh = topId === undefined ? [] : items.filter((p) => p.id > topId);
   const newest = items.length ? Math.max(...items.map((p) => p.id)) : null;
@@ -95,7 +98,8 @@ export function Home() {
           value={tab}
           onChange={change}
           items={[
-            ['all', '全部'],
+            ['all', '推荐'],
+            ['latest', '最新'],
             ['following', '关注'],
           ]}
         />
@@ -110,7 +114,7 @@ export function Home() {
         key={tab}
         queryKey={['feed', tab]}
         // promo=1：允许插推流帖子；顶部「有新帖子」的轮询不带，不算曝光
-        path={tab === 'all' ? '/feed?tab=all&promo=1' : `/feed?tab=${tab}`}
+        path={tab === 'following' ? '/feed?tab=following' : `/feed?tab=${tab}&promo=1`}
         empty={
           tab === 'following' ? (
             <Empty

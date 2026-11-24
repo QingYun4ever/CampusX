@@ -476,6 +476,8 @@ export interface BoostStatus {
   reach: number;
   shown: number;
   active: boolean;
+  /** 还能再推给多少人（最近两周活跃、还没看过的；老服务器没有） */
+  room?: number;
   mine: { id: number; amount: number; reach: number; shown: number; createdAt: number; expiresAt: number; endedAt: number | null; refund: number }[];
 }
 
