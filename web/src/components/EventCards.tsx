@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, PartyPopper, X } from 'lucide-react';
 import { api, type CampusEvent } from '../lib/api';
-import { eventPerks, eventWhen } from '../lib/events';
+import { eventMine, eventPerks, eventWhen } from '../lib/events';
 import '../pages/events.css';
 
 const DISMISS_KEY = 'txq_event_dismissed';
@@ -48,7 +48,7 @@ export function EventCards() {
               </span>
               <span className="event-card-sub ellipsis">
                 {/* 时间放前面：手机上一行放不下时被截掉的是后面的奖励说明 */}
-                {eventWhen(e)} · {e.me.rewarded ? `已参加，+${e.me.rewarded} 紫水晶` : eventPerks(e).join(' · ')}
+                {eventWhen(e)} · {eventMine(e) ?? eventPerks(e).join(' · ')}
               </span>
             </span>
             <ChevronRight size={18} className="faint" />

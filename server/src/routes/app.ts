@@ -227,6 +227,18 @@ export async function appRoutes(app: FastifyInstance) {
       // 赞和回应可能很多，合成一条；其它逐条推
       const quiet = rows.filter((r) => r.type === 'like' || r.type === 'reaction');
       for (const r of rows.filter((r) => !quiet.includes(r)).slice(0, 5)) {
+        if (r.type === 'event') {
+          let x: { title?: string; eventId?: number; gained?: number; rejected?: boolean; note?: string } = {};
+          try { x = JSON.parse(r.extra ?? '{}'); } catch { /* 忽略 */ }
+          items.push({
+            id: `n-${r.id}`,
+            kind: 'interactions',
+            title: x.rejected ? `「${x.title}」的参与没有通过` : `「${x.title}」的奖励到账了`,
+            body: x.rejected ? (x.note ? `理由：${x.note}` : '可以再发一条重新参加') : `紫水晶 +${x.gained}`,
+            path: x.eventId ? `/events/${x.eventId}` : '/notifications',
+          });
+          continue;
+        }
         const moderation = r.type === 'moderation';
         const dismissed = r.type === 'report' && (r.extra ?? '').includes('"dismissed"');
         const text = r.type === 'reply' || r.type === 'mention' || r.type === 'quote' ? clip(r.content ?? '')

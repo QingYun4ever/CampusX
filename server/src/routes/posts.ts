@@ -210,13 +210,12 @@ export async function postRoutes(app: FastifyInstance) {
       throw new HttpError(422, `没有发出去：${verdict!.reason}`, { moderation: { reason: verdict!.reason, warnings } });
     }
     const post = postById(id, user.id);
-    // 参加了活动：告诉前端拿了多少紫水晶
-    const eventReward = all<{ title: string; gained: number }>(
-      `SELECT e.title, l.delta AS gained FROM crystal_log l JOIN events e ON e.id = CAST(l.ref AS INTEGER)
-       WHERE l.user_id = $u AND l.kind = 'event' AND l.post_id = $p`,
-      { u: user.id, p: id },
+    // 参加了活动：告诉前端已经提交审核
+    const eventEntries = all<{ title: string; reward: number }>(
+      `SELECT e.title, x.reward FROM event_entries x JOIN events e ON e.id = x.event_id WHERE x.post_id = $p`,
+      { p: id },
     );
-    return eventReward.length ? { ...post, eventReward } : post;
+    return eventEntries.length ? { ...post, eventEntries } : post;
   });
 
   /* ---------- 帖子详情：祖先链 + 本帖 ---------- */

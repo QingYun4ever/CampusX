@@ -132,7 +132,7 @@ function Rules({ w }: { w: Wallet }) {
         <li><b>帖子被赞或回应</b>：每个人每天给你算 1 次，每天最多 +{r.likedDailyCap}（今天已得 {w.likedToday}）。注册不满 {r.newAccountDays} 天的账号点的赞不算</li>
         <li><b>新手任务</b>：每项领一次</li>
         <li><b>别人打赏</b>：好帖子会收到别人送的紫水晶</li>
-        <li><b>参加活动</b>：活动期间带话题发帖，有的活动签到还翻倍</li>
+        <li><b>参加活动</b>：活动期间带话题发帖，管理员审核通过后发放；有的活动签到还翻倍</li>
       </ul>
       <h2>怎么用</h2>
       <ul className="crystal-rules">

@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { all, get, now, run } from '../db.ts';
-import { currentEvents, EVENT_POSTS, eventById, eventDTO, type EventRow } from '../events.ts';
-import { hydrate, normalizeTag, postSelect } from '../serialize.ts';
+import { all, get, now, run, tx } from '../db.ts';
+import { approveEntry, currentEvents, EVENT_POSTS, eventById, eventDTO, rejectEntry, type EventRow } from '../events.ts';
+import { hydrate, normalizeTag, postById, postSelect } from '../serialize.ts';
+import { userById } from './users-common.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
 
 const PAGE = 20;
@@ -77,6 +78,47 @@ export async function eventRoutes(app: FastifyInstance) {
         { title: body.title, body: body.body, tag: body.tag, reward: body.postReward, bonus: body.checkinBonus, start, end: body.endsAt, by: me(req).id, t },
       );
       return eventDTO(eventById(lastId)!, me(req).id);
+    });
+
+    /* ---------- 审核参与 ---------- */
+    admin.get('/admin/event-entries/count', async () =>
+      get<{ n: number }>("SELECT COUNT(*) AS n FROM event_entries WHERE status = 'pending'")!,
+    );
+
+    admin.get('/admin/event-entries', async (req) => {
+      const q = req.query as { status?: string; cursor?: string };
+      const status = q.status === 'done' ? 'done' : 'pending';
+      const rows = all<{ id: number; event_id: number; user_id: number; post_id: number; reward: number; status: string; note: string; created_at: number; reviewed_at: number | null; title: string; tag: string }>(
+        `SELECT x.*, e.title, e.tag FROM event_entries x JOIN events e ON e.id = x.event_id
+         WHERE ${status === 'pending' ? "x.status = 'pending'" : "x.status <> 'pending'"}
+           AND ($cursor IS NULL OR x.id ${status === 'pending' ? '>' : '<'} $cursor)
+         ORDER BY x.id ${status === 'pending' ? 'ASC' : 'DESC'} LIMIT $limit`,
+        { cursor: cursorNum(q.cursor), limit: PAGE },
+      );
+      const meId = me(req).id;
+      const items = rows.map((r) => ({
+        id: r.id,
+        status: r.status,
+        reward: r.reward,
+        note: r.note,
+        createdAt: r.created_at,
+        reviewedAt: r.reviewed_at,
+        event: { id: r.event_id, title: r.title, tag: r.tag },
+        user: userById(r.user_id) ?? null,
+        post: postById(r.post_id, meId) ?? null,
+      }));
+      return { items, nextCursor: rows.length >= PAGE ? String(rows[rows.length - 1].id) : null };
+    });
+
+    admin.post('/admin/event-entries/:id/approve', async (req) => {
+      const gained = tx(() => approveEntry(Number((req.params as { id: string }).id), me(req).id));
+      return { gained };
+    });
+
+    admin.post('/admin/event-entries/:id/reject', async (req) => {
+      const { note } = parse(z.object({ note: z.string().trim().max(100, '理由最多 100 字').default('') }), req.body ?? {});
+      tx(() => rejectEntry(Number((req.params as { id: string }).id), me(req).id, note));
+      return { ok: true };
     });
 
     /** 提前结束。已经发出去的奖励不收回 */

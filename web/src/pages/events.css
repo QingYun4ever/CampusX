@@ -179,3 +179,23 @@
 .event-row .event-card-sub {
   margin-top: 2px;
 }
+.event-joined.rejected {
+  align-items: flex-start;
+  font-weight: 600;
+}
+.event-joined.rejected > svg {
+  color: var(--danger);
+  margin-top: 2px;
+  flex: none;
+}
+.event-joined .grow {
+  flex: 1;
+  min-width: 0;
+}
+.event-joined-hint {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--text-2);
+}

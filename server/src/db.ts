@@ -664,6 +664,23 @@ CREATE TABLE IF NOT EXISTS events (
   ended         INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_events_time ON events(ends_at);
+-- 活动参与：带话题发帖先记一条待审核，管理员通过后才发紫水晶。
+-- 每个活动每人同时只有一条待审核；被驳回可以再发一条
+CREATE TABLE IF NOT EXISTS event_entries (
+  id          INTEGER PRIMARY KEY,
+  event_id    INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id     INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  reward      INTEGER NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'pending',   -- pending | approved | rejected
+  note        TEXT NOT NULL DEFAULT '',
+  created_at  INTEGER NOT NULL,
+  reviewed_at INTEGER,
+  reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  UNIQUE (event_id, post_id)
+);
+CREATE INDEX IF NOT EXISTS idx_event_entries_status ON event_entries(status, id);
+CREATE INDEX IF NOT EXISTS idx_event_entries_user ON event_entries(event_id, user_id);
 `);
 addColumn('users', 'crystals', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'crystal_day', 'TEXT');

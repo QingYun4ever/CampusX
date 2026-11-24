@@ -344,8 +344,8 @@ export interface Post {
   pinned: boolean;
   /** 首页里插进来的推流帖子 */
   boosted?: boolean;
-  /** 刚发的帖子参加了活动，拿到的紫水晶 */
-  eventReward?: { title: string; gained: number }[];
+  /** 刚发的帖子参加了活动（已提交审核），审核通过后能拿到的紫水晶 */
+  eventEntries?: { title: string; reward: number }[];
   /** 我是这条帖子所在吧的吧主 / 吧务 */
   canModerate: boolean;
   repostOf: Post | null;
@@ -410,7 +410,7 @@ export interface Page<T> {
 
 export interface Notification {
   id: number;
-  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation' | 'report' | 'tip' | 'boost';
+  type: 'like' | 'reply' | 'repost' | 'quote' | 'follow' | 'mention' | 'reaction' | 'moderation' | 'report' | 'tip' | 'boost' | 'event';
   read: boolean;
   /** reaction：用的哪个表情；moderation：JSON { reason, excerpt, warnings } */
   extra?: string;
@@ -492,7 +492,25 @@ export interface CampusEvent {
   status: 'upcoming' | 'active' | 'ended';
   posts: number;
   people: number;
-  me: { posted: boolean; rewarded: number };
+  me: {
+    posted: boolean;
+    rewarded: number;
+    /** 最近一次提交的审核状态（已经拿到奖励时为 null） */
+    review: { status: 'pending' | 'approved' | 'rejected'; note: string } | null;
+  };
+}
+
+/** 后台：一条待审核的活动参与 */
+export interface EventEntry {
+  id: number;
+  status: 'pending' | 'approved' | 'rejected';
+  reward: number;
+  note: string;
+  createdAt: number;
+  reviewedAt: number | null;
+  event: { id: number; title: string; tag: string };
+  user: User | null;
+  post: Post | null;
 }
 
 export interface CustomEmoji {

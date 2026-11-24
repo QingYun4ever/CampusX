@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AtSign, Heart, MessageCircle, Quote, Repeat2, ShieldAlert, ShieldCheck, TrendingUp, UserPlus } from 'lucide-react';
+import { AtSign, Heart, MessageCircle, Quote, PartyPopper, Repeat2, ShieldAlert, ShieldCheck, TrendingUp, UserPlus } from 'lucide-react';
 import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { PostCard } from '../components/PostCard';
 import { Avatar, Emoji, Empty, TopBar } from '../components/ui';
@@ -21,6 +21,7 @@ const META = {
   moderation: { icon: null, text: '' },
   report: { icon: null, text: '' },
   tip: { icon: <CrystalIcon size={26} />, text: '打赏了你的帖子' },
+  event: { icon: null, text: '' },
   boost: { icon: <TrendingUp size={24} color="var(--crystal-text)" strokeWidth={2.4} />, text: '帮你的帖子推流了' },
 };
 
@@ -81,9 +82,43 @@ function ModerationItem({ n }: { n: Notification }) {
   );
 }
 
+/** 活动参与审核结果 */
+function EventItem({ n }: { n: Notification }) {
+  let info: { title?: string; eventId?: number; gained?: number; rejected?: boolean; note?: string } = {};
+  try {
+    info = JSON.parse(n.extra || '{}');
+  } catch {
+    /* 忽略 */
+  }
+  const body = (
+    <>
+      <div className="notif-icon">
+        <PartyPopper size={24} color="var(--crystal-text)" />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div>
+          {info.rejected ? (
+            <><b>活动「{info.title}」</b>：你的参与没有通过{info.note ? '' : '，可以再发一条重新参加'}</>
+          ) : (
+            <><b>活动「{info.title}」</b>：审核通过，紫水晶 +{info.gained}</>
+          )}
+          <span className="faint"> · {timeAgo(n.createdAt)}</span>
+        </div>
+        {info.rejected && info.note && <div className="notif-reason">理由：{info.note}</div>}
+      </div>
+    </>
+  );
+  return info.eventId ? (
+    <Link to={`/events/${info.eventId}`} className={`notif notif-system ${n.read ? '' : 'unread'}`}>{body}</Link>
+  ) : (
+    <div className={`notif notif-system ${n.read ? '' : 'unread'}`}>{body}</div>
+  );
+}
+
 function Item({ n }: { n: Notification }) {
   const nav = useNavigate();
   if (n.type === 'moderation') return <ModerationItem n={n} />;
+  if (n.type === 'event') return <EventItem n={n} />;
   if (n.type === 'report') return <ReportItem n={n} />;
   // 回复和 @ 直接展示完整帖子，可以就地互动
   if ((n.type === 'reply' || n.type === 'mention') && n.post) {

@@ -1,12 +1,12 @@
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarCheck, Check, ChevronRight, Hash, PartyPopper, Users } from 'lucide-react';
+import { CalendarCheck, Check, ChevronRight, Clock, Hash, PartyPopper, Users, XCircle } from 'lucide-react';
 import { CrystalIcon } from '../components/Crystal';
 import { Feed } from '../components/Feed';
 import { useCompose } from '../components/compose';
 import { Empty, Spinner, TopBar } from '../components/ui';
 import { api, type CampusEvent } from '../lib/api';
-import { eventPerks, eventRange, eventWhen } from '../lib/events';
+import { eventMine, eventPerks, eventRange, eventWhen } from '../lib/events';
 import './events.css';
 
 const STATUS = { active: '进行中', upcoming: '即将开始', ended: '已结束' } as const;
@@ -38,7 +38,7 @@ export function EventPage() {
                 <Hash size={18} />
                 <span>
                   活动期间带 <Link to={`/t/${encodeURIComponent(e.tag)}`}>#{e.tag}</Link> 发一条帖子
-                  {e.postReward ? <>，得 <b className="crystal-text">{e.postReward} 颗紫水晶</b>（每人一次）</> : '就算参加'}
+                  {e.postReward ? <>，管理员审核通过后得 <b className="crystal-text">{e.postReward} 颗紫水晶</b>（每人一次）</> : '就算参加'}
                 </span>
               </li>
               {e.checkinBonus > 1 && (
@@ -52,7 +52,23 @@ export function EventPage() {
                 <span>{e.people} 人参加 · {e.posts} 条帖子</span>
               </li>
             </ul>
-            {e.me.posted || e.me.rewarded ? (
+            {e.me.review?.status === 'rejected' ? (
+              <div className="event-joined rejected">
+                <XCircle size={16} strokeWidth={2.4} />
+                <span className="grow">
+                  参与没有通过{e.me.review.note ? `：${e.me.review.note}` : ''}
+                  {e.status === 'active' && <span className="event-joined-hint">可以改一改，再发一条重新参加</span>}
+                </span>
+                {e.status === 'active' && (
+                  <button className="btn sm btn-primary" onClick={() => compose({ text: `#${e.tag} ` })}>重新参加</button>
+                )}
+              </div>
+            ) : e.me.review?.status === 'pending' && e.postReward ? (
+              <div className="event-joined">
+                <Clock size={16} strokeWidth={2.4} />
+                已参加，等管理员审核，通过后得 <CrystalIcon size={14} /> {e.postReward}
+              </div>
+            ) : e.me.posted || e.me.rewarded ? (
               <div className="event-joined">
                 <Check size={16} strokeWidth={2.6} />
                 已参加{e.me.rewarded ? <>，拿到 <CrystalIcon size={14} /> {e.me.rewarded}</> : ''}
@@ -65,7 +81,7 @@ export function EventPage() {
                 带 #{e.tag} 发帖参加
               </button>
             ) : null}
-            <p className="faint small event-note">只算公开的主帖（不在私密吧里，不是回复）。参加的帖子因为违规被删，奖励会扣回。</p>
+            <p className="faint small event-note">只算公开的主帖（不在私密吧里，不是回复）。管理员看过参加的帖子才发紫水晶；没通过可以再发一条。拿到奖励后帖子因为违规被删，奖励会扣回。</p>
           </section>
           <Feed
             queryKey={['events', id, 'posts']}
@@ -107,7 +123,7 @@ export function EventRow({ e }: { e: CampusEvent }) {
           <b className="ellipsis">{e.title}</b>
         </span>
         <span className="event-card-sub ellipsis">
-          {e.me.rewarded ? `已参加，+${e.me.rewarded} 紫水晶` : eventPerks(e).join(' · ')}
+          {eventMine(e) ?? eventPerks(e).join(' · ')}
           {e.status !== 'ended' ? ` · ${eventWhen(e)}` : ` · ${e.people} 人参加`}
         </span>
       </span>

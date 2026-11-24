@@ -266,12 +266,13 @@ export function Composer({
       setTags([]);
       setShowTags(false);
       setPreview(false);
-      const reward = post.eventReward?.[0];
-      toast(reward ? `已发布，参加了「${reward.title}」，紫水晶 +${post.eventReward!.reduce((n, r) => n + r.gained, 0)}` : target ? '已回复' : quoteOf ? '已发布引用' : '已发布');
-      if (reward) {
-        void qc.invalidateQueries({ queryKey: ['wallet'] });
-        void qc.invalidateQueries({ queryKey: ['events'] });
-      }
+      const entry = post.eventEntries?.[0];
+      toast(
+        entry
+          ? `已发布，参加了「${entry.title}」${entry.reward ? `，管理员审核通过后得 ${entry.reward} 颗紫水晶` : ''}`
+          : target ? '已回复' : quoteOf ? '已发布引用' : '已发布',
+      );
+      if (entry) void qc.invalidateQueries({ queryKey: ['events'] });
       // board：发帖涨经验，吧首页的经验条要跟着变
       for (const k of ['feed', 'board-posts', 'replies', 'post', 'user-posts', 'boards', 'board', 'board-ranking', 'tag-posts', 'search-posts']) {
         qc.invalidateQueries({ queryKey: [k] });

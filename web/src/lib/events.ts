@@ -27,3 +27,11 @@ export function eventRange(e: CampusEvent) {
   };
   return `${f(e.startsAt)} – ${f(e.endsAt)}`;
 }
+
+/** 我在这个活动里的状态：一句话 */
+export function eventMine(e: CampusEvent) {
+  if (e.me.rewarded) return `已参加，+${e.me.rewarded} 紫水晶`;
+  if (e.me.review?.status === 'pending') return '已参加，奖励审核中';
+  if (e.me.review?.status === 'rejected') return '参与没有通过，可以再发一条';
+  return null;
+}

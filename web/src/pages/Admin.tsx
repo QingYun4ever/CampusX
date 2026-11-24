@@ -13,6 +13,7 @@ import {
   KeyRound,
   LayoutDashboard,
   Megaphone,
+  PartyPopper,
   ScanEye,
   Search,
   Ticket,
@@ -25,7 +26,7 @@ import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Logo } from '../components/Logo';
 import { MediaImage } from '../components/MediaImage';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Spinner, Switch, toast, useModalClose, Verified } from '../components/ui';
-import { api, ApiError, WEB_ORIGIN, type Announcement, type CampusEvent, type AssistantConfig, type Invite, type MaintenanceConfig, type ReportGroup, type User, type UserLite } from '../lib/api';
+import { api, ApiError, WEB_ORIGIN, type Announcement, type CampusEvent, type EventEntry, type AssistantConfig, type Invite, type MaintenanceConfig, type ReportGroup, type User, type UserLite } from '../lib/api';
 import { refreshStatus } from '../lib/site';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
@@ -795,6 +796,12 @@ export function Admin() {
     enabled: me.role === 'admin',
     refetchInterval: 30_000,
   });
+  const entries = useQuery({
+    queryKey: ['admin-entries-count'],
+    queryFn: () => api<{ n: number }>('/admin/event-entries/count'),
+    enabled: me.role === 'admin',
+    refetchInterval: 60_000,
+  });
   const reports = useQuery({
     queryKey: ['admin-reports-count'],
     queryFn: () => api<{ count: number }>('/admin/reports/count'),
@@ -820,6 +827,7 @@ export function Admin() {
     ['/admin', '概览', LayoutDashboard],
     ['/admin/moderation', '内容审核', ScanEye, stats.data?.pending],
     ['/admin/reports', '举报', Flag, reports.data?.count],
+    ['/admin/events', '活动', PartyPopper, entries.data?.n],
     ['/admin/site', '站点', Megaphone],
     ['/admin/assistant', 'AI 助手', Bot],
     ['/admin/invites', '邀请码', Ticket],
@@ -854,6 +862,7 @@ export function Admin() {
             <Route index element={<Overview />} />
             <Route path="moderation" element={<Moderation />} />
             <Route path="reports" element={<Reports />} />
+            <Route path="events" element={<EventsAdminPage />} />
             <Route path="site" element={<SitePage />} />
             <Route path="assistant" element={<AssistantPage />} />
             <Route path="invites" element={<InvitesPage />} />
@@ -870,10 +879,9 @@ export function Admin() {
 function SitePage() {
   return (
     <>
-      <PageHead title="站点" sub="维护模式、公告和活动" />
+      <PageHead title="站点" sub="维护模式和公告" />
       <div className="admin-form">
         <MaintenanceForm />
-        <EventsForm />
         <AnnouncementsForm />
       </div>
     </>
@@ -1038,6 +1046,138 @@ function AnnouncementsForm() {
   );
 }
 
+/* ---------------- 活动：审核参与、办活动 ---------------- */
+function EventsAdminPage() {
+  const [tab, setTab] = useState<'pending' | 'done' | 'events'>('pending');
+  return (
+    <>
+      <PageHead
+        title="活动"
+        sub="带活动话题发的帖子先在这里审核，通过了才发紫水晶"
+        right={
+          <div className="seg">
+            <button className={tab === 'pending' ? 'on' : ''} onClick={() => setTab('pending')}>待审核</button>
+            <button className={tab === 'done' ? 'on' : ''} onClick={() => setTab('done')}>已审核</button>
+            <button className={tab === 'events' ? 'on' : ''} onClick={() => setTab('events')}>办活动</button>
+          </div>
+        }
+      />
+      {tab === 'events' ? (
+        <div className="admin-form">
+          <EventsForm />
+        </div>
+      ) : (
+        <EntryList status={tab} key={tab} />
+      )}
+    </>
+  );
+}
+
+function EntryList({ status }: { status: 'pending' | 'done' }) {
+  const qc = useQueryClient();
+  const q = useInfiniteList<EventEntry>(['admin-entries', status], `/admin/event-entries?status=${status}`);
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['admin-entries'] });
+    qc.invalidateQueries({ queryKey: ['admin-entries-count'] });
+    qc.invalidateQueries({ queryKey: ['admin-events'] });
+  };
+  return (
+    <InfiniteList
+      q={q}
+      getKey={(x) => x.id}
+      empty={<Empty title={status === 'pending' ? '没有要审核的' : '还没有审核记录'}>{status === 'pending' ? '有人带活动话题发帖后会出现在这里。' : ''}</Empty>}
+      render={(x) => <EntryItem x={x} onDone={refresh} />}
+    />
+  );
+}
+
+const ENTRY_STATUS = { pending: ['待审核', 'warn'], approved: ['已通过', 'ok'], rejected: ['已驳回', ''] } as const;
+
+function EntryItem({ x, onDone }: { x: EventEntry; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [note, setNote] = useState('');
+  const p = x.post;
+  const gone = !p || p.deleted;
+  const act = async (action: 'approve' | 'reject') => {
+    setBusy(true);
+    try {
+      if (action === 'approve') {
+        const r = await api<{ gained: number }>(`/admin/event-entries/${x.id}/approve`, { body: {} });
+        toast(r.gained ? `已通过，发了 ${r.gained} 颗紫水晶` : '已通过');
+      } else {
+        await api(`/admin/event-entries/${x.id}/reject`, { body: { note } });
+        toast('已驳回，对方会收到通知，可以重新发一条');
+      }
+      onDone();
+    } catch (e) {
+      toast((e as Error).message, 'error');
+      setBusy(false);
+    }
+  };
+  const [label, tone] = ENTRY_STATUS[x.status];
+  return (
+    <div className="log-item">
+      <Avatar src={x.user?.avatar ?? null} name={x.user?.displayName ?? '?'} size={36} decoration={x.user?.avatarDecoration} />
+      <div className="log-body">
+        <div className="log-head">
+          <span className="name">{x.user?.displayName ?? '已注销'}</span>
+          {x.user && <span className="muted">@{x.user.username}</span>}
+          <span className="muted">·</span>
+          <time className="muted" title={fullTime(x.createdAt)}>{timeAgo(x.createdAt)}</time>
+          <span className={`pill ${tone}`}>{label}</span>
+        </div>
+        <div className="muted small">
+          参加 <Link to={`/events/${x.event.id}`}>{x.event.title}</Link> · #{x.event.tag} · 通过后发 {x.reward} 颗
+        </div>
+        {gone ? (
+          <div className="log-content muted">帖子已经删除</div>
+        ) : (
+          <>
+            {p.content && <div className="log-content">{p.content}</div>}
+            {p.images.length > 0 && (
+              <div className="log-thumbs">
+                {p.images.map((src) => (
+                  <ContentLink key={src} href={src} image>
+                    <MediaImage src={src} alt="查看参与帖子的图片" loading="lazy" />
+                  </ContentLink>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {x.status === 'rejected' && x.note && <div className="log-reason">驳回理由：{x.note}</div>}
+        {rejecting && (
+          <div className="entry-reject">
+            <Field label="驳回理由（选填，会告诉对方）" value={note} onChange={setNote} maxLength={100} placeholder="比如：和活动无关" />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-danger sm" disabled={busy} onClick={() => act('reject')}>确认驳回</button>
+              <button className="btn btn-outline sm" disabled={busy} onClick={() => setRejecting(false)}>取消</button>
+            </div>
+          </div>
+        )}
+        {!gone && (
+          <div className="log-meta muted small">
+            <Link to={`/post/${p.id}`}>查看帖子 <ExternalLink size={12} /></Link>
+          </div>
+        )}
+      </div>
+      {x.status === 'pending' && !rejecting && (
+        <div className="log-actions">
+          {!gone && (
+            <button className="btn btn-outline sm" disabled={busy} onClick={() => act('approve')}>
+              <Check size={15} /> 通过
+            </button>
+          )}
+          <button className="btn btn-outline sm danger" disabled={busy} onClick={() => setRejecting(true)}>
+            <X size={15} /> 驳回
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const EVENT_STATUS = { active: '进行中', upcoming: '未开始', ended: '已结束' } as const;
 
 function EventsForm() {
@@ -1090,14 +1230,14 @@ function EventsForm() {
       <div className="admin-card">
         <div className="name">办活动</div>
         <p className="muted small">
-          比如校运会、迎新。活动期间带指定话题发一条公开的主帖，作者得紫水晶（每人一次）；还可以让签到的紫水晶翻倍。
+          比如校运会、迎新。活动期间带指定话题发一条公开的主帖就算参加，在「待审核」里通过后作者得紫水晶（每人一次）；还可以让签到的紫水晶翻倍。
           开始时 App 推送一次，首页顶部显示活动卡片，活动页列出所有参与的帖子。
         </p>
         <Field label="活动名称" value={f.title} onChange={(v) => setF({ ...f, title: v })} maxLength={30} counter />
         <Field label="介绍（选填）" multiline value={f.body} onChange={(v) => setF({ ...f, body: v })} maxLength={1000} counter style={{ minHeight: '4em', resize: 'vertical' }} />
         <div className="row">
           <Field label="话题" value={f.tag} onChange={(v) => setF({ ...f, tag: v.replace(/^#+/, '') })} placeholder="校运会" hint="大家发帖时带上 #话题 就算参加" maxLength={20} />
-          <Field label="发帖奖励" inputMode="numeric" value={f.postReward} onChange={(v) => setF({ ...f, postReward: v.replace(/\D/g, '').slice(0, 2) })} hint="0–50 颗，0 就是不发" />
+          <Field label="发帖奖励" inputMode="numeric" value={f.postReward} onChange={(v) => setF({ ...f, postReward: v.replace(/\D/g, '').slice(0, 2) })} hint="0–50 颗，审核通过才发" />
           <Field label="签到倍数" inputMode="numeric" value={f.checkinBonus} onChange={(v) => setF({ ...f, checkinBonus: v.replace(/[^1-3]/g, '').slice(-1) })} hint="1–3，1 就是不翻倍" />
         </div>
         <div className="row">
