@@ -23,6 +23,7 @@ import { checkMaintenance, siteRoutes } from './routes/site.ts';
 import { securityRoutes } from './routes/security.ts';
 import { userRoutes } from './routes/users.ts';
 import { HttpError } from './util.ts';
+import { trustProxyFn } from './ip.ts';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -32,7 +33,7 @@ declare module 'fastify' {
 
 const app = Fastify({
   logger: { level: process.env.LOG_LEVEL ?? 'info' },
-  trustProxy: config.trustProxy,
+  trustProxy: config.trustProxyHops ? trustProxyFn(config.trustProxyHops) : false,
   bodyLimit: 1024 * 1024,
 });
 

@@ -10,7 +10,7 @@ import { configSchema, describeError, getConfig, manualDecision, publicConfig, r
 import { postsByIds, visibleNotification } from '../serialize.ts';
 import { assistantSchema, publicAssistantConfig, updateAssistantConfig } from '../assistant.ts';
 import { cursorNum, HttpError, me, parse } from '../util.ts';
-import { getSignup, saveSignup } from '../invites.ts';
+import { getSignup, isPrivateIp, saveSignup } from '../invites.ts';
 import { USER_COLS, userById, userPublic } from './users-common.ts';
 
 export async function miscRoutes(app: FastifyInstance) {
@@ -130,8 +130,17 @@ export async function miscRoutes(app: FastifyInstance) {
       return { ok: true };
     });
 
-    admin.get('/admin/signup', async () => ({
+    admin.get('/admin/signup', async (req) => ({
       ...getSignup(),
+      /** 服务器看到的管理员自己的 IP，用来检查反代配好没有 */
+      ip: req.ip,
+      ipPrivate: isPrivateIp(req.ip),
+      /** 最近 30 个注册的账号来自几个不同网络、最多的一个网络注册了几个 */
+      recent: get<{ n: number; nets: number; top: number }>(
+        `SELECT COUNT(*) AS n, COUNT(DISTINCT register_ip) AS nets,
+           COALESCE((SELECT MAX(c) FROM (SELECT COUNT(*) AS c FROM (SELECT register_ip FROM users WHERE register_ip IS NOT NULL ORDER BY id DESC LIMIT 30) GROUP BY register_ip)), 0) AS top
+         FROM (SELECT register_ip FROM users WHERE register_ip IS NOT NULL ORDER BY id DESC LIMIT 30)`,
+      )!,
       /** 用户邀请来的人数、发出去的奖励 */
       invited: get<{ n: number }>('SELECT COUNT(*) AS n FROM users WHERE invited_by IS NOT NULL')!.n,
       inviteCrystals: get<{ n: number }>("SELECT COALESCE(SUM(delta), 0) AS n FROM crystal_log WHERE kind = 'invite'")!.n,

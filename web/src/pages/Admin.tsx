@@ -1387,7 +1387,10 @@ function SignupSettings() {
   const qc = useQueryClient();
   const q = useQuery({
     queryKey: ['admin-signup'],
-    queryFn: () => api<{ ipLimit: number; userInvites: boolean; invited: number; inviteCrystals: number }>('/admin/signup'),
+    queryFn: () => api<{
+      ipLimit: number; userInvites: boolean; invited: number; inviteCrystals: number;
+      ip: string; ipPrivate: boolean; recent: { n: number; nets: number; top: number };
+    }>('/admin/signup'),
   });
   const [limit, setLimit] = useState<string | null>(null);
   const save = async (patch: Partial<{ ipLimit: number; userInvites: boolean }>) => {
@@ -1406,6 +1409,9 @@ function SignupSettings() {
   };
   if (!q.data) return null;
   const v = limit ?? String(q.data.ipLimit);
+  const { recent } = q.data;
+  // 最近注册的人全挤在一个网络里，多半是反代没把真实 IP 传过来
+  const crowded = recent.n >= 3 && recent.nets === 1;
   return (
     <div className="admin-form signup-settings">
       <div className="admin-card">
@@ -1419,6 +1425,14 @@ function SignupSettings() {
           <button className="btn btn-primary" disabled={limit === null || v === ''} onClick={() => save({ ipLimit: Number(v) })}>
             保存
           </button>
+        </div>
+        <div className={`muted small signup-ip${q.data.ipPrivate || crowded ? ' warn' : ''}`}>
+          服务器看到你现在的 IP 是 <code>{q.data.ip}</code>
+          {q.data.ipPrivate
+            ? '，这是内网地址，说明反向代理没把真实 IP 传过来：所有人都会被当成同一个网络，第 3 个人就注册不了。检查 TRUST_PROXY 和 Nginx 的 X-Forwarded-For 设置。'
+            : '，和你手机上查到的公网 IP 一样就说明配置没问题。'}
+          {recent.n > 0 && `最近 ${recent.n} 个注册的账号来自 ${recent.nets} 个不同网络${recent.top > 1 ? `，最多的一个网络注册了 ${recent.top} 个` : ''}。`}
+          {crowded && !q.data.ipPrivate && '全在同一个网络，可能是反代配置不对，也可能大家都连着同一个 Wi-Fi。'}
         </div>
       </div>
       <div className="admin-card setting-row">

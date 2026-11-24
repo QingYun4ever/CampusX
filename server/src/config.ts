@@ -27,11 +27,20 @@ function smtpConfig() {
   return { from, host, port, secure, requireTLS: !secure && !plaintext, auth: user && pass ? { user, pass } : undefined };
 }
 
+/** 0 是不信任代理，直接用连进来的地址 */
+function trustProxyHops(v: string | undefined): number {
+  if (v === 'true') return 1;
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 && n <= 5 ? n : 0;
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   host: process.env.HOST ?? '0.0.0.0',
-  // 部署在 Nginx/Caddy 等反向代理后面时设为 1，才能拿到真实 IP（用于限流）
-  trustProxy: process.env.TRUST_PROXY === '1',
+  // 部署在 Nginx/Caddy 等反向代理后面时设为 1，才能拿到真实 IP（用于限流和同一网络注册上限）。
+  // 数字是信任几层代理：取 X-Forwarded-For 从右往左数第几个，用户自己在请求里伪造的那些在最左边，不会被当真。
+  // 只有 Nginx 一层填 1；前面还有 CDN（CDN → Nginx → 校墙）填 2
+  trustProxyHops: trustProxyHops(process.env.TRUST_PROXY),
   dataDir: path.resolve(process.env.DATA_DIR ?? path.join(serverRoot, 'data')),
   webDist: path.resolve(serverRoot, '../web/dist'),
   // 允许跨域访问 API 的来源：原生 App 的 WebView + 本地开发

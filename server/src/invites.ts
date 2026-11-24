@@ -15,6 +15,7 @@ import { createInvite, formatInvite } from './auth.ts';
 import { all, get, now, run } from './db.ts';
 import { isNewAccount, record } from './crystals.ts';
 import { HttpError } from './util.ts';
+export { isPrivateIp } from './ip.ts';
 
 export const INVITE = {
   reward: 20,

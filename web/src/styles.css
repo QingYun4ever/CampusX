@@ -5559,3 +5559,18 @@ img.emoji {
   gap: 8px;
   margin-top: 10px;
 }
+
+.signup-ip {
+  margin-top: 10px;
+  line-height: 1.6;
+}
+.signup-ip code {
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-2);
+  user-select: all;
+}
+.signup-ip.warn {
+  color: var(--danger);
+}
