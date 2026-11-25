@@ -6,9 +6,11 @@ import { App } from './App';
 import { ApiError } from './lib/api';
 import { AuthProvider } from './lib/auth';
 import { applyTheme } from './lib/theme';
+import { registerMediaCache } from './lib/media-cache';
 import './styles.css';
 
 applyTheme();
+registerMediaCache();
 
 const queryClient = new QueryClient({
   defaultOptions: {

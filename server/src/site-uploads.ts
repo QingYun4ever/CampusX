@@ -7,6 +7,7 @@ import { config, uploadsDir } from './config.ts';
 import { all, get, now, run, tx } from './db.ts';
 import { hasImageSignature, imageTypes } from './image-upload.ts';
 import { makeThumb } from './thumbs.ts';
+import { registerMediaSource, remoteFor, removeRemote, type MediaFile } from './object-store.ts';
 import { HttpError } from './util.ts';
 
 const prefix = '/uploads/';
@@ -239,6 +240,44 @@ function thumbnailFor(name: string, size: number, avatar: boolean) {
   return job;
 }
 
+/** 缩略图文件是否完好：WebP 头对得上、比原图小。完好时返回大小，否则 0 */
+function validThumbSize(fd: number, originalSize: number) {
+  const stat = fs.fstatSync(fd);
+  if (!stat.isFile() || stat.size >= originalSize) return 0;
+  const header = Buffer.allocUnsafe(12);
+  if (fs.readSync(fd, header, 0, header.length, 0) !== header.length) return 0;
+  return hasImageSignature(header, 'webp') && header.readUInt32LE(4) + 8 === stat.size ? stat.size : 0;
+}
+
+/** 存储桶里的对象名：u/ 原图，s/ 帖子缩略图，a/ 头像缩略图 */
+const remoteKey = (name: string, thumb: 'post' | 'avatar' | null) =>
+  thumb === null ? `u/${name}` : `${thumb === 'avatar' ? 'a' : 's'}/${name}.webp`;
+const remoteKeysOf = (name: string) => [remoteKey(name, null), remoteKey(name, 'post'), remoteKey(name, 'avatar')];
+
+// 补传：所有登记过的原图，加上已经生成好的缩略图（新的从近到远）
+registerMediaSource(() => {
+  const out: MediaFile[] = [];
+  for (const { name, size } of all<{ name: string; size: number }>('SELECT name, size FROM site_uploads ORDER BY created_at DESC')) {
+    if (!imageName.test(name)) continue;
+    const original = path.join(uploadsDir, name);
+    if (!fs.lstatSync(original, { throwIfNoEntry: false })?.isFile()) continue;
+    out.push({ key: remoteKey(name, null), file: original });
+    for (const variant of ['post', 'avatar'] as const) {
+      const file = thumbPath(name, variant === 'avatar');
+      let fd: number | undefined;
+      try {
+        fd = fs.openSync(file, flags);
+        if (validThumbSize(fd, size)) out.push({ key: remoteKey(name, variant), file });
+      } catch {
+        // 没有缩略图：有人看的时候再生成、再传
+      } finally {
+        if (fd !== undefined) fs.closeSync(fd);
+      }
+    }
+  }
+  return out;
+});
+
 /** 站点图片按随机文件名公开访问（和私信图片不同）；只发送已登记的文件 */
 function registeredSize(name: string) {
   const row = get<{ size: number }>('SELECT size FROM site_uploads WHERE name = $name', { name });
@@ -276,16 +315,10 @@ export function registerSiteUploadRoutes(app: FastifyInstance) {
         let size = 0;
         try {
           fd = fs.openSync(thumb, flags);
-          const stat = fs.fstatSync(fd);
-          if (stat.isFile()) {
-            const header = Buffer.allocUnsafe(12);
-            if (stat.size < file.size && fs.readSync(fd, header, 0, header.length, 0) === header.length &&
-                hasImageSignature(header, 'webp') && header.readUInt32LE(4) + 8 === stat.size) {
-              size = stat.size;
-            } else {
-              // 缓存是可重建数据。坏文件不能作为不可变响应发给客户端。
-              fs.rmSync(thumb, { force: true });
-            }
+          if (fs.fstatSync(fd).isFile()) {
+            size = validThumbSize(fd, file.size);
+            // 缓存是可重建数据。坏文件不能作为不可变响应发给客户端。
+            if (!size) fs.rmSync(thumb, { force: true });
           }
         } catch {
           // 缓存不是授权或发送原图的前提。
@@ -296,6 +329,14 @@ export function registerSiteUploadRoutes(app: FastifyInstance) {
         } else {
           if (fd !== undefined) fs.closeSync(fd);
           thumb = undefined;
+        }
+      }
+      // 已经传到对象存储的：跳过去下载，不占服务器带宽（本次退回原图的不跳，下次还要重新请求缩略图）
+      if (thumb !== undefined) {
+        const target = remoteFor(remoteKey(name, thumb ? variant : null), thumb ?? path.join(uploadsDir, name));
+        if (target) {
+          fs.closeSync(file.fd);
+          return reply.code(302).header('Location', target).header('Cache-Control', 'public, max-age=3600').send();
         }
       }
       reply.type(file.mime).header('Content-Length', file.size);
@@ -341,6 +382,7 @@ function collectExpiredUploads() {
             continue;
           }
           run('DELETE FROM site_uploads WHERE name = $name', { name });
+          removeRemote(remoteKeysOf(name));
         }
         return rows;
       });

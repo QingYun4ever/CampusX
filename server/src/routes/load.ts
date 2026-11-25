@@ -8,6 +8,7 @@ import { config } from '../config.ts';
 import { loadSnapshot, recordClient } from '../metrics.ts';
 import { HttpError, me, parse } from '../util.ts';
 import { videoQueueStats } from '../videos.ts';
+import { objectStoreStats } from '../object-store.ts';
 
 const ms = z.number().finite().min(0).max(120_000);
 const reportSchema = z.object({
@@ -55,6 +56,7 @@ export async function loadRoutes(app: FastifyInstance) {
         moderation: get<{ n: number }>("SELECT COUNT(*) AS n FROM posts WHERE status = 'pending' AND deleted = 0")!.n,
       },
       dbBytes: fileSize(dbFile) + fileSize(`${dbFile}-wal`),
+      media: objectStoreStats(),
     };
   });
 }

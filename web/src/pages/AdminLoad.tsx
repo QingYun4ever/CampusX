@@ -51,6 +51,28 @@ interface LoadData {
   slowRequests: { at: number; route: string; ms: number; status: number }[];
   queues: { queued: number; running: number; moderation: number };
   dbBytes: number;
+  /** 对象存储；没启用时是 null */
+  media: null | {
+    objects: number; bytes: number; maxBytes: number;
+    monthBytes: number; monthRedirects: number; monthlyBytes: number;
+    overStorage: boolean; overTraffic: boolean; paused: boolean;
+    queued: number; active: number; failed: number; lastError: string; lastErrorAt: number;
+    backfill: { total: number; done: number; running: boolean };
+  };
+}
+
+/** 对象存储那一格：存了多少、本月流量（按跳转次数估算）、补传进度和最近的错误 */
+function mediaTile(m: LoadData['media']): [string, string, string?, Tone?] {
+  if (!m) return ['对象存储', '未启用', '图片和视频由服务器直出'];
+  const notes = [`本月约 ${fmtBytes(m.monthBytes)} / ${fmtBytes(m.monthlyBytes)} 流量`];
+  if (m.backfill.running) notes.push(`补传 ${m.backfill.done} / ${m.backfill.total}`);
+  else if (m.queued + m.active) notes.push(`待上传 ${m.queued + m.active}`);
+  if (m.overTraffic) notes.push('超过月流量上限，已改回服务器直出');
+  if (m.overStorage) notes.push('存储满了，新文件不再上传');
+  if (m.paused) notes.push('上传连续失败，暂停中');
+  const recentError = m.lastError && Date.now() - m.lastErrorAt < 3600_000;
+  if (recentError) notes.push(`最近出错：${m.lastError}`);
+  return ['对象存储', `${m.objects} 个 · ${fmtBytes(m.bytes)}`, notes.join(' · '), m.overTraffic || m.overStorage || m.paused ? 'bad' : recentError ? 'warn' : undefined];
 }
 
 const fmtMs = (v: N | undefined) => (v === null || v === undefined ? '—' : v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(v < 10_000 ? 1 : 0)} s`);
@@ -293,6 +315,7 @@ export function LoadAdminPage({ head }: { head: (right: ReactNode) => ReactNode 
     ['每分钟请求', String(Math.round(r.req / r.minutes)), `正在处理 ${d.now.inFlight} 个${r.err ? ` · 出错 ${r.err}` : ''}`, r.err ? 'warn' : undefined],
     ['内存', fmtBytes(d.now.rss), `整机剩 ${fmtBytes(d.now.freeMem)} / ${fmtBytes(d.now.totalMem)}`, d.now.freeMem / d.now.totalMem < 0.05 ? 'bad' : undefined],
     ['排队', `${d.queues.moderation} / ${d.queues.queued + d.queues.running}`, '待审帖子 / 视频转码', undefined],
+    mediaTile(d.media),
     ['网页打开', fmtMs(r.pageP50), r.pageN ? `最慢 5%：${fmtMs(r.pageP95)} · ${r.pageN} 次` : '网页版刷新后才有', (r.pageP50 ?? 0) > 4000 ? 'warn' : undefined],
   ];
   const Icon = verdict.tone === 'ok' ? CircleCheck : verdict.tone === 'warn' ? TriangleAlert : CircleAlert;

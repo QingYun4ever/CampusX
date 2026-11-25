@@ -21,6 +21,7 @@ import { emojiPackRoutes } from './routes/emoji-packs.ts';
 import { seedEmojiPacks } from './emoji-packs.ts';
 import { installMetrics } from './metrics.ts';
 import { loadRoutes } from './routes/load.ts';
+import { startObjectStore } from './object-store.ts';
 import { dmRoutes } from './routes/dm.ts';
 import { miscRoutes } from './routes/misc.ts';
 import { postRoutes } from './routes/posts.ts';
@@ -127,6 +128,7 @@ await app.register(
 );
 
 startSiteUploads();
+startObjectStore();
 registerSiteUploadRoutes(app);
 await startVideos();
 registerVideoFiles(app);

@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type MouseEvent } from 'react';
+import { useEffect, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, ChevronRight, CircleHelp, Download, FileText, LogOut, Plus, Shield, Trash2 } from 'lucide-react';
 import { Switch, TopBar } from '../components/ui';
@@ -6,6 +6,7 @@ import { isAndroid } from '../lib/android';
 import { useAuth, useMe } from '../lib/auth';
 import { CURRENT } from '../lib/changelog';
 import { getAutoplayPref, setAutoplayPref, type AutoplayPref } from '../lib/video';
+import { clearMediaCache, IMG_MAX_BYTES, mediaCacheUsage, VID_MAX_BYTES } from '../lib/media-cache';
 import {
   ACCENTS,
   accentColor,
@@ -256,6 +257,7 @@ function Appearance() {
       </section>
 
       <VideoAutoplay />
+      <MediaCache />
     </>
   );
 }
@@ -289,6 +291,49 @@ function VideoAutoplay() {
           </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+const mb = (n: number) => `${n < 10 * 1048576 ? (n / 1048576).toFixed(1) : Math.round(n / 1048576)} MB`;
+
+/** 看过的图片、表情、视频存在手机上，下次打开不用再下载 */
+function MediaCache() {
+  const [usage, setUsage] = useState<Awaited<ReturnType<typeof mediaCacheUsage>>>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void mediaCacheUsage().then((u) => alive && setUsage(u));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  if (!usage) return null;
+  return (
+    <section className="section">
+      <h3>媒体缓存</h3>
+      <p className="section-sub">
+        看过的图片和表情存在本机，最多 {mb(IMG_MAX_BYTES)}；看完大半的视频在 Wi-Fi 下存一份，最多 {mb(VID_MAX_BYTES)}。满了先删最久没看的。
+      </p>
+      <p className="section-sub">
+        图片和表情 {mb(usage.imgBytes)}（{usage.imgCount} 个） · 视频 {mb(usage.vidBytes)}（{usage.vidCount} 个）
+      </p>
+      <button
+        className="btn btn-outline sm"
+        disabled={busy || !(usage.imgCount + usage.vidCount)}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await clearMediaCache();
+          } catch {
+            /* 清不掉也没关系 */
+          }
+          setUsage(await mediaCacheUsage());
+          setBusy(false);
+        }}
+      >
+        <Trash2 size={16} /> 清除缓存
+      </button>
     </section>
   );
 }

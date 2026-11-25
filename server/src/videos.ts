@@ -28,6 +28,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { videosDir } from './config.ts';
 import { all, get, now, run, tx } from './db.ts';
+import { registerMediaSource, remoteFor, removeRemote } from './object-store.ts';
 import { HttpError, me, parse } from './util.ts';
 
 const MB = 1024 ** 2;
@@ -311,11 +312,23 @@ async function processVideo(id: string) {
 }
 
 function removeFiles(id: string) {
+  removeRemote([`v/${id}.mp4`, `v/${id}.jpg`]);
   const f = files(id);
   for (const file of [f.mp4, f.poster, ...f.frames, uploadPath(id), ...['mp4', 'jpg', 'f1.jpg', 'f2.jpg', 'f3.jpg'].map((x) => path.join(tmpDir, `${id}.${x}`))]) {
     fs.rmSync(file, { force: true });
   }
 }
+
+// 补传：处理好的视频和封面（审核用的截图不公开，不传）
+registerMediaSource(() =>
+  all<{ id: string }>("SELECT id FROM videos WHERE status = 'ready' AND used = 1 ORDER BY created_at DESC").flatMap(({ id }) => {
+    const f = files(id);
+    return [
+      { key: `v/${id}.jpg`, file: f.poster },
+      { key: `v/${id}.mp4`, file: f.mp4 },
+    ].filter((x) => fs.existsSync(x.file));
+  }),
+);
 
 /* ---------------- 发帖、审核用 ---------------- */
 
@@ -509,6 +522,12 @@ export function registerVideoFiles(app: FastifyInstance) {
       fd = await fsp.open(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
     } catch {
       throw new HttpError(404, '视频不存在');
+    }
+    // 已经传到对象存储的：跳过去下载（拖进度的 Range 请求也直接发给存储桶）
+    const target = remoteFor(`v/${m[1]}.${m[2]}`, file, req.headers.range);
+    if (target) {
+      await fd.close();
+      return reply.code(302).header('Location', target).header('Cache-Control', 'public, max-age=3600').send();
     }
     const { size } = await fd.stat();
     reply

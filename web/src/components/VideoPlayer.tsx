@@ -12,6 +12,7 @@ import { Pause, Play, RotateCcw, Volume2, VolumeX, X } from 'lucide-react';
 import type { Video } from '../lib/api';
 import { useEscape } from '../lib/escape';
 import { autoplayAllowed, formatDuration } from '../lib/video';
+import { noteVideoProgress, videoSrc } from '../lib/media-cache';
 import { resolveMediaUrl } from './MediaImage';
 import './video.css';
 
@@ -38,7 +39,9 @@ export function InlineVideo({ video }: { video: Video }) {
   const [left, setLeft] = useState(Math.ceil(video.duration));
   const [viewerAt, setViewerAt] = useState<number | null>(null);
   const visible = useRef(false);
-  const src = resolveMediaUrl(video.url);
+  const plain = resolveMediaUrl(video.url);
+  // 缓存过的从本机缓存播；地址要固定住，换了会重新加载
+  const [src, setSrc] = useState(() => videoSrc(plain));
   const poster = resolveMediaUrl(video.poster);
 
   const play = () => {
@@ -127,7 +130,9 @@ export function InlineVideo({ video }: { video: Video }) {
         onClick={(e) => {
           e.stopPropagation();
           if (state === 'error') {
-            ref.current?.load();
+            // 缓存出了问题：改走网络
+            if (src !== plain) setSrc(plain);
+            else ref.current?.load();
             setState('idle');
           } else openViewer();
         }}
@@ -156,7 +161,10 @@ export function InlineVideo({ video }: { video: Video }) {
             setWaiting(false);
             setState('error');
           }}
-          onTimeUpdate={(e) => setLeft(Math.ceil(Math.max(0, video.duration - e.currentTarget.currentTime)))}
+          onTimeUpdate={(e) => {
+            setLeft(Math.ceil(Math.max(0, video.duration - e.currentTarget.currentTime)));
+            noteVideoProgress(plain, e.currentTarget);
+          }}
         />
         {state === 'error' ? (
           <div className="vi-center vi-error">视频加载失败，点一下重试</div>
@@ -208,6 +216,8 @@ function VideoViewer({ video, start, onClose }: { video: Video; start: number; o
   const [muted, setMuted] = useState(false);
   const [waiting, setWaiting] = useState(true);
   const [failed, setFailed] = useState(false);
+  const plain = resolveMediaUrl(video.url);
+  const [src, setSrc] = useState(() => videoSrc(plain));
   const [idle, setIdle] = useState(false);
   const [dragY, setDragY] = useState(0);
   const idleTimer = useRef(0);
@@ -345,7 +355,7 @@ function VideoViewer({ video, start, onClose }: { video: Video; start: number; o
       >
         <video
           ref={ref}
-          src={resolveMediaUrl(video.url)}
+          src={src}
           poster={resolveMediaUrl(video.poster)}
           playsInline
           disablePictureInPicture
@@ -363,11 +373,16 @@ function VideoViewer({ video, start, onClose }: { video: Video; start: number; o
           onPlaying={() => setWaiting(false)}
           onCanPlay={() => setWaiting(false)}
           onError={() => {
+            // 缓存出了问题：改走网络再试一次
+            if (src !== plain) return setSrc(plain);
             setWaiting(false);
             setFailed(true);
           }}
           onLoadedMetadata={(e) => Number.isFinite(e.currentTarget.duration) && setDur(e.currentTarget.duration)}
-          onTimeUpdate={(e) => !scrubbing.current && setTime(e.currentTarget.currentTime)}
+          onTimeUpdate={(e) => {
+            if (!scrubbing.current) setTime(e.currentTarget.currentTime);
+            noteVideoProgress(plain, e.currentTarget);
+          }}
           onProgress={(e) => {
             const b = e.currentTarget.buffered;
             if (b.length) setBuffered(b.end(b.length - 1));
