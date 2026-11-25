@@ -248,10 +248,20 @@ export function thumb(source: string, kind: 'post' | 'avatar' = 'post') {
 
 export async function uploadImage(file: File): Promise<string> {
   const { prepareImage } = await import('./image');
-  const form = new FormData();
-  form.append('file', await prepareImage(file));
-  const r = await api<{ url: string }>('/upload', { form });
-  return r.url;
+  const prepared = await prepareImage(file);
+  // 一次传几十张时可能碰上频率限制（429）或服务器正忙着处理别的图（503）：等一会儿再试
+  for (let attempt = 0; ; attempt++) {
+    const form = new FormData();
+    form.append('file', prepared);
+    try {
+      const r = await api<{ url: string }>('/upload', { form });
+      return r.url;
+    } catch (e) {
+      const status = e instanceof ApiError ? e.status : 0;
+      if ((status !== 429 && status !== 503) || attempt >= 5) throw e;
+      await new Promise((r) => setTimeout(r, (status === 429 ? 8000 : 1500) * (attempt + 1)));
+    }
+  }
 }
 
 /* ---------------- 类型 ---------------- */

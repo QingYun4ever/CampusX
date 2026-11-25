@@ -1540,6 +1540,58 @@ a.card-row:hover {
   font-size: 14px;
   font-weight: 700;
 }
+/* 刚选的图正在上传：先显示本地预览，上面盖一个转圈 */
+.thumb.pending img {
+  opacity: 0.55;
+}
+.thumb.pending .spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  color: #fff;
+}
+/* 超过 4 张：和发出去以后一样横着排、紧挨着，方便看拼起来的效果 */
+.thumbs.strip {
+  display: flex;
+  gap: 0;
+  height: 168px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  margin-bottom: 4px;
+  border-radius: var(--r-lg);
+  background: var(--bg-2);
+}
+.thumbs.strip .thumb {
+  flex: none;
+  height: 100%;
+  aspect-ratio: auto;
+  border-radius: 0;
+  animation: none;
+}
+.thumbs.strip .thumb img {
+  display: block;
+  width: auto;
+  min-width: 60px;
+  max-width: 420px;
+}
+.thumbs.strip .thumb button {
+  height: 28px;
+}
+.thumbs.strip .thumb-remove {
+  top: 6px;
+  right: 6px;
+  width: 28px;
+}
+.thumbs.strip .thumb-edit {
+  right: 6px;
+  bottom: 6px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.thumbs-count {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
 
 /* 新帖子提示 */
 .new-pill-wrap {
@@ -1861,6 +1913,82 @@ img.cemoji {
 }
 .media.n3 img:first-child {
   grid-row: span 2;
+}
+
+/* 5 张及以上：横着排成一条（MediaStrip）。图和图之间不留缝，同一高度、各按原比例，
+   一幅画切成几张发，连起来看就是完整的 */
+.media-strip {
+  position: relative;
+  margin-top: 12px;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.media-strip-track {
+  display: flex;
+  height: clamp(200px, 58vw, 320px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.media-strip-track::-webkit-scrollbar {
+  display: none;
+}
+.media-strip-track img {
+  display: block;
+  flex: none;
+  height: 100%;
+  width: auto;
+  object-fit: cover;
+  cursor: zoom-in;
+  transition: filter 0.2s;
+}
+.media-strip-track img:hover {
+  filter: brightness(0.92);
+}
+.media-strip-count {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.media-strip-nav {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.media-strip-nav.prev {
+  left: 8px;
+}
+.media-strip-nav.next {
+  right: 8px;
+}
+.media-strip:hover .media-strip-nav,
+.media-strip-nav:focus-visible {
+  opacity: 1;
+}
+/* 手机上直接用手指滑，不要箭头 */
+@media (hover: none) {
+  .media-strip-nav {
+    display: none;
+  }
 }
 
 /* 操作栏 */
@@ -4650,6 +4778,7 @@ img.emoji {
 }
 .log-thumbs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .log-thumbs img {
@@ -4842,7 +4971,8 @@ img.emoji {
   .board-hero-actions {
     grid-column: 1 / -1;
   }
-  .media {
+  .media,
+  .media-strip {
     border-radius: var(--r);
   }
 }

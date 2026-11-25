@@ -5,7 +5,7 @@ import { all, get, now, run, tx } from '../db.ts';
 import { assertEmojis, markEmojisSent, enqueue, getConfig, logReview, reviewContext, screen, warnAuthor, type ReviewResult } from '../moderation.ts';
 import { postEmojiFiles } from '../post-markdown.ts';
 import { type PostDTO, assertCanInteract, boardRole, extractTags, hydrate, normalizeTag, notify, postById, postSelect, publicPost, publishEffects, REACTIONS, unnotify, canViewBoard, visibleTo } from '../serialize.ts';
-import { consumeDraftUploads, holdDraftUploads, MAX_REVIEW_IMAGE_BYTES, siteUploadUrl, type UploadSnapshots } from '../site-uploads.ts';
+import { consumeDraftUploads, holdDraftUploads, MAX_POST_IMAGES, MAX_REVIEW_IMAGE_BYTES, siteUploadUrl, warmThumbs, type UploadSnapshots } from '../site-uploads.ts';
 import { USER_COLS, userPublic } from './users-common.ts';
 import { grantForLike, revokeForPost } from '../levels.ts';
 import { crystalForLike, revokeCrystalsForPost } from '../crystals.ts';
@@ -21,7 +21,7 @@ const createSchema = z.object({
   content: z.string().max(config.maxPostLength, `内容最多 ${config.maxPostLength} 字`).default(''),
   images: z
     .array(z.string().regex(siteUploadUrl, '图片地址无效'))
-    .max(4, '最多 4 张图片')
+    .max(MAX_POST_IMAGES, `最多 ${MAX_POST_IMAGES} 张图片`)
     .default([]),
   /** 视频 id（videos.ts）。一条帖子一个视频，不能和图片一起发 */
   video: z.string().regex(/^[\w-]{16}$/, '视频无效').nullish(),
@@ -246,6 +246,7 @@ export async function postRoutes(app: FastifyInstance) {
     });
     if (verdict) logReview(id, moderation, verdict.verdict, verdict);
     if (status === 'pending') enqueue(id);
+    if (status !== 'rejected' && body.images.length > 4) void warmThumbs(body.images);
     if (status === 'rejected') {
       const warnings = warnAuthor(id, verdict!.reason);
       throw new HttpError(422, `没有发出去：${verdict!.reason}`, { moderation: { reason: verdict!.reason, warnings } });

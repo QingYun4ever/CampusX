@@ -9,6 +9,7 @@ import { markViewed, useViewTracking } from '../lib/views';
 import { useCompose } from './compose';
 import { ContentLink } from './ContentLink';
 import { MediaImage } from './MediaImage';
+import { MediaStrip, STRIP_FROM } from './MediaStrip';
 import { InlineVideo } from './VideoPlayer';
 import { LevelBadge } from './Level';
 import { QuoteCard } from './QuoteCard';
@@ -114,6 +115,7 @@ export function PlainText({ text }: { text: string }) {
 export function MediaGrid({ images }: { images: string[] }) {
   const grid = useRef<HTMLDivElement>(null);
   if (!images.length) return null;
+  if (images.length >= STRIP_FROM) return <MediaStrip images={images} />;
   const shown = images.slice(0, 4);
   return (
     <div ref={grid} className={`media n${shown.length}`}>

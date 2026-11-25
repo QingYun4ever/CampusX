@@ -21,7 +21,7 @@ import { all, get, now, run, tx } from './db.ts';
 import { emojiSrc } from './emoji-tokens.ts';
 import { postEmojiFiles } from './post-markdown.ts';
 import { publishEffects, unpublishEffects } from './serialize.ts';
-import { AttachmentError, checkStoredUploads, MAX_REVIEW_IMAGE_BYTES, readStoredUpload, siteUploadUrl, type UploadSnapshots } from './site-uploads.ts';
+import { AttachmentError, checkStoredUploads, MAX_POST_IMAGES, MAX_REVIEW_IMAGE_BYTES, readStoredUpload, siteUploadUrl, type UploadSnapshots } from './site-uploads.ts';
 import { ImageInputError, validateReviewImage } from './thumbs.ts';
 import { HttpError } from './util.ts';
 
@@ -148,7 +148,7 @@ export interface Img {
   data: string;
 }
 
-const storedImagesSchema = z.array(z.string().regex(siteUploadUrl)).max(4);
+const storedImagesSchema = z.array(z.string().regex(siteUploadUrl)).max(MAX_POST_IMAGES);
 
 function storedImages(serialized: string) {
   try {
@@ -230,13 +230,27 @@ interface PreparedImages {
   snapshots: UploadSnapshots;
 }
 
+/**
+ * 送审时每张图缩到多大：4 张以内原样送；多了整个请求会太大（几十张原图有上百 MB），
+ * 接口对一次带很多图时的单图尺寸也有限制。缩小后看内容足够了。
+ */
+function reviewEdge(count: number) {
+  return count > 20 ? 640 : count > 4 ? 1024 : undefined;
+}
+
 export async function loadImages(urls: string[], limit: number, sendToModel: boolean): Promise<PreparedImages> {
   const images: Img[] = [];
   const snapshots = new Map();
-  for (const url of new Set(urls)) {
-    const image = await validateReviewImage(() => readStoredUpload(url, limit));
+  const unique = new Set(urls);
+  const edge = sendToModel ? reviewEdge(unique.size) : undefined;
+  for (const url of unique) {
+    const image = await validateReviewImage(() => readStoredUpload(url, limit), edge);
     snapshots.set(url, image.snapshot);
-    if (sendToModel) images.push({ mime: image.mime, data: image.buffer.toString('base64') });
+    if (sendToModel) {
+      images.push(image.shrunk
+        ? { mime: 'image/jpeg', data: image.shrunk.toString('base64') }
+        : { mime: image.mime, data: image.buffer.toString('base64') });
+    }
   }
   return { images, snapshots };
 }
@@ -246,6 +260,7 @@ function describe(text: string, imageCount: number, context: string) {
     context,
     `帖子文字：\n<post>\n${text || '（没有文字）'}\n</post>`,
     imageCount ? `帖子附带 ${imageCount} 张图片，见上方。` : '',
+    imageCount > 4 ? '这些图在帖子里按顺序横着排成一条，相邻的几张可能是一幅画切开的，请连起来看。' : '',
     '请给出审核结论。',
   ]
     .filter(Boolean)

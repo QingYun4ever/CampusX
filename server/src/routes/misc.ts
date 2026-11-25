@@ -26,7 +26,7 @@ function clientTypes(raw: string | undefined) {
 
 export async function miscRoutes(app: FastifyInstance) {
   /* ---------- 图片上传 ---------- */
-  app.post('/upload', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
+  app.post('/upload', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req) => {
     const user = me(req);
     const file = await req.file();
     if (!file) throw new HttpError(400, '没有收到文件');

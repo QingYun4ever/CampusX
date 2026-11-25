@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore, type ImgHTMLAttributes } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ImgHTMLAttributes, type Ref } from 'react';
 import { API_BASE, getMediaSession, siteMediaUrl, subscribeMediaSession } from '../lib/api';
 
 type Source = string | Blob;
@@ -30,7 +30,7 @@ export function useMediaResource(source?: Source | null) {
   return { url, failed: false, protected: false, session };
 }
 
-export function MediaImage({ src, ...props }: Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'srcSet'> & { src?: Source | null }) {
+export function MediaImage({ src, ...props }: Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'srcSet'> & { src?: Source | null; ref?: Ref<HTMLImageElement> }) {
   const { url } = useMediaResource(src);
   return <img {...props} src={url} />;
 }

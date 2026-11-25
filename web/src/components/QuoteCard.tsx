@@ -26,8 +26,17 @@ export function QuoteCard({ post, preview }: { post: QuotePreview | null; previe
       {content && <div className="quote-card-content">{content}</div>}
       {video && <VideoThumb video={video} className="quote-card-video" />}
       {!!images.length && (
-        <div className="quote-card-images" style={{ gridTemplateColumns: `repeat(${images.length}, minmax(0, 1fr))` }}>
-          {images.map((src, i) => <MediaImage key={i} src={thumb(src)} alt={content ? '' : `原帖图片 ${i + 1}`} loading="lazy" decoding="async" />)}
+        <div className="quote-card-images" style={{ gridTemplateColumns: `repeat(${Math.min(images.length, 4)}, minmax(0, 1fr))` }}>
+          {images.slice(0, 4).map((src, i) => {
+            const img = <MediaImage key={i} src={thumb(src)} alt={content ? '' : `原帖图片 ${i + 1}`} loading="lazy" decoding="async" />;
+            // 图多的帖子只放 4 张，最后一张上写还有几张
+            return i === 3 && images.length > 4 ? (
+              <span key={i} className="quote-card-more">
+                {img}
+                <b>+{images.length - 4}</b>
+              </span>
+            ) : img;
+          })}
         </div>
       )}
     </>

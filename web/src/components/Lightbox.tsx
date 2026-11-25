@@ -423,7 +423,7 @@ export function Lightbox({ images, previews, index: start, origin, onDone }: Lig
           <ChevronRight size={26} />
         </button>
       )}
-      {many && (
+      {many && images.length <= 10 && (
         <div className="lightbox-dots" aria-hidden>
           {images.map((_, i) => (
             <i key={i} className={i === index ? 'on' : ''} />

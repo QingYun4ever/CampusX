@@ -52,6 +52,20 @@
   border-radius: 8px;
   overflow: hidden;
 }
+.quote-card-more {
+  position: relative;
+  display: block;
+}
+.quote-card-more b {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+}
 .quote-card-images img {
   display: block;
   width: 100%;

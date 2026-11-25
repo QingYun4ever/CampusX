@@ -28,7 +28,7 @@ import { InfiniteList, useInfiniteList } from '../components/Feed';
 import { Logo } from '../components/Logo';
 import { MediaImage, resolveMediaUrl } from '../components/MediaImage';
 import { Avatar, Empty, Field, Modal, PostSkeleton, Spinner, Switch, toast, useModalClose, Verified } from '../components/ui';
-import { api, ApiError, WEB_ORIGIN, type Announcement, type CampusEvent, type EventEntry, type AssistantConfig, type Invite, type MaintenanceConfig, type ReportGroup, type User, type UserLite } from '../lib/api';
+import { api, ApiError, thumb, WEB_ORIGIN, type Announcement, type CampusEvent, type EventEntry, type AssistantConfig, type Invite, type MaintenanceConfig, type ReportGroup, type User, type UserLite } from '../lib/api';
 import { refreshStatus } from '../lib/site';
 import { useMe } from '../lib/auth';
 import { fullTime, timeAgo } from '../lib/format';
@@ -438,7 +438,7 @@ function LogItem({ log, onDecided }: { log: ModLog; onDecided: () => void }) {
           <div className="log-thumbs">
             {log.post.images.map((src) => (
               <ContentLink key={src} href={src} image>
-                <MediaImage src={src} alt="查看审核附件" loading="lazy" />
+                <MediaImage src={thumb(src)} alt="查看审核附件" loading="lazy" />
               </ContentLink>
             ))}
           </div>
@@ -1169,7 +1169,7 @@ function EntryItem({ x, onDone }: { x: EventEntry; onDone: () => void }) {
               <div className="log-thumbs">
                 {p.images.map((src) => (
                   <ContentLink key={src} href={src} image>
-                    <MediaImage src={src} alt="查看参与帖子的图片" loading="lazy" />
+                    <MediaImage src={thumb(src)} alt="查看参与帖子的图片" loading="lazy" />
                   </ContentLink>
                 ))}
               </div>
@@ -1552,7 +1552,7 @@ function ReportItem({ g, onDone }: { g: ReportGroup; onDone: (deleted?: boolean)
               <div className="log-thumbs">
                 {post.images.map((src) => (
                   <ContentLink key={src} href={src} image>
-                    <MediaImage src={src} alt="查看被举报的图片" loading="lazy" />
+                    <MediaImage src={thumb(src)} alt="查看被举报的图片" loading="lazy" />
                   </ContentLink>
                 ))}
               </div>

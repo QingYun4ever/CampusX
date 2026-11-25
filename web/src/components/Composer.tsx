@@ -15,7 +15,11 @@ import { isVideoFile } from '../lib/video';
 import { Avatar, BoardMark, Modal, Spinner, toast, usePopover } from './ui';
 
 const MAX = 2000;
-const MAX_IMAGES = 4;
+/** 和服务端 MAX_POST_IMAGES 一致；超过 4 张在帖子里横着排成一条 */
+const MAX_IMAGES = 50;
+/** 同时上传几张（服务器一次只处理两张图） */
+const UPLOAD_CONCURRENCY = 2;
+let draftSeq = 0;
 const MAX_TAGS = 5;
 const cleanTag = (t: string) => t.trim().replace(/^#+/, '').replace(/[\s#@，,]/g, '').toLowerCase().slice(0, 20);
 
@@ -144,7 +148,8 @@ export function Composer({
   const qc = useQueryClient();
   const [text, setText] = useState(initialText ?? '');
   // file：本机的原图，用来再次编辑（旋转、裁剪），不用再从服务器下载
-  const [images, setImages] = useState<{ key: string; url: string | null; file: File }[]>([]);
+  // uploading：刚选的图先按顺序占好位置，传完再填上地址，几张一起传也不会乱了顺序
+  const [images, setImages] = useState<{ key: string; url: string | null; file: File; uploading?: boolean }[]>([]);
   const [editing, setEditing] = useState<number | null>(null);
   const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -210,20 +215,31 @@ export function Composer({
       return vd.start(videos[0]);
     }
     if (vd.hasDraft()) return toast('已经有视频了，视频不能和图片一起发', 'error');
-    const room = MAX_IMAGES - images.length - uploading;
+    const room = MAX_IMAGES - images.length;
     const list = files.filter((f) => f.type.startsWith('image/')).slice(0, Math.max(room, 0));
     if (files.length > list.length) toast(`最多 ${MAX_IMAGES} 张图片`, 'error');
-    for (const f of list) {
-      setUploading((n) => n + 1);
-      try {
-        const url = await uploadImage(f);
-        setImages((arr) => [...arr, { key: url, url, file: f }]);
-      } catch (e) {
-        toast((e as Error).message, 'error');
-      } finally {
-        setUploading((n) => n - 1);
+    if (!list.length) return;
+    const drafts = list.map((file) => ({ key: `draft-${++draftSeq}`, url: null, file, uploading: true }));
+    setImages((arr) => [...arr, ...drafts]);
+    setUploading((n) => n + drafts.length);
+    const failed: string[] = [];
+    let next = 0;
+    const worker = async () => {
+      while (next < drafts.length) {
+        const d = drafts[next++];
+        try {
+          const url = await uploadImage(d.file);
+          setImages((arr) => arr.map((x) => (x.key === d.key ? { ...x, url, uploading: false } : x)));
+        } catch (e) {
+          failed.push((e as Error).message);
+          setImages((arr) => arr.filter((x) => x.key !== d.key));
+        } finally {
+          setUploading((n) => n - 1);
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, drafts.length) }, worker));
+    if (failed.length) toast(failed.length > 1 ? `有 ${failed.length} 张图片没传上去：${failed[0]}` : failed[0], 'error');
   };
 
   const onPaste = (e: ClipboardEvent) => {
@@ -388,11 +404,12 @@ export function Composer({
           )}
           {!preview && mention.menu}
           {(showTags || tags.length > 0) && <TagInput tags={tags} onChange={setTags} />}
-          {(images.length > 0 || uploading > 0) && (
-            <div className={`thumbs n${Math.min(images.length + uploading, 4)}`}>
+          {images.length > 0 && (
+            <div className={images.length > 4 ? 'thumbs strip' : `thumbs n${images.length}`}>
               {images.map((im, i) => (
-                <div className="thumb" key={im.key}>
+                <div className={`thumb${im.uploading ? ' pending' : ''}`} key={im.key}>
                   <MediaImage src={im.file} alt="" />
+                  {im.uploading && <Spinner size={22} />}
                   <button
                     className="thumb-remove"
                     onClick={() => setImages((a) => a.filter((x) => x.key !== im.key))}
@@ -400,18 +417,18 @@ export function Composer({
                   >
                     <X size={15} />
                   </button>
-                  {im.file.type !== 'image/gif' && (
+                  {im.file.type !== 'image/gif' && !im.uploading && (
                     <button className="thumb-edit" onClick={() => setEditing(i)}>
                       编辑
                     </button>
                   )}
                 </div>
               ))}
-              {Array.from({ length: uploading }, (_, i) => (
-                <div className="thumb loading" key={`u${i}`}>
-                  <Spinner size={22} />
-                </div>
-              ))}
+            </div>
+          )}
+          {images.length > 4 && (
+            <div className="thumbs-count muted">
+              {images.length} / {MAX_IMAGES} 张 · 发出去后横着排成一条，按这里的顺序
             </div>
           )}
           {vd.draft && <VideoDraftTile draft={vd.draft} onRemove={vd.remove} onRetry={vd.retry} />}
@@ -432,7 +449,7 @@ export function Composer({
               className="icon-btn accent"
               title={vd.enabled ? '图片或视频' : '图片'}
               aria-label={vd.enabled ? '添加图片或视频' : '添加图片'}
-              disabled={images.length + uploading >= MAX_IMAGES || !!vd.draft}
+              disabled={images.length >= MAX_IMAGES || !!vd.draft}
               onClick={() => fileRef.current?.click()}
             >
               <ImagePlus size={20} />

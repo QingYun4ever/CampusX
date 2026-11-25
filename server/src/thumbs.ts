@@ -74,11 +74,23 @@ export function prepareUploadImage(buffer: Buffer, ext: string) {
   return useSharp((sharp) => processImage(sharp, buffer, ext, true));
 }
 
-export function validateReviewImage<T extends { buffer: Buffer; ext: string }>(read: () => Promise<T>) {
+/** 校验图片能完整解码；给了 edge 就再缩一份（JPEG，透明处垫白）送审用 */
+export function validateReviewImage<T extends { buffer: Buffer; ext: string }>(read: () => Promise<T>, edge?: number) {
   return useSharp(async (sharp) => {
     const image = await read();
     await processImage(sharp, image.buffer, image.ext, false);
-    return image;
+    if (!edge) return { ...image, shrunk: undefined };
+    try {
+      const shrunk = await sharp(image.buffer, sharpOptions).timeout({ seconds: 10 })
+        .rotate()
+        .resize({ width: edge, height: edge, fit: 'inside', withoutEnlargement: true })
+        .flatten({ background: '#ffffff' })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+      return { ...image, shrunk };
+    } catch {
+      throw new ImageInputError();
+    }
   });
 }
 

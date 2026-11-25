@@ -14,6 +14,8 @@ const prefix = '/uploads/';
 const imageName = /^[\w-]+\.(?:jpg|png|webp|gif)$/;
 export const siteUploadUrl = /^\/uploads\/[\w-]+\.(?:jpg|png|webp|gif)$/;
 export const MAX_REVIEW_IMAGE_BYTES = 5 * 1024 * 1024;
+/** 一条帖子最多几张图（超过 4 张时横向排成一条，可以拼成一幅连续的画） */
+export const MAX_POST_IMAGES = 50;
 const thumbsDir = path.join(uploadsDir, '.thumbs');
 const flags = fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK;
 const hour = 3_600_000;
@@ -238,6 +240,19 @@ function thumbnailFor(name: string, size: number, avatar: boolean) {
     thumbJobs.set(output, job);
   }
   return job;
+}
+
+/**
+ * 多图帖发出去以后在后台挨个生成缩略图：第一个刷到的人不用一下子等几十张现做，
+ * 也不会挤爆缩略图队列退回原图。一次只做一张，失败的等有人看时再做。
+ */
+export async function warmThumbs(urls: readonly string[]) {
+  for (const url of new Set(urls)) {
+    const name = url.startsWith(prefix) ? url.slice(prefix.length) : '';
+    if (!imageName.test(name)) continue;
+    const row = get<{ size: number }>('SELECT size FROM site_uploads WHERE name = $name', { name });
+    if (row) await thumbnailFor(name, row.size, false);
+  }
 }
 
 /** 缩略图文件是否完好：WebP 头对得上、比原图小。完好时返回大小，否则 0 */
