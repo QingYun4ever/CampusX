@@ -530,23 +530,23 @@ function ChatView({ username }: { username: string }) {
         ) : (
           <div className="dm-msgs">
             {hasMore && <Spinner size={22} />}
-            {msgs.map((m, i) => {
-              const prev = msgs[i - 1];
-              const next = msgs[i + 1];
-              const newDay = !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt);
-              const near = (a?: DmMessage) => !!a && a.senderId === m.senderId && Math.abs(a.createdAt - m.createdAt) < 5 * 60_000;
-              const first = newDay || !near(prev);
-              const last = !near(next) || (!!next && dayKey(next.createdAt) !== dayKey(m.createdAt));
-              const mine = m.senderId === me.id;
-              const images = m.localImages ?? m.images;
-              return (
-                <Fragment key={m.id}>
-                  {newDay && (
-                    <div className="dm-day">
-                      <span>{dayLabel(m.createdAt)}</span>
-                    </div>
-                  )}
+            {dmRuns(msgs).map((run) => {
+              const theirs = msgs[run[0]].senderId !== me.id;
+              const head = msgs[run[0]];
+              const prevMsg = msgs[run[0] - 1];
+              const bubbles = run.map((i) => {
+                const m = msgs[i];
+                const prev = msgs[i - 1];
+                const next = msgs[i + 1];
+                const newDay = !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt);
+                const near = (a?: DmMessage) => !!a && a.senderId === m.senderId && Math.abs(a.createdAt - m.createdAt) < 5 * 60_000;
+                const first = newDay || !near(prev);
+                const last = !near(next) || (!!next && dayKey(next.createdAt) !== dayKey(m.createdAt));
+                const mine = m.senderId === me.id;
+                const images = m.localImages ?? m.images;
+                return (
                   <div
+                    key={m.id}
                     className={`bubble ${mine ? 'mine' : 'theirs'} ${first ? 'first' : ''} ${last ? 'last' : ''} ${m.deleted ? 'deleted' : ''} ${m.pending ? 'pending' : ''}`}
                     onContextMenu={(e) => openCtx(e, m)}
                   >
@@ -593,6 +593,26 @@ function ChatView({ username }: { username: string }) {
                       )}
                     </span>
                   </div>
+                );
+              });
+              return (
+                <Fragment key={head.id}>
+                  {(!prevMsg || dayKey(prevMsg.createdAt) !== dayKey(head.createdAt)) && (
+                    <div className="dm-day">
+                      <span>{dayLabel(head.createdAt)}</span>
+                    </div>
+                  )}
+                  {theirs && peer ? (
+                    // 对方连着发的一组：左边一个头像，往上滑时停在顶部，下一组上来再把它顶走（像 Telegram）
+                    <div className="dm-run">
+                      <Link to={`/u/${peer.username}`} className="dm-run-ava" aria-label={peer.displayName}>
+                        <Avatar src={peer.avatar} name={peer.displayName} size={32} decoration={peer.avatarDecoration} />
+                      </Link>
+                      <div className="dm-run-col">{bubbles}</div>
+                    </div>
+                  ) : (
+                    bubbles
+                  )}
                 </Fragment>
               );
             })}
@@ -691,6 +711,17 @@ function ChatView({ username }: { username: string }) {
       )}
     </section>
   );
+}
+
+/** 把消息按「同一个人、同一天、连着发」分组，返回每组的下标 */
+function dmRuns(msgs: DmMessage[]) {
+  const runs: number[][] = [];
+  msgs.forEach((m, i) => {
+    const prev = msgs[i - 1];
+    if (prev && prev.senderId === m.senderId && dayKey(prev.createdAt) === dayKey(m.createdAt)) runs[runs.length - 1].push(i);
+    else runs.push([i]);
+  });
+  return runs;
 }
 
 export function Messages() {

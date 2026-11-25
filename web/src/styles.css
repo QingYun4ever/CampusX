@@ -1671,6 +1671,14 @@ a.card-row:hover {
   flex-direction: column;
   align-items: center;
 }
+/* 像 Telegram：长帖往上滑时头像停在顶栏下面，帖子到底了再被下一条顶上去。
+   --topbar-h 由 Topbar 量出来；手机上往下滑顶栏会藏起来，头像跟着贴到最上面 */
+.post-left > .avatar-link {
+  position: sticky;
+  top: calc(var(--topbar-h, 53px) + 8px);
+  z-index: 1;
+  transition: top 0.35s var(--ease);
+}
 .thread-line {
   width: 2px;
   flex: 1;
@@ -4914,6 +4922,9 @@ img.emoji {
   :root[data-scroll='down']:not([data-nav-pinned]) .topbar {
     transform: translateY(-100%);
   }
+  :root[data-scroll='down']:not([data-nav-pinned]) .post-left > .avatar-link {
+    top: calc(var(--safe-top) + 8px);
+  }
   :root[data-scroll='down']:not([data-nav-pinned]) .tabbar,
   :root[data-scroll='down'] .fab {
     opacity: 0.35;
@@ -5446,6 +5457,26 @@ img.emoji {
 .bubble.theirs {
   align-self: flex-start;
   transform-origin: bottom left;
+}
+/* 对方连着发的一组消息：左边一个头像，滑动时停在顶部，下一组上来把它顶走 */
+.dm-run {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.dm-run-ava {
+  position: sticky;
+  top: 6px;
+  flex: none;
+  align-self: flex-start;
+  margin-top: 8px;
+  border-radius: 50%;
+}
+.dm-run-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 .bubble .content {
   display: inline;

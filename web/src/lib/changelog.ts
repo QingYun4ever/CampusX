@@ -9,6 +9,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.24.0',
+    date: '2026-11-26',
+    title: '头像跟着走',
+    changes: [
+      ['new', '像 Telegram 一样：长帖往上滑时，作者头像停在顶部，滑到下一条帖子再被顶上去；私信里对方连着发的一组消息左边也有头像，同样会停在顶部。'],
+      ['fix', '动态头像框在首页、帖子和私信里也会动了（以前只有主页的大头像会动）。滑出屏幕的头像框会停下来，不费电。'],
+    ],
+  },
+  {
     version: '0.23.0',
     date: '2026-11-26',
     title: '一条帖子最多 50 张图',

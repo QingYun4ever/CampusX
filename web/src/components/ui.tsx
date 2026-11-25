@@ -68,6 +68,34 @@ function useAvatarImage(src?: string | null, original = false) {
   };
 }
 
+/**
+ * 头像框动画只在头像出现在屏幕上时播放：首页一屏可能有很多带框的头像，
+ * 滑出去的就停掉，省电也不卡。所有头像共用一个 IntersectionObserver。
+ */
+const onScreenCallbacks = new Map<Element, (visible: boolean) => void>();
+let onScreenObserver: IntersectionObserver | undefined;
+function useOnScreen(ref: { current: Element | null }, enabled: boolean) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!enabled || !el || typeof IntersectionObserver === 'undefined') return;
+    onScreenObserver ??= new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) onScreenCallbacks.get(e.target)?.(e.isIntersecting);
+      },
+      { rootMargin: '40px' },
+    );
+    onScreenCallbacks.set(el, setVisible);
+    onScreenObserver.observe(el);
+    return () => {
+      onScreenObserver?.unobserve(el);
+      onScreenCallbacks.delete(el);
+      setVisible(false);
+    };
+  }, [ref, enabled]);
+  return visible;
+}
+
 export function Avatar({ src, name, size = 40, decoration, original = false }: {
   src?: string | null;
   name: string;
@@ -77,11 +105,17 @@ export function Avatar({ src, name, size = 40, decoration, original = false }: {
 }) {
   const { url, onError } = useAvatarImage(src, original);
   const loading = original ? 'eager' : 'lazy';
-  if (decoration && FRAMED.has(decoration)) {
-    // 头像框：外层占位、画框，里面才是头像；大头像（主页、商场）才播放动画
+  const framed = !!decoration && FRAMED.has(decoration);
+  const frameRef = useRef<HTMLSpanElement>(null);
+  // 大头像（主页、商场）一直播放；帖子、私信里的头像（32px 起）在屏幕上时播放；更小的太小看不清，不动
+  const onScreen = useOnScreen(frameRef, framed && size >= 32 && size < 64);
+  const live = size >= 64 || onScreen;
+  if (decoration && framed) {
+    // 头像框：外层占位、画框，里面才是头像
     return (
       <span
-        className={`avatar framed ${size >= 64 ? 'live' : ''} ${size < 32 ? 'tiny' : ''}`}
+        ref={frameRef}
+        className={`avatar framed ${live ? 'live' : ''} ${size < 32 ? 'tiny' : ''}`}
         data-avatar-decoration={decoration}
         style={{ width: size, height: size }}
       >
@@ -92,7 +126,7 @@ export function Avatar({ src, name, size = 40, decoration, original = false }: {
             {[...(name || '?')][0]}
           </span>
         )}
-        <AvatarFrame kind={decoration} live={size >= 64} />
+        <AvatarFrame kind={decoration} live={live} />
       </span>
     );
   }
@@ -291,8 +325,20 @@ export function TopBar({
   titleHidden?: boolean;
 }) {
   const nav = useNavigate();
+  const bar = useRef<HTMLElement>(null);
+  // 帖子头像吸顶要停在顶栏下面：把顶栏高度（含刘海、标签页）写到 --topbar-h
+  useLayoutEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const update = () => root.style.setProperty('--topbar-h', `${el.offsetHeight}px`);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <header className="topbar">
+    <header className="topbar" ref={bar}>
       {(title || back || right) && (
         <div className="topbar-row">
           {back && (
